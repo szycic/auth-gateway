@@ -524,6 +524,94 @@ app.all('/auth/*', (req, res) => {
 });
 
 // ----------------------------------------------------
+// 10b. Public Share Routes Proxy with Navigation Enforcement
+// When unauthenticated users view public shares (/s/*, /share/*, /upload/*),
+// inject a script that intercepts navigation away (e.g. clicking Home/Upload)
+// and forces a full browser request so Caddy forward_auth triggers immediately.
+// ----------------------------------------------------
+const PUBLIC_NAV_SCRIPT = `<script>
+(function() {
+  function isPublic(path) {
+    return /^\\/(s|share|upload)\\/[^\\/]+/.test(path);
+  }
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest('a');
+    if (a && a.href && a.origin === location.origin) {
+      if (!isPublic(a.pathname)) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.location.href = a.href;
+      }
+    }
+  }, true);
+  if (window.next && window.next.router) {
+    window.next.router.events.on('routeChangeStart', function(url) {
+      if (!isPublic(url)) {
+        window.location.href = url;
+      }
+    });
+  }
+  window.addEventListener('popstate', function() {
+    if (!isPublic(location.pathname)) {
+      window.location.reload();
+    }
+  });
+})();
+</script>`;
+
+function proxyPublicShareRoute(req, res) {
+  const targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
+
+  const proxyReq = http.request(
+    targetUrl,
+    {
+      method: req.method,
+      headers: {
+        ...req.headers,
+        host: req.headers.host || 'share.szycic.com',
+        'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
+        'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
+        'accept-encoding': 'identity',
+      },
+    },
+    (proxyRes) => {
+      const contentType = proxyRes.headers['content-type'] || '';
+      if (contentType.includes('text/html')) {
+        let body = '';
+        proxyRes.setEncoding('utf8');
+        proxyRes.on('data', (chunk) => { body += chunk; });
+        proxyRes.on('end', () => {
+          if (body.includes('</body>')) {
+            body = body.replace('</body>', `${PUBLIC_NAV_SCRIPT}</body>`);
+          } else {
+            body += PUBLIC_NAV_SCRIPT;
+          }
+          const headers = { ...proxyRes.headers };
+          delete headers['content-length'];
+          headers['content-length'] = Buffer.byteLength(body);
+          res.writeHead(proxyRes.statusCode, headers);
+          res.end(body);
+        });
+      } else {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
+      }
+    }
+  );
+
+  proxyReq.on('error', (err) => {
+    console.error('[public share proxy error]', err.message);
+    res.status(502).send('Bad Gateway');
+  });
+
+  req.pipe(proxyReq);
+}
+
+app.all(['/s/*', '/share/*', '/upload/*'], (req, res) => {
+  proxyPublicShareRoute(req, res);
+});
+
+// ----------------------------------------------------
 // 11. Desktop Login View (`/login`)
 // Dynamic QR Code, Real-Time Socket.io, Sleek Dark UI
 // ----------------------------------------------------
