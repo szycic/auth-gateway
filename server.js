@@ -1327,15 +1327,38 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
     p.desc { font-size: 0.875rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem; }
     .form-group { margin-bottom: 1.25rem; text-align: left; }
     label { display: block; font-size: 0.825rem; color: #cbd5e1; font-weight: 600; margin-bottom: 0.5rem; }
-    input[type="password"] {
-      width: 100%; padding: 0.85rem 1rem;
+    .password-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .password-wrapper input {
+      width: 100%; padding: 0.85rem 2.75rem 0.85rem 1rem;
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 12px; color: #ffffff; font-size: 1rem;
       outline: none; transition: border-color 0.2s, box-shadow 0.2s;
     }
-    input[type="password"]:focus {
+    .password-wrapper input:focus {
       border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+    }
+    .btn-toggle-pw {
+      position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: #94a3b8; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 0.25rem; border-radius: 6px; transition: color 0.2s;
+    }
+    .btn-toggle-pw:hover { color: #38bdf8; }
+    .pw-options {
+      display: flex; align-items: center; justify-content: flex-end;
+      margin-top: 0.5rem; margin-bottom: 1.25rem;
+    }
+    .pw-options label {
+      display: inline-flex; align-items: center; gap: 0.45rem;
+      font-size: 0.8rem; color: #94a3b8; cursor: pointer; user-select: none; margin-bottom: 0;
+    }
+    .pw-options input[type="checkbox"] {
+      width: 15px; height: 15px; accent-color: #0284c7; cursor: pointer;
     }
     .btn {
       width: 100%; padding: 0.85rem 1.25rem;
@@ -1365,13 +1388,58 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
 
     <form method="POST" action="/auth/approver/login">
       <input type="hidden" name="returnTo" value="${returnTo}">
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom: 0.25rem;">
         <label for="password">Approver Password</label>
-        <input type="password" id="password" name="password" required autofocus placeholder="Enter password...">
+        <div class="password-wrapper">
+          <input type="password" id="password" name="password" required autofocus placeholder="Enter password...">
+          <button type="button" class="btn-toggle-pw" id="togglePwBtn" aria-label="Show password" title="Show password" onclick="togglePasswordVisibility()">
+            <svg id="eyeIcon" style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <svg id="eyeOffIcon" style="width: 20px; height: 20px; display: none;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+            </svg>
+          </button>
+        </div>
       </div>
+
+      <div class="pw-options">
+        <label>
+          <input type="checkbox" id="showPwCheckbox" onchange="togglePasswordCheckbox(this)">
+          Show password
+        </label>
+      </div>
+
       <button type="submit" class="btn">Sign In as Approver</button>
     </form>
   </div>
+
+  <script>
+    function updatePasswordVisibility(isVisible) {
+      const input = document.getElementById('password');
+      const eyeIcon = document.getElementById('eyeIcon');
+      const eyeOffIcon = document.getElementById('eyeOffIcon');
+      const btn = document.getElementById('togglePwBtn');
+      const checkbox = document.getElementById('showPwCheckbox');
+
+      input.type = isVisible ? 'text' : 'password';
+      eyeIcon.style.display = isVisible ? 'none' : 'block';
+      eyeOffIcon.style.display = isVisible ? 'block' : 'none';
+      btn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+      btn.setAttribute('title', isVisible ? 'Hide password' : 'Show password');
+      if (checkbox) checkbox.checked = isVisible;
+    }
+
+    function togglePasswordVisibility() {
+      const input = document.getElementById('password');
+      updatePasswordVisibility(input.type === 'password');
+    }
+
+    function togglePasswordCheckbox(cb) {
+      updatePasswordVisibility(cb.checked);
+    }
+  </script>
 </body>
 </html>`;
 }
@@ -1489,7 +1557,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       </div>
 
       <label class="trust-box">
-        <input type="checkbox" name="trusted" value="true" checked>
+        <input type="checkbox" name="trusted" value="true">
         <div class="trust-text">
           <span class="trust-title">Trust this device (Permanent access)</span>
           <span class="trust-desc">Keep signed in permanently until manually revoked.</span>
