@@ -455,6 +455,15 @@ app.get('/auth/qr-init', async (req, res) => {
 // ----------------------------------------------------
 // 5. Approver Login Routes
 // ----------------------------------------------------
+app.get(['/auth/approver', '/auth/approver/'], (req, res) => {
+  const returnTo = req.query.returnTo || '/auth/sessions';
+  if (isApprover(req)) {
+    return res.redirect(returnTo);
+  }
+  const target = '/auth/approver/login' + (req.query.returnTo ? `?returnTo=${encodeURIComponent(req.query.returnTo)}` : '');
+  return res.redirect(target);
+});
+
 app.get('/auth/approver/login', (req, res) => {
   const returnTo = req.query.returnTo || '/auth/sessions';
   if (isApprover(req)) {
@@ -829,10 +838,61 @@ app.get('/auth/logout', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 11. Fallback Reverse Proxy for Downstream App (/auth/*)
+// 11. Current Session Device Rename (`/auth/device/rename`)
+// ----------------------------------------------------
+app.post('/auth/device/rename', (req, res) => {
+  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  if (!isValidSession(token)) {
+    return res.redirect('/login');
+  }
+
+  const session = activeSessions.get(token);
+  if (!session) return res.redirect('/login');
+
+  const { name } = req.body;
+  const trimmed = typeof name === 'string' ? name.trim().slice(0, 50) : '';
+  if (trimmed) {
+    session.friendlyDevice = trimmed;
+    savePersistedSessions();
+  }
+
+  return res.redirect('/?notice=' + encodeURIComponent(`Device renamed to "${session.friendlyDevice}".`));
+});
+
+// ----------------------------------------------------
+// 12. Fallback Reverse Proxy for Downstream App (/auth/*)
 // ----------------------------------------------------
 app.all('/auth/*', (req, res) => {
-  const targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
+  if (!TARGET_APP_URL || !TARGET_APP_URL.trim()) {
+    return res.status(404).send(renderStatusNoticeHtml({
+      title: 'Page Not Found',
+      message: 'The requested authorization endpoint does not exist.',
+      actionUrl: '/',
+      actionLabel: 'Return Home',
+      type: 'error',
+    }));
+  }
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
+  } catch (err) {
+    console.error('[proxy url error]', err.message);
+    return res.status(400).send(renderStatusNoticeHtml({
+      title: 'Invalid Request',
+      message: 'The requested URL is invalid.',
+      actionUrl: '/',
+      actionLabel: 'Return Home',
+      type: 'error',
+    }));
+  }
+
+  let downstreamHost;
+  try {
+    downstreamHost = req.headers.host || (new URL(BASE_URL)).host;
+  } catch {
+    downstreamHost = req.headers.host || 'auth.szycic.com';
+  }
 
   const proxyReq = http.request(
     targetUrl,
@@ -840,7 +900,7 @@ app.all('/auth/*', (req, res) => {
       method: req.method,
       headers: {
         ...req.headers,
-        host: req.headers.host || (new URL(BASE_URL)).host,
+        host: downstreamHost,
         'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
         'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
       },
@@ -853,13 +913,20 @@ app.all('/auth/*', (req, res) => {
 
   proxyReq.on('error', (err) => {
     console.error('[proxy error]', err.message);
-    res.status(502).send('Bad Gateway');
+    res.status(502).send(renderStatusNoticeHtml({
+      title: 'Service Unavailable',
+      message: 'The downstream service is currently unreachable.',
+      actionUrl: '/',
+      actionLabel: 'Return Home',
+      type: 'error',
+    }));
   });
 
   req.pipe(proxyReq);
 });
 
-// 12. Public Routes Proxy with Navigation Enforcement (Configurable App Bypass)
+// ----------------------------------------------------
+// 13. Public Routes Proxy with Navigation Enforcement (Configurable App Bypass)
 // ----------------------------------------------------
 if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.publicBypass.paths) && config.publicBypass.paths.length > 0) {
   const bypassPattern = config.publicBypass.pattern || '^\\/(s|share|upload)\\/[^\\/]+';
@@ -895,8 +962,36 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
 </script>`;
 
   function proxyPublicBypassRoute(req, res) {
-    const targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
-    const downstreamHost = req.headers.host || (new URL(BASE_URL)).host;
+    if (!TARGET_APP_URL || !TARGET_APP_URL.trim()) {
+      return res.status(404).send(renderStatusNoticeHtml({
+        title: 'Page Not Found',
+        message: 'The requested resource does not exist.',
+        actionUrl: '/',
+        actionLabel: 'Return Home',
+        type: 'error',
+      }));
+    }
+
+    let targetUrl;
+    try {
+      targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
+    } catch (err) {
+      console.error('[public bypass url error]', err.message);
+      return res.status(400).send(renderStatusNoticeHtml({
+        title: 'Invalid Request',
+        message: 'The requested URL is invalid.',
+        actionUrl: '/',
+        actionLabel: 'Return Home',
+        type: 'error',
+      }));
+    }
+
+    let downstreamHost;
+    try {
+      downstreamHost = req.headers.host || (new URL(BASE_URL)).host;
+    } catch {
+      downstreamHost = req.headers.host || 'auth.szycic.com';
+    }
 
     const proxyReq = http.request(
       targetUrl,
@@ -937,7 +1032,13 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
 
     proxyReq.on('error', (err) => {
       console.error('[public bypass proxy error]', err.message);
-      res.status(502).send('Bad Gateway');
+      res.status(502).send(renderStatusNoticeHtml({
+        title: 'Service Unavailable',
+        message: 'The downstream service is currently unreachable.',
+        actionUrl: '/',
+        actionLabel: 'Return Home',
+        type: 'error',
+      }));
     });
 
     req.pipe(proxyReq);
@@ -949,7 +1050,7 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
 }
 
 // ----------------------------------------------------
-// 12. Central Services Portal View (`/`)
+// 14. Central Services Portal View (`/`)
 // ----------------------------------------------------
 app.get('/', (req, res) => {
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
@@ -964,26 +1065,6 @@ app.get('/', (req, res) => {
     services: config.services,
     notice: req.query.notice,
   }));
-});
-
-// Rename device from current desktop session
-app.post('/auth/device/rename', (req, res) => {
-  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
-  if (!isValidSession(token)) {
-    return res.redirect('/login');
-  }
-
-  const session = activeSessions.get(token);
-  if (!session) return res.redirect('/login');
-
-  const { name } = req.body;
-  const trimmed = typeof name === 'string' ? name.trim().slice(0, 50) : '';
-  if (trimmed) {
-    session.friendlyDevice = trimmed;
-    savePersistedSessions();
-  }
-
-  return res.redirect('/?notice=' + encodeURIComponent(`Device renamed to "${session.friendlyDevice}".`));
 });
 
 // ----------------------------------------------------
@@ -2078,7 +2159,8 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - ${config.app.name}</title>
+  <title>${escapeHtml(title)} - ${escapeHtml(config.app.name || 'Szycic Auth')}</title>
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2123,10 +2205,11 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
         }
       </svg>
     </div>
-    <h1>${title}</h1>
-    <p>${message}</p>
-    ${actionUrl ? `<a href="${actionUrl}" class="btn">${actionLabel || 'Continue'}</a>` : ''}
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(message)}</p>
+    ${actionUrl ? `<a href="${actionUrl}" class="btn">${escapeHtml(actionLabel || 'Continue')}</a>` : ''}
   </div>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2342,6 +2425,39 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
 </body>
 </html>`;
 }
+
+// ----------------------------------------------------
+// Global 404 & Uncaught Error Handling
+// ----------------------------------------------------
+app.use((req, res) => {
+  if (req.accepts('json') && !req.accepts('html')) {
+    return res.status(404).json({ error: 'Not Found', path: req.originalUrl });
+  }
+  return res.status(404).send(renderStatusNoticeHtml({
+    title: '404 - Not Found',
+    message: 'The requested page or endpoint does not exist.',
+    actionUrl: '/',
+    actionLabel: 'Return Home',
+    type: 'error',
+  }));
+});
+
+app.use((err, req, res, next) => {
+  console.error('[auth-gateway uncaught error]', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  if (req.accepts('json') && !req.accepts('html')) {
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+  return res.status(500).send(renderStatusNoticeHtml({
+    title: '500 - Server Error',
+    message: 'An unexpected error occurred while processing your request. Please try again.',
+    actionUrl: '/',
+    actionLabel: 'Return Home',
+    type: 'error',
+  }));
+});
 
 // Start Server
 server.listen(PORT, HOST, () => {
