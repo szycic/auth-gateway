@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CLI utility to set or change the Approver Password for Pingvin Share Auth Gateway.
+ * CLI utility to set or change the Approver Password for Auth Gateway.
  * Computes a secure salted scrypt hash and stores it in the persistent data directory.
  */
 const fs = require('fs');
