@@ -43,6 +43,8 @@ function savePassword(password) {
   console.log('The new password takes effect immediately (no restart needed).\n');
 }
 
+let nonTtyRl = null;
+
 /**
  * Prompts for input securely without printing plaintext to the terminal.
  * Masks typed characters with asterisks (*).
@@ -51,18 +53,20 @@ function readSecret(promptText) {
   return new Promise((resolve) => {
     // If input is non-interactive (e.g. piped or redirected stdin)
     if (!process.stdin.isTTY) {
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      rl.question(promptText, (ans) => {
-        rl.close();
+      if (!nonTtyRl) {
+        nonTtyRl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+      }
+      nonTtyRl.question(promptText, (ans) => {
         resolve(ans ? ans.trim() : '');
       });
       return;
     }
 
     process.stdout.write(promptText);
+
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
@@ -126,6 +130,7 @@ async function main() {
   }
 
   savePassword(password);
+  if (nonTtyRl) nonTtyRl.close();
 }
 
 main().catch((err) => {
