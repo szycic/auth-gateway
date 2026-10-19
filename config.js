@@ -36,8 +36,8 @@ function loadConfigFile() {
     process.env.CONFIG_PATH,
     path.join(DATA_DIR, 'config.json'),
     path.join(__dirname, 'config.json'),
-    path.join(DATA_DIR, 'config.json.sample'),
-    path.join(__dirname, 'config.json.sample'),
+    path.join(DATA_DIR, 'config.sample.json'),
+    path.join(__dirname, 'config.sample.json'),
   ].filter(Boolean);
 
   for (const configPath of possiblePaths) {
