@@ -1531,7 +1531,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       <label class="trust-box">
         <input type="checkbox" name="trusted" value="true">
         <div class="trust-text">
-          <span class="trust-title">Trust this device (Permanent access)</span>
+          <span class="trust-title">Trust this device</span>
           <span class="trust-desc">Keep signed in permanently until manually revoked.</span>
         </div>
       </label>
