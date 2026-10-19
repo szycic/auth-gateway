@@ -590,7 +590,7 @@ app.post('/auth/qr-action', (req, res) => {
     return res.status(401).send('Unauthorized approver.');
   }
 
-  const { id, key, action, trusted } = req.body;
+  const { id, key, action, trusted, customName } = req.body;
   if (!id || !key || typeof id !== 'string' || typeof key !== 'string') {
     return res.status(400).send('Invalid request parameters.');
   }
@@ -632,6 +632,10 @@ app.post('/auth/qr-action', (req, res) => {
   const sessionToken = crypto.randomBytes(48).toString('base64url');
   const sessionId = crypto.randomUUID();
 
+  const finalDeviceName = (typeof customName === 'string' && customName.trim())
+    ? customName.trim().slice(0, 50)
+    : (session.friendlyDevice || 'Desktop Browser');
+
   // Trusted device gets permanent 10-year expiration; otherwise standard TTL
   const tokenExpiresAt = isTrusted
     ? Date.now() + 10 * 365 * 24 * 3600 * 1000 // 10 years permanent
@@ -645,7 +649,7 @@ app.post('/auth/qr-action', (req, res) => {
     isTrusted,
     ip: session.desktopIp,
     userAgent: session.desktopUserAgent,
-    friendlyDevice: session.friendlyDevice,
+    friendlyDevice: finalDeviceName,
     service: session.serviceName || null,
     type: isTrusted ? 'trusted_device' : 'desktop_guest',
   });
@@ -661,8 +665,8 @@ app.post('/auth/qr-action', (req, res) => {
   return res.send(renderStatusNoticeHtml({
     title: isTrusted ? 'Trusted Device Authorized!' : 'Device Approved!',
     message: isTrusted
-      ? `Permanently authorized ${session.friendlyDevice} (${session.desktopIp}) as a Trusted Device.`
-      : `Granted access to ${session.friendlyDevice} (${session.desktopIp}).`,
+      ? `Permanently authorized ${finalDeviceName} (${session.desktopIp}) as a Trusted Device.`
+      : `Granted access to ${finalDeviceName} (${session.desktopIp}).`,
     type: 'success',
     actionUrl: '/auth/sessions',
     actionLabel: 'Manage Active Sessions',
@@ -708,6 +712,36 @@ app.post('/auth/sessions/revoke', (req, res) => {
         return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Session for ${session.friendlyDevice} was revoked.`));
       }
     }
+  }
+
+  return res.redirect('/auth/sessions');
+});
+
+// Rename a specific session / device
+app.post('/auth/sessions/rename', (req, res) => {
+  if (!isApprover(req)) {
+    return res.status(401).send('Unauthorized.');
+  }
+
+  const { sessionId, name } = req.body;
+  if (!sessionId || typeof sessionId !== 'string') {
+    return res.status(400).send('Invalid session ID.');
+  }
+
+  const trimmed = typeof name === 'string' ? name.trim().slice(0, 50) : '';
+  let updatedDevice = null;
+
+  for (const [token, session] of activeSessions.entries()) {
+    if (session.id === sessionId) {
+      session.friendlyDevice = trimmed || parseUserAgent(session.userAgent) || 'Desktop Browser';
+      updatedDevice = session.friendlyDevice;
+      break;
+    }
+  }
+
+  if (updatedDevice) {
+    savePersistedSessions();
+    return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Renamed device to "${updatedDevice}".`));
   }
 
   return res.redirect('/auth/sessions');
@@ -892,7 +926,28 @@ app.get('/', (req, res) => {
     session,
     isApproverUser: isApprover(req),
     services: config.services,
+    notice: req.query.notice,
   }));
+});
+
+// Rename device from current desktop session
+app.post('/auth/device/rename', (req, res) => {
+  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  if (!isValidSession(token)) {
+    return res.redirect('/login');
+  }
+
+  const session = activeSessions.get(token);
+  if (!session) return res.redirect('/login');
+
+  const { name } = req.body;
+  const trimmed = typeof name === 'string' ? name.trim().slice(0, 50) : '';
+  if (trimmed) {
+    session.friendlyDevice = trimmed;
+    savePersistedSessions();
+  }
+
+  return res.redirect('/?notice=' + encodeURIComponent(`Device renamed to "${session.friendlyDevice}".`));
 });
 
 // ----------------------------------------------------
@@ -1461,6 +1516,26 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
     .info-label { color: #94a3b8; }
     .info-val { color: #f8fafc; font-weight: 600; }
 
+    .name-box {
+      margin-bottom: 1.25rem; text-align: left;
+    }
+    .name-box label {
+      display: block; font-size: 0.85rem; font-weight: 600;
+      color: #94a3b8; margin-bottom: 0.45rem;
+    }
+    .name-input-wrapper input {
+      width: 100%; padding: 0.8rem 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px; color: #ffffff;
+      font-size: 0.95rem; font-family: inherit;
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .name-input-wrapper input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+    }
+
     /* Trusted Device Toggle Container */
     .trust-box {
       background: rgba(2, 132, 199, 0.08);
@@ -1502,16 +1577,32 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
 
       <div class="device-info">
         <div class="info-row">
-          <span class="info-label">Device</span>
-          <span class="info-val">${friendlyDevice}</span>
+          <span class="info-label">Detected Device</span>
+          <span class="info-val">${escapeHtml(friendlyDevice)}</span>
         </div>
         <div class="info-row">
           <span class="info-label">IP Address</span>
-          <span class="info-val">${desktopIp}</span>
+          <span class="info-val">${escapeHtml(desktopIp)}</span>
         </div>
         <div class="info-row">
           <span class="info-label">Access Level</span>
           <span class="info-val" style="color: #38bdf8;">Standard Access</span>
+        </div>
+      </div>
+
+      <div class="name-box">
+        <label for="customName">Device Name</label>
+        <div class="name-input-wrapper">
+          <input
+            type="text"
+            id="customName"
+            name="customName"
+            value="${escapeHtml(friendlyDevice)}"
+            placeholder="e.g. Work Laptop, Living Room PC"
+            maxlength="40"
+            autocomplete="off"
+            spellcheck="false"
+          >
         </div>
       </div>
 
@@ -1537,17 +1628,22 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
 </html>`;
 }
 
-// 3. Sessions Dashboard HTML with In-App QR Scanner
 function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
   const sessionsRows = activeSessionsList.map((s) => {
     const elapsedMinutes = Math.floor((Date.now() - s.createdAt) / 60000);
     const timeLabel = elapsedMinutes < 1 ? 'Just now' : `${elapsedMinutes}m ago`;
+    const deviceName = s.friendlyDevice || 'Desktop Browser';
 
     return `
       <div class="session-card">
         <div class="session-info">
-          <div class="session-header">
-            <span class="session-name">${s.friendlyDevice || 'Desktop Browser'}</span>
+          <div class="session-header" id="header-${s.id}">
+            <span class="session-name">${escapeHtml(deviceName)}</span>
+            <button type="button" class="btn-rename-trigger" onclick="openRename('${s.id}')" title="Rename device" aria-label="Rename device">
+              <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
             ${s.isTrusted
               ? `<span class="badge-trusted">
                    <svg style="width: 12px; height: 12px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1558,7 +1654,13 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
               : `<span class="badge-temp">Temporary</span>`
             }
           </div>
-          <div class="session-sub">${s.ip} &bull; Started ${timeLabel}</div>
+          <form method="POST" action="/auth/sessions/rename" class="rename-form" id="rename-form-${s.id}" style="display: none;">
+            <input type="hidden" name="sessionId" value="${s.id}">
+            <input type="text" name="name" class="rename-input" id="rename-input-${s.id}" value="${escapeHtml(deviceName)}" maxlength="40" required placeholder="Device name">
+            <button type="submit" class="btn-rename-save">Save</button>
+            <button type="button" class="btn-rename-cancel" onclick="closeRename('${s.id}')">Cancel</button>
+          </form>
+          <div class="session-sub">${escapeHtml(s.ip)} &bull; Started ${timeLabel}</div>
         </div>
         <form method="POST" action="/auth/sessions/revoke">
           <input type="hidden" name="sessionId" value="${s.id}">
@@ -1626,9 +1728,45 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       display: flex; justify-content: space-between; align-items: center;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
-    .session-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; flex-wrap: wrap; }
+    .session-header { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.25rem; flex-wrap: wrap; }
     .session-name { font-weight: 600; font-size: 0.95rem; color: #ffffff; }
     .session-sub { font-size: 0.8rem; color: #94a3b8; }
+
+    .btn-rename-trigger {
+      background: none; border: none; color: #94a3b8;
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; padding: 2px 4px; border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-rename-trigger:hover {
+      color: #38bdf8; background: rgba(56, 189, 248, 0.1);
+    }
+    .rename-form {
+      display: flex; align-items: center; gap: 0.4rem;
+      margin-bottom: 0.35rem; flex-wrap: wrap;
+    }
+    .rename-input {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 8px; color: #ffffff;
+      padding: 0.35rem 0.65rem; font-size: 0.85rem; font-family: inherit;
+      outline: none; max-width: 200px; width: 100%;
+    }
+    .rename-input:focus {
+      border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+    .btn-rename-save {
+      background: #0284c7; color: #ffffff; border: none;
+      border-radius: 8px; padding: 0.35rem 0.75rem; font-size: 0.8rem;
+      font-weight: 600; cursor: pointer; transition: background 0.15s;
+    }
+    .btn-rename-save:hover { background: #0369a1; }
+    .btn-rename-cancel {
+      background: rgba(255, 255, 255, 0.1); color: #94a3b8; border: none;
+      border-radius: 8px; padding: 0.35rem 0.65rem; font-size: 0.8rem;
+      cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .btn-rename-cancel:hover { background: rgba(255, 255, 255, 0.18); color: #ffffff; }
 
     .badge-trusted {
       display: inline-flex; align-items: center; gap: 0.3rem;
@@ -1758,6 +1896,27 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
   </div>
 
   <script>
+    function openRename(id) {
+      const form = document.getElementById('rename-form-' + id);
+      const header = document.getElementById('header-' + id);
+      if (!form) return;
+      form.style.display = 'flex';
+      if (header) header.style.display = 'none';
+      const input = document.getElementById('rename-input-' + id);
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+
+    function closeRename(id) {
+      const form = document.getElementById('rename-form-' + id);
+      const header = document.getElementById('header-' + id);
+      if (!form) return;
+      form.style.display = 'none';
+      if (header) header.style.display = 'flex';
+    }
+
     let scannerStream = null;
     let scanAnimFrame = null;
     const scannerModal = document.getElementById('scannerModal');
@@ -1904,7 +2063,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
 }
 
 // 5. Central Services Portal Dashboard HTML (`/`)
-function renderPortalDashboardHtml({ session, isApproverUser, services = [] }) {
+function renderPortalDashboardHtml({ session, isApproverUser, services = [], notice = '' }) {
   const isTrusted = session && session.isTrusted;
   const friendlyDevice = (session && session.friendlyDevice) || 'Current Device';
   const ip = (session && session.ip) || 'Connected';
@@ -1982,6 +2141,30 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [] }) {
       background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25);
     }
 
+    .btn-edit-portal {
+      background: none; border: none; color: #94a3b8;
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; padding: 2px 4px; border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-edit-portal:hover { color: #38bdf8; background: rgba(56, 189, 248, 0.1); }
+    .portal-rename-input {
+      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 8px; color: #ffffff; padding: 0.25rem 0.5rem;
+      font-size: 0.85rem; font-family: inherit; outline: none; width: 150px;
+    }
+    .portal-rename-input:focus { border-color: #38bdf8; }
+    .btn-rename-save {
+      background: #0284c7; color: #ffffff; border: none; border-radius: 8px;
+      padding: 0.25rem 0.6rem; font-size: 0.775rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-rename-save:hover { background: #0369a1; }
+    .btn-rename-cancel {
+      background: rgba(255, 255, 255, 0.1); color: #94a3b8; border: none; border-radius: 8px;
+      padding: 0.25rem 0.5rem; font-size: 0.775rem; cursor: pointer;
+    }
+    .btn-rename-cancel:hover { color: #ffffff; background: rgba(255, 255, 255, 0.18); }
+
     .section-title {
       font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.05em; color: #64748b; margin-bottom: 0.85rem;
@@ -2033,9 +2216,23 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [] }) {
       <p class="subtitle">Central Authentication &amp; Services Portal</p>
     </div>
 
+    ${notice ? `<div style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #a7f3d0; padding: 0.65rem 0.9rem; border-radius: 12px; font-size: 0.85rem; margin-bottom: 1.25rem;">${escapeHtml(notice)}</div>` : ''}
+
     <div class="session-badge">
-      <div>
-        <div class="device-title">${escapeHtml(friendlyDevice)}</div>
+      <div style="flex: 1; min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 0.4rem;" id="portal-title-row">
+          <span class="device-title">${escapeHtml(friendlyDevice)}</span>
+          <button type="button" class="btn-edit-portal" onclick="togglePortalRename()" title="Rename this device" aria-label="Rename this device">
+            <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
+        </div>
+        <form method="POST" action="/auth/device/rename" id="portal-rename-form" style="display: none; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">
+          <input type="text" name="name" class="portal-rename-input" value="${escapeHtml(friendlyDevice)}" maxlength="40" required placeholder="Device name">
+          <button type="submit" class="btn-rename-save">Save</button>
+          <button type="button" class="btn-rename-cancel" onclick="togglePortalRename()">Cancel</button>
+        </form>
         <div class="device-sub">${escapeHtml(ip)}</div>
       </div>
       <span class="status-tag ${isTrusted ? 'status-trusted' : 'status-guest'}">
@@ -2053,6 +2250,24 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [] }) {
       <a href="/auth/logout" class="btn-action btn-logout">Sign Out</a>
     </div>
   </div>
+
+  <script>
+    function togglePortalRename() {
+      const form = document.getElementById('portal-rename-form');
+      const titleRow = document.getElementById('portal-title-row');
+      if (!form) return;
+      const isHidden = form.style.display === 'none';
+      form.style.display = isHidden ? 'flex' : 'none';
+      if (titleRow) titleRow.style.display = isHidden ? 'none' : 'flex';
+      if (isHidden) {
+        const input = form.querySelector('input[name="name"]');
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+    }
+  </script>
 </body>
 </html>`;
 }
