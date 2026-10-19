@@ -4,7 +4,8 @@
   "description": "Secure, lightweight custom Forward Auth Gateway with QR code authentication for Pingvin Share",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "hash-password": "node hash.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

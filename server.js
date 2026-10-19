@@ -19,7 +19,62 @@ const HOST = process.env.HOST || '0.0.0.0';
 const BASE_URL = (process.env.BASE_URL || 'https://share.szycic.com').replace(/\/+$/, '');
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'share_auth_token';
 const APPROVER_COOKIE_NAME = process.env.APPROVER_COOKIE_NAME || 'gateway_approver_session';
-const APPROVER_PASSWORD = process.env.APPROVER_PASSWORD || 'szycic-share-admin';
+// Password Hashing & Verification (Salted scrypt)
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const key = crypto.scryptSync(password, salt, 64);
+  return `scrypt$${salt}$${key.toString('hex')}`;
+}
+
+function verifyPassword(password, storedHash) {
+  if (!password || !storedHash || typeof storedHash !== 'string') return false;
+  const parts = storedHash.split('$');
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+  const salt = parts[1];
+  const expectedKey = Buffer.from(parts[2], 'hex');
+  const actualKey = crypto.scryptSync(password, salt, 64);
+  return (
+    expectedKey.length === actualKey.length &&
+    crypto.timingSafeEqual(expectedKey, actualKey)
+  );
+}
+
+// Initialize Approver Password Hash
+let approverPasswordHash = '';
+if (process.env.APPROVER_PASSWORD_HASH && process.env.APPROVER_PASSWORD_HASH.startsWith('scrypt$')) {
+  approverPasswordHash = process.env.APPROVER_PASSWORD_HASH.trim();
+  console.log('[auth-gateway] Loaded pre-hashed approver password (APPROVER_PASSWORD_HASH).');
+} else {
+  const rawPass = process.env.APPROVER_PASSWORD || 'szycic-share-admin';
+  approverPasswordHash = hashPassword(rawPass);
+  console.log('[auth-gateway] Auto-hashed approver password on startup with salted scrypt.');
+  // Wipe plaintext from process.env memory immediately
+  delete process.env.APPROVER_PASSWORD;
+}
+
+// Rate Limiting for Approver Login (Anti-Brute-Force)
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes lockout
+const failedLoginAttempts = new Map(); // ip -> { count, lockedUntil, firstFailedAt }
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded && typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || req.ip || '127.0.0.1';
+}
+
+// Cleanup stale rate limit records every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of failedLoginAttempts.entries()) {
+    if (data.lockedUntil && data.lockedUntil < now) {
+      failedLoginAttempts.delete(ip);
+    } else if (now - data.firstFailedAt > LOGIN_LOCKOUT_MS * 2) {
+      failedLoginAttempts.delete(ip);
+    }
+  }
+}, 30 * 60 * 1000).unref();
 const SESSION_TTL_HOURS = parseInt(process.env.SESSION_TTL_HOURS || '72', 10);
 const QR_SESSION_TTL_MS = parseInt(process.env.QR_SESSION_TTL_MS || '120000', 10); // 2 minutes
 const APPROVER_TTL_DAYS = 30;
@@ -319,6 +374,19 @@ app.post('/auth/approver/login', (req, res) => {
     ? returnTo
     : '/auth/sessions';
 
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+  const attemptRecord = failedLoginAttempts.get(clientIp);
+
+  // Check if IP is currently locked out
+  if (attemptRecord && attemptRecord.lockedUntil && attemptRecord.lockedUntil > now) {
+    const remainingMins = Math.ceil((attemptRecord.lockedUntil - now) / 60000);
+    return res.status(429).send(renderApproverLoginHtml({
+      returnTo: redirectTarget,
+      error: `Too many failed login attempts. Locked out for ${remainingMins} more minute(s).`,
+    }));
+  }
+
   if (!password || typeof password !== 'string') {
     return res.status(400).send(renderApproverLoginHtml({
       returnTo: redirectTarget,
@@ -326,19 +394,31 @@ app.post('/auth/approver/login', (req, res) => {
     }));
   }
 
-  // Timing-safe password comparison
-  const passBuf = Buffer.from(password);
-  const expectedBuf = Buffer.from(APPROVER_PASSWORD);
-  const isValid =
-    passBuf.length === expectedBuf.length &&
-    crypto.timingSafeEqual(passBuf, expectedBuf);
+  // Timing-safe salted scrypt comparison
+  const isValid = verifyPassword(password, approverPasswordHash);
 
   if (!isValid) {
-    return res.status(401).send(renderApproverLoginHtml({
-      returnTo: redirectTarget,
-      error: 'Incorrect approver password.',
-    }));
+    const record = attemptRecord || { count: 0, firstFailedAt: now, lockedUntil: null };
+    record.count += 1;
+    if (record.count >= MAX_LOGIN_ATTEMPTS) {
+      record.lockedUntil = now + LOGIN_LOCKOUT_MS;
+      failedLoginAttempts.set(clientIp, record);
+      return res.status(429).send(renderApproverLoginHtml({
+        returnTo: redirectTarget,
+        error: 'Too many failed attempts. Account locked for 15 minutes.',
+      }));
+    } else {
+      failedLoginAttempts.set(clientIp, record);
+      const remainingAttempts = MAX_LOGIN_ATTEMPTS - record.count;
+      return res.status(401).send(renderApproverLoginHtml({
+        returnTo: redirectTarget,
+        error: `Incorrect approver password. (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`,
+      }));
+    }
   }
+
+  // Clear failed attempts on successful authentication
+  failedLoginAttempts.delete(clientIp);
 
   // Issue Approver session token (30 days)
   const approverToken = crypto.randomBytes(48).toString('base64url');
