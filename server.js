@@ -1141,11 +1141,6 @@ app.get('/login', (req, res) => {
       margin-bottom: 1rem;
     }
     .footer { margin-top: 1.75rem; font-size: 0.775rem; color: #64748b; }
-    .approver-link {
-      display: inline-block; margin-top: 0.85rem; color: #38bdf8;
-      font-size: 0.8rem; text-decoration: none; transition: opacity 0.2s;
-    }
-    .approver-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -1186,7 +1181,6 @@ app.get('/login', (req, res) => {
     <div class="footer">
       ${config.app.footerText}
     </div>
-    <a class="approver-link" href="/auth/approver/login${redirectTarget ? '?returnTo=' + encodeURIComponent(redirectTarget) : ''}">Sign in with Approver Password &rarr;</a>
   </div>
 
   <script>
