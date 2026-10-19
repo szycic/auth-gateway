@@ -917,16 +917,7 @@ app.get('/login', (req, res) => {
       overflow: hidden;
     }
     .qr-frame img { width: 100%; height: 100%; display: block; border-radius: 12px; }
-    .scan-line {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 3px;
-      background: linear-gradient(90deg, transparent, #0284c7, #38bdf8, transparent);
-      box-shadow: 0 0 12px #38bdf8;
-      animation: scan 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-      opacity: 0.85;
-      pointer-events: none;
-    }
-    @keyframes scan { 0% { top: 4%; } 50% { top: 96%; } 100% { top: 4%; } }
+
     .overlay {
       position: absolute;
       inset: 0;
@@ -1007,7 +998,6 @@ app.get('/login', (req, res) => {
     <p class="subtitle">Scan the QR code with your authenticated mobile device to approve guest upload access for this desktop.</p>
 
     <div class="qr-frame" id="qrContainer">
-      <div class="scan-line" id="scanLine"></div>
       <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
 
       <div class="overlay active" id="loadingOverlay">
@@ -1045,7 +1035,6 @@ app.get('/login', (req, res) => {
     let secondsLeft = 120;
 
     const qrImage = document.getElementById('qrImage');
-    const scanLine = document.getElementById('scanLine');
     const loadingOverlay = document.getElementById('loadingOverlay');
     const expiredOverlay = document.getElementById('expiredOverlay');
     const statusText = document.getElementById('statusText');
@@ -1069,7 +1058,6 @@ app.get('/login', (req, res) => {
     }
 
     function onSessionExpired() {
-      scanLine.style.display = 'none';
       expiredOverlay.classList.add('active');
       statusText.textContent = 'Session timed out';
     }
@@ -1078,7 +1066,6 @@ app.get('/login', (req, res) => {
       try {
         loadingOverlay.classList.add('active');
         expiredOverlay.classList.remove('active');
-        scanLine.style.display = 'none';
 
         const res = await fetch('/auth/qr-init', { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed to fetch QR');
@@ -1091,7 +1078,6 @@ app.get('/login', (req, res) => {
         socket.emit('join-session', currentSessionId);
 
         loadingOverlay.classList.remove('active');
-        scanLine.style.display = 'block';
 
         startTimer(data.ttlMs || 120000);
         statusText.innerHTML = 'Awaiting approver scan (<span id="timerCount">' + secondsLeft + '</span>s)';
@@ -1103,7 +1089,6 @@ app.get('/login', (req, res) => {
 
     socket.on('approved', (data) => {
       clearInterval(timerInterval);
-      scanLine.style.display = 'none';
 
       mainCard.innerHTML = \`
         <div class="approved-state">
@@ -1129,7 +1114,6 @@ app.get('/login', (req, res) => {
 
     socket.on('rejected', (data) => {
       clearInterval(timerInterval);
-      scanLine.style.display = 'none';
       statusText.innerHTML = '<span style="color: #ef4444; font-weight: 600;">Request Rejected by Approver</span>';
       setTimeout(() => {
         initQrSession();
@@ -1594,15 +1578,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       box-shadow: 0 0 30px rgba(2, 132, 199, 0.3);
     }
     .scanner-video { width: 100%; height: 100%; object-fit: cover; }
-    .scanner-laser {
-      position: absolute; top: 0; left: 0; width: 100%; height: 3px;
-      background: linear-gradient(90deg, transparent, #38bdf8, #0284c7, transparent);
-      box-shadow: 0 0 15px #38bdf8;
-      animation: laser 2.2s infinite ease-in-out;
-    }
-    @keyframes laser {
-      0% { top: 5%; } 50% { top: 95%; } 100% { top: 5%; }
-    }
+
     .scanner-corners {
       position: absolute; inset: 16px; pointer-events: none;
       border: 2px dashed rgba(56, 189, 248, 0.6); border-radius: 16px;
@@ -1666,7 +1642,6 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
 
     <div class="scanner-viewfinder">
       <video id="scannerVideo" class="scanner-video" playsinline muted autoplay></video>
-      <div class="scanner-laser"></div>
       <div class="scanner-corners"></div>
       <canvas id="scannerCanvas" style="display: none;"></canvas>
     </div>
