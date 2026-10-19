@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </radialGradient>
+    <linearGradient id="lockGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="115" fill="url(#bgGrad)"/>
+  <rect width="508" height="508" x="2" y="2" rx="113" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+  <!-- Ambient Glow Behind Lock -->
+  <circle cx="256" cy="270" r="110" fill="#38bdf8" opacity="0.18" filter="url(#glow)"/>
+  <!-- Shackle -->
+  <path d="M196 230 V 176 C 196 142.86 222.86 116 256 116 C 289.14 116 316 142.86 316 176 V 230" 
+        fill="none" stroke="url(#lockGrad)" stroke-width="32" stroke-linecap="round"/>
+  <!-- Lock Body -->
+  <rect x="156" y="220" width="200" height="176" rx="36" fill="url(#lockGrad)"/>
+  <!-- Lock Keyhole -->
+  <circle cx="256" cy="290" r="16" fill="#090d16"/>
+  <path d="M247 296 L 243 334 C 243 338 246 341 250 341 L 262 341 C 266 341 269 338 269 334 L 265 296 Z" fill="#090d16"/>
+</svg>
