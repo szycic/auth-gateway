@@ -25,6 +25,7 @@ services:
       - AUTH_COOKIE_NAME=share_auth_token
       - APPROVER_COOKIE_NAME=gateway_approver_session
       - APPROVER_PASSWORD=${APPROVER_PASSWORD:-szycic-share-admin}
+      - APPROVER_PASSWORD_HASH=${APPROVER_PASSWORD_HASH:-}
       - SESSION_TTL_HOURS=72
       - QR_SESSION_TTL_MS=120000
       - DATA_DIR=/usr/src/app/data
