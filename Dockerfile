@@ -23,6 +23,7 @@ USER node
 COPY --chown=node:node --from=builder /usr/src/app/node_modules ./node_modules
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node server.js hash.js set-password.js config.js config*.json* ./
+COPY --chown=node:node public ./public
 
 EXPOSE 3000
 
