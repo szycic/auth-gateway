@@ -609,15 +609,6 @@ app.all('/auth/verify', (req, res) => {
     }).send('OK');
   }
 
-  // Mobile Approver Fallback (Approver session is always authorized for services)
-  if (isApprover(req)) {
-    return res.status(200).set({
-      'X-Auth-Status': 'authenticated',
-      'X-Auth-Role': 'trusted_device',
-      'X-Auth-User': 'approver_user',
-    }).send('OK');
-  }
-
   return res.status(401).send('Unauthorized');
 });
 
@@ -1302,8 +1293,44 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
   });
 }
 
+function getUpstreamUrlForHost(hostHeader = '') {
+  const host = (hostHeader || '').split(':')[0].toLowerCase();
+
+  if (host === 'tools.szycic.com' && process.env.TOOLS_APP_URL) {
+    return process.env.TOOLS_APP_URL;
+  }
+  if (host === 'garden.szycic.com' && process.env.GARDEN_APP_URL) {
+    return process.env.GARDEN_APP_URL;
+  }
+  if (host === 'share.szycic.com' && process.env.TARGET_APP_URL) {
+    return process.env.TARGET_APP_URL;
+  }
+
+  const matchedService = (config.services || []).find((s) => {
+    try {
+      return new URL(s.url).hostname.toLowerCase() === host;
+    } catch (e) {
+      return false;
+    }
+  });
+
+  if (matchedService && matchedService.upstream) {
+    return matchedService.upstream;
+  }
+
+  if (host === 'tools.szycic.com') {
+    return 'http://it-tools:80';
+  }
+  if (host === 'garden.szycic.com') {
+    return 'http://garden:8080';
+  }
+
+  return TARGET_APP_URL || 'http://share-app:3000';
+}
+
 function proxyToTargetApp(req, res) {
-  if (!TARGET_APP_URL || !TARGET_APP_URL.trim()) {
+  const upstreamBase = getUpstreamUrlForHost(req.headers.host);
+  if (!upstreamBase || !upstreamBase.trim()) {
     return res.status(502).send(renderStatusNoticeHtml({
       title: 'Service Unavailable',
       message: 'Downstream application is not configured.',
@@ -1315,7 +1342,7 @@ function proxyToTargetApp(req, res) {
 
   let targetUrl;
   try {
-    targetUrl = new URL(req.originalUrl || req.url, TARGET_APP_URL);
+    targetUrl = new URL(req.originalUrl || req.url, upstreamBase);
   } catch (err) {
     return res.status(400).send(renderStatusNoticeHtml({
       title: 'Invalid Request',
@@ -1402,7 +1429,7 @@ function proxyToTargetApp(req, res) {
   }
 }
 
-// Route requests intended for downstream target app (e.g. share.szycic.com)
+// Route requests intended for downstream target apps (e.g. share.szycic.com, tools.szycic.com, garden.szycic.com)
 app.use((req, res, next) => {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
   let authHost = 'auth.szycic.com';
@@ -1414,7 +1441,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (TARGET_APP_URL && host && host !== authHost && host !== 'localhost') {
+  if (host && host !== authHost && host !== 'localhost') {
     return proxyToTargetApp(req, res);
   }
 
@@ -3007,7 +3034,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
     </div>
 
     <div class="actions-row" style="justify-content: ${isApproverUser ? 'space-between' : 'flex-end'};">
-      ${isApproverUser ? `<a href="/auth/sessions" class="btn-action" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Manage Sessions &amp; QR</a>` : ''}
+      ${isApproverUser ? `<a href="/auth/sessions" class="btn-action" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Manage Sessions</a>` : ''}
       <a href="/auth/logout" class="btn-action btn-logout">Sign Out</a>
     </div>
   </div>
