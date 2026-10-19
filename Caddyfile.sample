@@ -150,12 +150,18 @@ tools.example.com {
 
 # Quartz Digital Garden (Protected via auth.example.com)
 garden.example.com {
+	encode gzip
+
 	# 1. Direct login redirect to central auth service
 	handle /login* {
 		redir https://auth.example.com/login?redirect=https://garden.example.com/ 302
 	}
 
-	# 2. Forward Auth Protected Routes
+	# 2. Immutable Cache for Quartz Hashed Assets
+	@hashed path_regexp hashed -[0-9a-f]{8}\.(css|js)$
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+	# 3. Forward Auth Protected Routes
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -165,12 +171,19 @@ garden.example.com {
 				error 401
 			}
 		}
-		reverse_proxy garden:8080
+		reverse_proxy garden:8080 {
+			@notFound status 404
+			handle_response @notFound {
+				rewrite * /404.html
+				reverse_proxy garden:8080
+			}
+		}
 	}
 
-	# 3. Intelligent handling of 401 Unauthorized errors
+	# 4. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
-		handle {
+		@unauthorized expression {http.error.status_code} == 401
+		handle @unauthorized {
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
