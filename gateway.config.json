@@ -1,0 +1,28 @@
+{
+  "app": {
+    "name": "Auth Gateway",
+    "subtitle": "Scan the QR code with your authenticated mobile device to approve access for this desktop.",
+    "footerText": "Protected Gateway",
+    "logoSvg": "<svg fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z\" /></svg>"
+  },
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0",
+    "baseUrl": "https://share.szycic.com"
+  },
+  "downstream": {
+    "targetUrl": "http://share-app:3000"
+  },
+  "session": {
+    "authCookieName": "share_auth_token",
+    "approverCookieName": "gateway_approver_session",
+    "sessionTtlHours": 72,
+    "qrSessionTtlMs": 120000,
+    "approverTtlDays": 30
+  },
+  "publicBypass": {
+    "enabled": true,
+    "paths": ["/s/*", "/share/*", "/upload/*"],
+    "pattern": "^\\/(s|share|upload)\\/[^\\/]+"
+  }
+}

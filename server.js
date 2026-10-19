@@ -1,5 +1,5 @@
 /**
- * Pingvin Share Auth Gateway
+ * Auth Gateway
  * High-performance Forward Auth server with Approver-gated QR code authentication,
  * Persistent Trusted Devices, and In-App Camera QR Scanner
  */
@@ -13,19 +13,21 @@ const QRCode = require('qrcode');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 
-// Configuration
-const PORT = parseInt(process.env.PORT || '3000', 10);
-const HOST = process.env.HOST || '0.0.0.0';
-const BASE_URL = (process.env.BASE_URL || 'https://share.szycic.com').replace(/\/+$/, '');
-const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'share_auth_token';
-const APPROVER_COOKIE_NAME = process.env.APPROVER_COOKIE_NAME || 'gateway_approver_session';
-const SESSION_TTL_HOURS = parseInt(process.env.SESSION_TTL_HOURS || '72', 10);
-const QR_SESSION_TTL_MS = parseInt(process.env.QR_SESSION_TTL_MS || '120000', 10); // 2 minutes
-const APPROVER_TTL_DAYS = 30;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+// Universal Configuration Loader
+const config = require('./config');
+
+const { PORT, HOST, BASE_URL } = config.server;
+const { TARGET_APP_URL } = config.downstream;
+const {
+  AUTH_COOKIE_NAME,
+  APPROVER_COOKIE_NAME,
+  SESSION_TTL_HOURS,
+  QR_SESSION_TTL_MS,
+  APPROVER_TTL_DAYS,
+} = config.session;
+const { DATA_DIR } = config;
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const PASSWORD_FILE = path.join(DATA_DIR, 'password.json');
-const TARGET_APP_URL = process.env.TARGET_APP_URL || 'http://share-app:3000';
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -626,10 +628,10 @@ app.post('/auth/qr-action', (req, res) => {
   });
 
   return res.send(renderStatusNoticeHtml({
-    title: isTrusted ? 'Trusted Device Authorized!' : 'Desktop Approved!',
+    title: isTrusted ? 'Trusted Device Authorized!' : 'Device Approved!',
     message: isTrusted
       ? `Permanently authorized ${session.friendlyDevice} (${session.desktopIp}) as a Trusted Device.`
-      : `Granted guest upload access to ${session.friendlyDevice} (${session.desktopIp}).`,
+      : `Granted access to ${session.friendlyDevice} (${session.desktopIp}).`,
     type: 'success',
     actionUrl: '/auth/sessions',
     actionLabel: 'Manage Active Sessions',
@@ -728,7 +730,7 @@ app.all('/auth/*', (req, res) => {
       method: req.method,
       headers: {
         ...req.headers,
-        host: req.headers.host || 'share.szycic.com',
+        host: req.headers.host || (new URL(BASE_URL)).host,
         'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
         'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
       },
@@ -747,13 +749,15 @@ app.all('/auth/*', (req, res) => {
   req.pipe(proxyReq);
 });
 
+// 12. Public Routes Proxy with Navigation Enforcement (Configurable App Bypass)
 // ----------------------------------------------------
-// 12. Public Share Routes Proxy with Navigation Enforcement
-// ----------------------------------------------------
-const PUBLIC_NAV_SCRIPT = `<script>
+if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.publicBypass.paths) && config.publicBypass.paths.length > 0) {
+  const bypassPattern = config.publicBypass.pattern || '^\\/(s|share|upload)\\/[^\\/]+';
+  const PUBLIC_NAV_SCRIPT = `<script>
 (function() {
+  var regex = new RegExp(${JSON.stringify(bypassPattern)});
   function isPublic(path) {
-    return /^\\/(s|share|upload)\\/[^\\/]+/.test(path);
+    return regex.test(path);
   }
   document.addEventListener('click', function(e) {
     var a = e.target.closest('a');
@@ -780,57 +784,59 @@ const PUBLIC_NAV_SCRIPT = `<script>
 })();
 </script>`;
 
-function proxyPublicShareRoute(req, res) {
-  const targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
+  function proxyPublicBypassRoute(req, res) {
+    const targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
+    const downstreamHost = req.headers.host || (new URL(BASE_URL)).host;
 
-  const proxyReq = http.request(
-    targetUrl,
-    {
-      method: req.method,
-      headers: {
-        ...req.headers,
-        host: req.headers.host || 'share.szycic.com',
-        'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
-        'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
-        'accept-encoding': 'identity',
+    const proxyReq = http.request(
+      targetUrl,
+      {
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: downstreamHost,
+          'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
+          'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
+          'accept-encoding': 'identity',
+        },
       },
-    },
-    (proxyRes) => {
-      const contentType = proxyRes.headers['content-type'] || '';
-      if (contentType.includes('text/html')) {
-        let body = '';
-        proxyRes.setEncoding('utf8');
-        proxyRes.on('data', (chunk) => { body += chunk; });
-        proxyRes.on('end', () => {
-          if (body.includes('</body>')) {
-            body = body.replace('</body>', `${PUBLIC_NAV_SCRIPT}</body>`);
-          } else {
-            body += PUBLIC_NAV_SCRIPT;
-          }
-          const headers = { ...proxyRes.headers };
-          delete headers['content-length'];
-          headers['content-length'] = Buffer.byteLength(body);
-          res.writeHead(proxyRes.statusCode, headers);
-          res.end(body);
-        });
-      } else {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res);
+      (proxyRes) => {
+        const contentType = proxyRes.headers['content-type'] || '';
+        if (contentType.includes('text/html')) {
+          let body = '';
+          proxyRes.setEncoding('utf8');
+          proxyRes.on('data', (chunk) => { body += chunk; });
+          proxyRes.on('end', () => {
+            if (body.includes('</body>')) {
+              body = body.replace('</body>', `${PUBLIC_NAV_SCRIPT}</body>`);
+            } else {
+              body += PUBLIC_NAV_SCRIPT;
+            }
+            const headers = { ...proxyRes.headers };
+            delete headers['content-length'];
+            headers['content-length'] = Buffer.byteLength(body);
+            res.writeHead(proxyRes.statusCode, headers);
+            res.end(body);
+          });
+        } else {
+          res.writeHead(proxyRes.statusCode, proxyRes.headers);
+          proxyRes.pipe(res);
+        }
       }
-    }
-  );
+    );
 
-  proxyReq.on('error', (err) => {
-    console.error('[public share proxy error]', err.message);
-    res.status(502).send('Bad Gateway');
+    proxyReq.on('error', (err) => {
+      console.error('[public bypass proxy error]', err.message);
+      res.status(502).send('Bad Gateway');
+    });
+
+    req.pipe(proxyReq);
+  }
+
+  app.all(config.publicBypass.paths, (req, res) => {
+    proxyPublicBypassRoute(req, res);
   });
-
-  req.pipe(proxyReq);
 }
-
-app.all(['/s/*', '/share/*', '/upload/*'], (req, res) => {
-  proxyPublicShareRoute(req, res);
-});
 
 // ----------------------------------------------------
 // 13. Desktop Login View (`/login`)
@@ -845,7 +851,7 @@ app.get('/login', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign in to Pingvin Share</title>
+  <title>Sign in to ${config.app.name}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -989,13 +995,11 @@ app.get('/login', (req, res) => {
 
   <div class="card" id="mainCard">
     <div class="logo-container">
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-      </svg>
+      ${config.app.logoSvg}
     </div>
 
-    <h1>Pingvin Share</h1>
-    <p class="subtitle">Scan the QR code with your authenticated mobile device to approve guest upload access for this desktop.</p>
+    <h1>${config.app.name}</h1>
+    <p class="subtitle">${config.app.subtitle}</p>
 
     <div class="qr-frame" id="qrContainer">
       <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
@@ -1020,7 +1024,7 @@ app.get('/login', (req, res) => {
     </div>
 
     <div class="footer">
-      Protected Gateway &bull; szycic.com
+      ${config.app.footerText}
     </div>
   </div>
 
@@ -1095,7 +1099,7 @@ app.get('/login', (req, res) => {
             </svg>
           </div>
           <h2 style="color: #ffffff; font-size: 1.45rem; font-weight: 700; margin-bottom: 0.5rem;">Access Approved</h2>
-          <p style="color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem;">Opening Pingvin Share guest upload...</p>
+          <p style="color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem;">Starting session...</p>
           <div class="spinner"></div>
         </div>
       \`;
@@ -1140,7 +1144,7 @@ function renderApproverSetupRequiredHtml() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Setup Required - Pingvin Share Auth</title>
+  <title>Setup Required - ${config.app.name}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1213,7 +1217,7 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Approver Authentication - Pingvin Share</title>
+  <title>Approver Authentication - ${config.app.name}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1276,7 +1280,7 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
       </svg>
     </div>
     <h1>Approver Sign In</h1>
-    <p class="desc">Sign in on this device to authorize desktop sessions and manage guest access.</p>
+    <p class="desc">Sign in on this device to authorize desktop sessions and manage access.</p>
 
     ${error ? `<div class="error-box">${error}</div>` : ''}
 
@@ -1302,7 +1306,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authorize Desktop - Pingvin Share</title>
+  <title>Authorize Desktop - ${config.app.name}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1401,7 +1405,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
         </div>
         <div class="info-row">
           <span class="info-label">Access Level</span>
-          <span class="info-val" style="color: #38bdf8;">Guest Uploader</span>
+          <span class="info-val" style="color: #38bdf8;">Standard Access</span>
         </div>
       </div>
 
@@ -1463,7 +1467,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Active Sessions - Pingvin Share Gateway</title>
+  <title>Active Sessions - ${config.app.name}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1740,7 +1744,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - Pingvin Share</title>
+  <title>${title} - ${config.app.name}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
