@@ -1217,6 +1217,7 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
               body += PUBLIC_NAV_SCRIPT;
             }
             const headers = { ...proxyRes.headers };
+            delete headers['transfer-encoding'];
             delete headers['content-length'];
             headers['content-length'] = Buffer.byteLength(body);
             res.writeHead(proxyRes.statusCode, headers);
@@ -1307,6 +1308,7 @@ function proxyToTargetApp(req, res) {
             body += watchdogTag;
           }
           const headers = { ...proxyRes.headers };
+          delete headers['transfer-encoding'];
           delete headers['content-length'];
           headers['content-length'] = Buffer.byteLength(body);
           res.writeHead(proxyRes.statusCode, headers);
