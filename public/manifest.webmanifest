@@ -1,10 +1,10 @@
 {
-  "id": "/?source=pwa",
+  "id": "/auth/sessions?source=pwa",
   "name": "Szycic Auth Gateway",
   "short_name": "Szycic Auth",
   "description": "Mobile Authenticator and Device Approval Gateway for Szycic services",
   "start_url": "/auth/sessions?source=pwa",
-  "scope": "/",
+  "scope": "/auth/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#090d16",
