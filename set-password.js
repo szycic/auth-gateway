@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * CLI utility to set or change the Approver Password for Auth Gateway.
- * Computes a secure salted scrypt hash and stores it in the persistent data directory.
+ * Prompts for password securely (masked input with confirmation) and stores salted scrypt hash.
  */
 const fs = require('fs');
 const path = require('path');
@@ -43,18 +43,92 @@ function savePassword(password) {
   console.log('The new password takes effect immediately (no restart needed).\n');
 }
 
-const argPassword = process.argv[2];
+/**
+ * Prompts for input securely without printing plaintext to the terminal.
+ * Masks typed characters with asterisks (*).
+ */
+function readSecret(promptText) {
+  return new Promise((resolve) => {
+    // If input is non-interactive (e.g. piped or redirected stdin)
+    if (!process.stdin.isTTY) {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      rl.question(promptText, (ans) => {
+        rl.close();
+        resolve(ans ? ans.trim() : '');
+      });
+      return;
+    }
 
-if (argPassword) {
-  savePassword(argPassword);
-} else {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+    process.stdout.write(promptText);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
 
-  rl.question('Enter new approver password: ', (enteredPassword) => {
-    rl.close();
-    savePassword(enteredPassword);
+    let input = '';
+
+    const onData = (chunk) => {
+      for (let i = 0; i < chunk.length; i++) {
+        const char = chunk[i];
+        if (char === '\n' || char === '\r' || char === '\u0004') {
+          // Enter or EOF
+          process.stdin.setRawMode(false);
+          process.stdin.pause();
+          process.stdin.removeListener('data', onData);
+          process.stdout.write('\n');
+          resolve(input);
+          return;
+        } else if (char === '\u0003') {
+          // Ctrl+C
+          process.stdout.write('\n');
+          process.exit(130);
+        } else if (char === '\u0008' || char === '\x7f') {
+          // Backspace
+          if (input.length > 0) {
+            input = input.slice(0, -1);
+            process.stdout.write('\b \b');
+          }
+        } else {
+          input += char;
+          process.stdout.write('*');
+        }
+      }
+    };
+
+    process.stdin.on('data', onData);
   });
 }
+
+async function main() {
+  if (process.argv[2]) {
+    console.warn('\n⚠️  Security Notice: Passing passwords as command-line arguments is insecure');
+    console.warn('   because it exposes them in process listings (ps) and shell history (.bash_history).\n');
+    console.warn('   Please enter your password securely at the prompt below.\n');
+  }
+
+  console.log('\n=== Configure Approver Password ===');
+  console.log('Password must be at least 6 characters long.\n');
+
+  const password = await readSecret('Enter new approver password: ');
+
+  if (!password || password.trim().length < 6) {
+    console.error('\n❌ Error: Password must be at least 6 characters long.\n');
+    process.exit(1);
+  }
+
+  const confirm = await readSecret('Confirm new approver password: ');
+
+  if (password !== confirm) {
+    console.error('\n❌ Error: Passwords do not match. Please try again.\n');
+    process.exit(1);
+  }
+
+  savePassword(password);
+}
+
+main().catch((err) => {
+  console.error('\n❌ Unexpected error:', err.message);
+  process.exit(1);
+});

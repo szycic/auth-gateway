@@ -104,8 +104,8 @@ if (activeHashOnBoot) {
 } else {
   console.warn('\n*******************************************************************');
   console.warn('⚠️  NO APPROVER PASSWORD CONFIGURED!');
-  console.warn('   Run: docker exec -it auth-gateway node set-password.js <password>');
-  console.warn('   (or: npm run set-password <password>)');
+  console.warn('   Run: docker exec -it auth-gateway node set-password.js');
+  console.warn('   (or: npm run set-password)');
   console.warn('*******************************************************************\n');
 }
 
@@ -1305,10 +1305,10 @@ function renderApproverSetupRequiredHtml() {
     <p class="desc">For maximum security, there is no default password. Please configure your master approver password from your server terminal:</p>
 
     <div class="cmd-label">Run on server (inside docker):</div>
-    <div class="cmd-box">docker exec -it auth-gateway node set-password.js &lt;your-password&gt;</div>
+    <div class="cmd-box">docker exec -it auth-gateway node set-password.js</div>
 
     <div class="cmd-label">Or run with npm (in auth-gateway dir):</div>
-    <div class="cmd-box">npm run set-password &lt;your-password&gt;</div>
+    <div class="cmd-box">npm run set-password</div>
 
     <p class="note">Once run, refresh this page to sign in. The new password takes effect immediately without needing to restart the container.</p>
   </div>
