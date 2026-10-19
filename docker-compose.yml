@@ -10,6 +10,7 @@ services:
     environment:
       - PORT=3000
       - DATA_DIR=/usr/src/app/data
+      - TARGET_APP_URL=http://share-app:3000
     networks:
       - proxy-net
 
