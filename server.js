@@ -1488,6 +1488,34 @@ app.use((req, res, next) => {
 });
 
 // ----------------------------------------------------
+// Shared PWA Head Tags & Service Worker Script
+// ----------------------------------------------------
+function getPwaHeadTags() {
+  return `
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#090d16">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.name || 'Szycic Auth')}">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">`;
+}
+
+const PWA_SW_SCRIPT = `
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));
+      });
+    }
+  </script>
+`;
+
+// ----------------------------------------------------
 // 14. Central Services Portal View (`/`)
 // ----------------------------------------------------
 app.get('/', (req, res) => {
@@ -1548,6 +1576,7 @@ app.get('/login', (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in to ${escapeHtml(appDisplayName)}</title>
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1831,6 +1860,7 @@ app.get('/login', (req, res) => {
 
     initQrSession();
   </script>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`);
 });
@@ -1838,22 +1868,6 @@ app.get('/login', (req, res) => {
 // ----------------------------------------------------
 // UI Templates: Approver Login, Decision & Sessions
 // ----------------------------------------------------
-
-// Shared Head Tags
-function getPwaHeadTags() {
-  return `
-  <meta name="theme-color" content="#090d16">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.name || 'Szycic Auth')}">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="icon" type="image/svg+xml" href="/icon.svg">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">`;
-}
-
-const PWA_SW_SCRIPT = '';
 
 // 1. Setup Required Screen (When no password is set)
 function renderApproverSetupRequiredHtml() {
@@ -1863,6 +1877,7 @@ function renderApproverSetupRequiredHtml() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Setup Required - ${config.app.name}</title>
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1924,6 +1939,7 @@ function renderApproverSetupRequiredHtml() {
 
     <p class="note">Once run, refresh this page to sign in. The new password takes effect immediately without needing to restart the container.</p>
   </div>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2071,9 +2087,7 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Master Approver - Self Authorization</title>
-  <link rel="icon" type="image/svg+xml" href="/icon.svg">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <meta name="theme-color" content="#090d16">
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2143,6 +2157,7 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
     </form>
     <a href="/auth/sessions" class="btn-link">Open Sessions &amp; QR Scanner</a>
   </div>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2822,9 +2837,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)} - ${escapeHtml(config.app.name || 'Szycic Auth')}</title>
-  <link rel="icon" type="image/svg+xml" href="/icon.svg">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <meta name="theme-color" content="#090d16">
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2873,6 +2886,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
     <p>${escapeHtml(message)}</p>
     ${actionUrl ? `<a href="${actionUrl}" class="btn">${escapeHtml(actionLabel || 'Continue')}</a>` : ''}
   </div>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2906,9 +2920,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Szycic Auth Portal</title>
-  <link rel="icon" type="image/svg+xml" href="/icon.svg">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <meta name="theme-color" content="#090d16">
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3138,6 +3150,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       }
     });
   </script>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
