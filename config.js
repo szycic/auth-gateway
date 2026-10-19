@@ -8,7 +8,6 @@ const DEFAULT_CONFIG = {
     name: 'Auth Gateway',
     subtitle: 'Scan the QR code with your authenticated mobile device to approve access for this desktop.',
     footerText: 'Protected Gateway',
-    logoSvg: '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>',
   },
   server: {
     port: 3000,
@@ -35,8 +34,10 @@ const DEFAULT_CONFIG = {
 function loadConfigFile() {
   const possiblePaths = [
     process.env.CONFIG_PATH,
-    path.join(DATA_DIR, 'gateway.config.json'),
-    path.join(__dirname, 'gateway.config.json'),
+    path.join(DATA_DIR, 'config.json'),
+    path.join(__dirname, 'config.json'),
+    path.join(DATA_DIR, 'config.json.sample'),
+    path.join(__dirname, 'config.json.sample'),
   ].filter(Boolean);
 
   for (const configPath of possiblePaths) {
@@ -64,7 +65,6 @@ const config = {
     name: process.env.APP_NAME || (fileConfig.app && fileConfig.app.name) || DEFAULT_CONFIG.app.name,
     subtitle: process.env.APP_SUBTITLE || (fileConfig.app && fileConfig.app.subtitle) || DEFAULT_CONFIG.app.subtitle,
     footerText: process.env.APP_FOOTER_TEXT || (fileConfig.app && fileConfig.app.footerText) || DEFAULT_CONFIG.app.footerText,
-    logoSvg: (fileConfig.app && fileConfig.app.logoSvg) || DEFAULT_CONFIG.app.logoSvg,
   },
   server: {
     ...DEFAULT_CONFIG.server,
