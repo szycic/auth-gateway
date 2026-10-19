@@ -2,26 +2,28 @@
   "app": {
     "name": "Auth Gateway",
     "subtitle": "Scan the QR code with your authenticated mobile device to approve access for this desktop.",
-    "footerText": "Protected Gateway"
+    "footerText": "auth.example.com"
   },
   "server": {
     "port": 3000,
     "host": "0.0.0.0",
     "baseUrl": "https://auth.example.com"
   },
-  "downstream": {
-    "targetUrl": "http://downstream-app:3000"
-  },
   "session": {
+    "cookieDomain": ".example.com",
     "authCookieName": "gateway_auth_token",
     "approverCookieName": "gateway_approver_session",
     "sessionTtlHours": 72,
     "qrSessionTtlMs": 120000,
     "approverTtlDays": 30
   },
-  "publicBypass": {
-    "enabled": false,
-    "paths": [],
-    "pattern": ""
-  }
+  "services": [
+    {
+      "id": "share",
+      "name": "Pingvin Share",
+      "subtitle": "Secure file sharing & storage portal",
+      "url": "https://share.example.com",
+      "allowedRedirects": ["https://share.example.com*"]
+    }
+  ]
 }
