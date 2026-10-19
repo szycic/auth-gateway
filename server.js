@@ -1819,7 +1819,7 @@ const PWA_SW_SCRIPT = `
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        navigator.serviceWorker.register('/sw.js', { scope: '/auth/' })
           .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));
       });
     }
@@ -2042,7 +2042,9 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Master Approver - Self Authorization</title>
-  ${getPwaHeadTags()}
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#090d16">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2112,7 +2114,6 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
     </form>
     <a href="/auth/sessions" class="btn-link">Open Sessions &amp; QR Scanner</a>
   </div>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2792,7 +2793,9 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)} - ${escapeHtml(config.app.name || 'Szycic Auth')}</title>
-  ${getPwaHeadTags()}
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#090d16">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2841,7 +2844,6 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
     <p>${escapeHtml(message)}</p>
     ${actionUrl ? `<a href="${actionUrl}" class="btn">${escapeHtml(actionLabel || 'Continue')}</a>` : ''}
   </div>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2875,7 +2877,9 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Szycic Auth Portal</title>
-  ${getPwaHeadTags()}
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#090d16">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3105,7 +3109,6 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       }
     });
   </script>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
