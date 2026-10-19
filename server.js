@@ -1447,13 +1447,6 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       margin-bottom: 1.5rem;
     }
     .header { text-align: center; margin-bottom: 1.5rem; }
-    .badge-wrap {
-      display: inline-flex; align-items: center; gap: 0.4rem;
-      background: rgba(56, 189, 248, 0.12); color: #38bdf8;
-      border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 100px;
-      padding: 0.35rem 0.85rem; font-size: 0.775rem; font-weight: 600;
-      margin-bottom: 0.75rem;
-    }
     h1 { font-size: 1.35rem; font-weight: 700; color: #ffffff; }
     .device-info {
       background: rgba(255, 255, 255, 0.03);
@@ -1500,12 +1493,6 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
 <body>
   <div class="card">
     <div class="header">
-      <div class="badge-wrap">
-        <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-        Approver Verified
-      </div>
       <h1>Authorize Desktop Access?</h1>
     </div>
 
