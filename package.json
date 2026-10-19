@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "hash-password": "node hash.js"
+    "hash-password": "node hash.js",
+    "set-password": "node set-password.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
