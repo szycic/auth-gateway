@@ -40,6 +40,16 @@ if (!fs.existsSync(DATA_DIR)) {
   }
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Password Hashing & Verification (Salted scrypt)
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const key = crypto.scryptSync(password, salt, 64);
@@ -293,13 +303,19 @@ function getCookieOptions(req, maxAgeMs) {
     req.headers['x-forwarded-proto'] === 'https' ||
     BASE_URL.startsWith('https:');
 
-  return {
+  const opts = {
     httpOnly: true,
     secure: isHttps,
     sameSite: 'lax',
     path: '/',
     maxAge: maxAgeMs || SESSION_TTL_HOURS * 3600 * 1000,
   };
+
+  if (config.session.cookieDomain) {
+    opts.domain = config.session.cookieDomain;
+  }
+
+  return opts;
 }
 
 // ----------------------------------------------------
@@ -311,6 +327,7 @@ app.get('/auth/health', (req, res) => {
     activeSessions: activeSessions.size,
     approverSessions: approverSessions.size,
     pendingQrSessions: pendingQrSessions.size,
+    services: config.services.map(s => ({ id: s.id, name: s.name, url: s.url })),
     uptime: process.uptime(),
   });
 });
@@ -330,15 +347,16 @@ app.get('/auth/assets/jsqr.js', (req, res) => {
 
 // ----------------------------------------------------
 // 3. Forward Auth Verification Endpoint
-// Caddy queries this endpoint for every protected request
+// Caddy queries this endpoint for every protected request across all domains
 // ----------------------------------------------------
 app.get('/auth/verify', (req, res) => {
-  const token = req.cookies[AUTH_COOKIE_NAME];
+  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (isValidSession(token)) {
     const session = activeSessions.get(token);
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',
       'X-Auth-Role': session && session.isTrusted ? 'trusted_device' : 'guest',
+      'X-Auth-User': 'authenticated_user',
     }).send('OK');
   }
   return res.status(401).send('Unauthorized');
@@ -355,11 +373,18 @@ app.get('/auth/qr-init', async (req, res) => {
     const desktopIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown';
     const desktopUserAgent = req.headers['user-agent'] || 'Unknown';
 
+    const rawRedirect = req.query.redirect || req.query.returnTo || '';
+    const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '';
+    const matchedService = config.getService(req.query.service || redirectTarget);
+
     pendingQrSessions.set(qrSessionId, {
       key,
       desktopIp,
       desktopUserAgent,
       friendlyDevice: parseUserAgent(desktopUserAgent),
+      serviceName: matchedService ? matchedService.name : null,
+      serviceId: matchedService ? matchedService.id : null,
+      redirect: redirectTarget,
       createdAt: Date.now(),
       expiresAt,
       status: 'pending',
@@ -383,6 +408,7 @@ app.get('/auth/qr-init', async (req, res) => {
       qrCode,
       expiresAt,
       ttlMs: QR_SESSION_TTL_MS,
+      service: matchedService ? { id: matchedService.id, name: matchedService.name } : null,
     });
   } catch (err) {
     console.error('Error generating QR code:', err);
@@ -550,6 +576,7 @@ app.get('/auth/qr-approve', (req, res) => {
     key,
     desktopIp: session.desktopIp,
     friendlyDevice: session.friendlyDevice,
+    serviceName: session.serviceName,
     expiresAt: session.expiresAt,
     activeSessionsList: Array.from(activeSessions.values()),
   }));
@@ -619,6 +646,7 @@ app.post('/auth/qr-action', (req, res) => {
     ip: session.desktopIp,
     userAgent: session.desktopUserAgent,
     friendlyDevice: session.friendlyDevice,
+    service: session.serviceName || null,
     type: isTrusted ? 'trusted_device' : 'desktop_guest',
   });
 
@@ -627,6 +655,7 @@ app.post('/auth/qr-action', (req, res) => {
   // Emit real-time approved event to desktop room
   io.to(id).emit('approved', {
     token: sessionToken,
+    redirect: session.redirect,
   });
 
   return res.send(renderStatusNoticeHtml({
@@ -688,7 +717,7 @@ app.post('/auth/sessions/revoke', (req, res) => {
 // 9. Desktop Token Exchange Endpoint
 // ----------------------------------------------------
 app.get('/auth/exchange', (req, res) => {
-  const { token } = req.query;
+  const { token, redirect } = req.query;
 
   if (token && typeof token === 'string' && isValidSession(token)) {
     const session = activeSessions.get(token);
@@ -697,7 +726,8 @@ app.get('/auth/exchange', (req, res) => {
       : SESSION_TTL_HOURS * 3600 * 1000;
 
     res.cookie(AUTH_COOKIE_NAME, token, getCookieOptions(req, maxAgeMs));
-    return res.redirect('/');
+    const target = config.normalizeRedirect(redirect, '/');
+    return res.redirect(target);
   }
 
   return res.redirect('/login');
@@ -707,7 +737,7 @@ app.get('/auth/exchange', (req, res) => {
 // 10. Logout Endpoint (Desktop)
 // ----------------------------------------------------
 app.get('/auth/logout', (req, res) => {
-  const token = req.cookies[AUTH_COOKIE_NAME];
+  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (token) {
     activeSessions.delete(token);
     savePersistedSessions();
@@ -716,8 +746,16 @@ app.get('/auth/logout', (req, res) => {
   const cookieOptions = getCookieOptions(req);
   delete cookieOptions.maxAge;
   res.clearCookie(AUTH_COOKIE_NAME, cookieOptions);
+  res.clearCookie('share_auth_token', cookieOptions);
+  if (cookieOptions.domain) {
+    const hostOnly = { ...cookieOptions };
+    delete hostOnly.domain;
+    res.clearCookie(AUTH_COOKIE_NAME, hostOnly);
+    res.clearCookie('share_auth_token', hostOnly);
+  }
 
-  return res.redirect('/login');
+  const redirectTarget = config.normalizeRedirect(req.query.redirect || req.query.returnTo, '/login');
+  return res.redirect(redirectTarget);
 });
 
 // ----------------------------------------------------
@@ -841,19 +879,46 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
 }
 
 // ----------------------------------------------------
+// 12. Central Services Portal View (`/`)
+// ----------------------------------------------------
+app.get('/', (req, res) => {
+  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  if (!isValidSession(token)) {
+    return res.redirect('/login');
+  }
+
+  const session = activeSessions.get(token);
+  return res.send(renderPortalDashboardHtml({
+    session,
+    isApproverUser: isApprover(req),
+    services: config.services,
+  }));
+});
+
+// ----------------------------------------------------
 // 13. Desktop Login View (`/login`)
 // ----------------------------------------------------
 app.get('/login', (req, res) => {
-  if (isValidSession(req.cookies[AUTH_COOKIE_NAME])) {
-    return res.redirect('/');
+  const rawRedirect = req.query.redirect || req.query.returnTo || '';
+  const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '';
+  const matchedService = config.getService(req.query.service || redirectTarget);
+
+  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  if (isValidSession(token)) {
+    return res.redirect(redirectTarget || '/');
   }
+
+  const appDisplayName = matchedService ? matchedService.name : config.app.name;
+  const appDisplaySubtitle = matchedService
+    ? (matchedService.subtitle || `Scan the QR code with your mobile device to sign in to ${matchedService.name}.`)
+    : config.app.subtitle;
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign in to ${config.app.name}</title>
+  <title>Sign in to ${escapeHtml(appDisplayName)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -984,9 +1049,29 @@ app.get('/login', (req, res) => {
       color: #10b981; display: flex; align-items: center; justify-content: center;
       margin-bottom: 1rem;
     }
+    .service-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      background: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 100px;
+      padding: 0.3rem 0.85rem;
+      font-size: 0.775rem;
+      font-weight: 600;
+      margin-bottom: 0.85rem;
+    }
+    .service-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 6px #38bdf8;
+    }
     .footer { margin-top: 1.75rem; font-size: 0.775rem; color: #64748b; }
     .approver-link {
-      display: inline-block; margin-top: 1rem; color: #38bdf8;
+      display: inline-block; margin-top: 0.85rem; color: #38bdf8;
       font-size: 0.8rem; text-decoration: none; transition: opacity 0.2s;
     }
     .approver-link:hover { text-decoration: underline; }
@@ -1002,8 +1087,15 @@ app.get('/login', (req, res) => {
       </svg>
     </div>
 
-    <h1>${config.app.name}</h1>
-    <p class="subtitle">${config.app.subtitle}</p>
+    ${matchedService ? `
+      <div class="service-pill">
+        <span class="service-dot"></span>
+        ${escapeHtml(matchedService.name)}
+      </div>
+    ` : ''}
+
+    <h1>${escapeHtml(appDisplayName)}</h1>
+    <p class="subtitle">${escapeHtml(appDisplaySubtitle)}</p>
 
     <div class="qr-frame" id="qrContainer">
       <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
@@ -1030,6 +1122,7 @@ app.get('/login', (req, res) => {
     <div class="footer">
       ${config.app.footerText}
     </div>
+    <a class="approver-link" href="/auth/approver/login${redirectTarget ? '?returnTo=' + encodeURIComponent(redirectTarget) : ''}">Sign in with Approver Password &rarr;</a>
   </div>
 
   <script>
@@ -1037,6 +1130,9 @@ app.get('/login', (req, res) => {
     let currentSessionId = null;
     let timerInterval = null;
     let secondsLeft = 120;
+
+    const redirectTarget = ${JSON.stringify(redirectTarget)};
+    const serviceId = ${JSON.stringify(matchedService ? matchedService.id : '')};
 
     const qrImage = document.getElementById('qrImage');
     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -1073,7 +1169,12 @@ app.get('/login', (req, res) => {
         loadingOverlay.classList.add('active');
         expiredOverlay.classList.remove('active');
 
-        const res = await fetch('/auth/qr-init', { cache: 'no-store' });
+        const params = new URLSearchParams();
+        if (redirectTarget) params.append('redirect', redirectTarget);
+        if (serviceId) params.append('service', serviceId);
+
+        const url = '/auth/qr-init' + (params.toString() ? '?' + params.toString() : '');
+        const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed to fetch QR');
         const data = await res.json();
 
@@ -1109,10 +1210,11 @@ app.get('/login', (req, res) => {
       \`;
 
       setTimeout(() => {
+        const dest = (data && data.redirect) ? data.redirect : redirectTarget;
         if (data && data.token) {
-          window.location.href = '/auth/exchange?token=' + encodeURIComponent(data.token);
+          window.location.href = '/auth/exchange?token=' + encodeURIComponent(data.token) + (dest ? '&redirect=' + encodeURIComponent(dest) : '');
         } else {
-          window.location.href = '/';
+          window.location.href = dest || '/';
         }
       }, 700);
     });
@@ -1796,6 +1898,160 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
     <h1>${title}</h1>
     <p>${message}</p>
     ${actionUrl ? `<a href="${actionUrl}" class="btn">${actionLabel || 'Continue'}</a>` : ''}
+  </div>
+</body>
+</html>`;
+}
+
+// 5. Central Services Portal Dashboard HTML (`/`)
+function renderPortalDashboardHtml({ session, isApproverUser, services = [] }) {
+  const isTrusted = session && session.isTrusted;
+  const friendlyDevice = (session && session.friendlyDevice) || 'Current Device';
+  const ip = (session && session.ip) || 'Connected';
+
+  const servicesHtml = services.map(svc => `
+    <div class="service-card">
+      <div class="service-info">
+        <div class="service-name">${escapeHtml(svc.name)}</div>
+        <div class="service-desc">${escapeHtml(svc.subtitle || svc.url)}</div>
+      </div>
+      <a href="${escapeHtml(svc.url)}" class="btn-launch" target="_blank" rel="noopener">
+        <span>Launch</span>
+        <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+        </svg>
+      </a>
+    </div>
+  `).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Szycic Auth Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at 50% -20%, #1e293b 0%, #090d16 100%);
+      color: #f1f5f9; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 2rem 1.25rem;
+    }
+    .ambient-glow {
+      position: fixed; width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(14, 165, 233, 0.12) 0%, rgba(99, 102, 241, 0.05) 50%, transparent 70%);
+      top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 0;
+    }
+    .card {
+      position: relative; z-index: 1; width: 100%; max-width: 520px;
+      background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px); border-radius: 28px; padding: 2.25rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+    }
+    .header { text-align: center; margin-bottom: 2rem; }
+    .logo-container {
+      width: 56px; height: 56px; border-radius: 16px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(99, 102, 241, 0.15));
+      border: 1px solid rgba(56, 189, 248, 0.3); display: inline-flex;
+      align-items: center; justify-content: center; margin-bottom: 1rem;
+      color: #38bdf8; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+    }
+    .logo-container svg { width: 28px; height: 28px; }
+    h1 { font-size: 1.6rem; font-weight: 800; color: #ffffff; margin-bottom: 0.3rem; letter-spacing: -0.025em; }
+    .subtitle { font-size: 0.875rem; color: #94a3b8; }
+    
+    .session-badge {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px; padding: 0.85rem 1rem; margin-bottom: 1.75rem;
+    }
+    .device-title { font-weight: 600; font-size: 0.9rem; color: #f8fafc; }
+    .device-sub { font-size: 0.775rem; color: #94a3b8; }
+    .status-tag {
+      font-size: 0.725rem; font-weight: 700; padding: 0.25rem 0.6rem; border-radius: 6px;
+    }
+    .status-trusted {
+      background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .status-guest {
+      background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+
+    .section-title {
+      font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #64748b; margin-bottom: 0.85rem;
+    }
+    .services-grid { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.75rem; }
+    .service-card {
+      background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px; padding: 1rem 1.15rem; display: flex;
+      justify-content: space-between; align-items: center;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .service-card:hover {
+      background: rgba(255, 255, 255, 0.05); border-color: rgba(56, 189, 248, 0.3);
+    }
+    .service-name { font-weight: 700; font-size: 0.95rem; color: #ffffff; }
+    .service-desc { font-size: 0.8rem; color: #94a3b8; margin-top: 0.15rem; }
+    .btn-launch {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: #0284c7; color: #ffffff; padding: 0.55rem 0.9rem;
+      border-radius: 10px; font-size: 0.825rem; font-weight: 600;
+      text-decoration: none; transition: background 0.2s;
+    }
+    .btn-launch:hover { background: #0369a1; }
+
+    .actions-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-top: 1.25rem; border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .btn-action {
+      font-size: 0.825rem; color: #94a3b8; text-decoration: none; font-weight: 600;
+      padding: 0.5rem 0.85rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .btn-action:hover { color: #f1f5f9; border-color: rgba(255, 255, 255, 0.25); }
+    .btn-logout { color: #f87171; border-color: rgba(248, 113, 113, 0.25); }
+    .btn-logout:hover { color: #fca5a5; border-color: rgba(248, 113, 113, 0.5); }
+  </style>
+</head>
+<body>
+  <div class="ambient-glow"></div>
+  <div class="card">
+    <div class="header">
+      <div class="logo-container">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <h1>${escapeHtml(config.app.name)}</h1>
+      <p class="subtitle">Central Authentication &amp; Services Portal</p>
+    </div>
+
+    <div class="session-badge">
+      <div>
+        <div class="device-title">${escapeHtml(friendlyDevice)}</div>
+        <div class="device-sub">${escapeHtml(ip)}</div>
+      </div>
+      <span class="status-tag ${isTrusted ? 'status-trusted' : 'status-guest'}">
+        ${isTrusted ? 'Trusted Device' : 'Active Session'}
+      </span>
+    </div>
+
+    <div class="section-title">Authorized Services</div>
+    <div class="services-grid">
+      ${servicesHtml || '<p style="color: #94a3b8; font-size: 0.85rem;">No services configured.</p>'}
+    </div>
+
+    <div class="actions-row">
+      <a href="/auth/sessions" class="btn-action">Approver Dashboard &rarr;</a>
+      <a href="/auth/logout" class="btn-action btn-logout">Sign Out</a>
+    </div>
   </div>
 </body>
 </html>`;

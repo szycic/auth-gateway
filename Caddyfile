@@ -2,21 +2,24 @@
 	email dev@szycic.com
 }
 
+# Centralized Authentication Portal
+auth.szycic.com {
+	reverse_proxy auth-gateway:3000
+
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+	}
+}
+
+# Pingvin Share Service (Protected via auth.szycic.com)
 share.szycic.com {
-	# 1. Public authentication and real-time socket endpoints (auth-gateway)
+	# 1. Direct login redirect to central auth service
 	handle /login* {
-		reverse_proxy auth-gateway:3000
+		redir https://auth.szycic.com/login?redirect=https://share.szycic.com/ 302
 	}
 
-	handle /auth/* {
-		reverse_proxy auth-gateway:3000
-	}
-
-	handle /socket.io/* {
-		reverse_proxy auth-gateway:3000
-	}
-
-	# 2. Public Static Assets (bypasses auth-gateway)
+	# 2. Public Static Assets (bypasses forward auth)
 	handle /_next/static/* {
 		reverse_proxy share-app:3000
 	}
@@ -34,18 +37,16 @@ share.szycic.com {
 	}
 
 	# 3. Public Share Download and Reverse Share Routes
-	# Routed through auth-gateway to inject client-side navigation enforcement
-	# so navigating away to protected routes immediately triggers authentication
 	handle /s/* {
-		reverse_proxy auth-gateway:3000
+		reverse_proxy share-app:3000
 	}
 
 	handle /share/* {
-		reverse_proxy auth-gateway:3000
+		reverse_proxy share-app:3000
 	}
 
 	handle /upload/* {
-		reverse_proxy auth-gateway:3000
+		reverse_proxy share-app:3000
 	}
 
 	# Next.js client-side route data for public shares & reverse shares
@@ -74,10 +75,11 @@ share.szycic.com {
 		reverse_proxy share-app:3000
 	}
 
-	# 4. Protected Routes (Forward Auth required for /, /upload, /account, /admin, etc.)
+	# 4. Protected Routes (Forward Auth required for /, /account, /admin, etc.)
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
 			@unauthorized status 401
 			handle_response @unauthorized {
 				error 401
@@ -88,39 +90,20 @@ share.szycic.com {
 
 	# 5. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
-		# Next.js Client-Side Page Transitions:
-		# Return Next.js redirect protocol so the client-side router smoothly navigates to /login
-		# without throwing a JSON parse error / client-side exception.
-		@nextData {
-			expression {http.error.status_code} == 401
-			path /_next/data/*
-		}
-		@nextDataHeader {
-			expression {http.error.status_code} == 401
-			header x-nextjs-data *
-		}
+		@nextData expression {http.error.status_code} == 401 && (path('/_next/data/*') || header({'x-nextjs-data': '*'}))
 		handle @nextData {
 			header Content-Type "application/json"
-			respond `{"pageProps":{"__N_REDIRECT":"/login","__N_REDIRECT_STATUS":307}}` 200
-		}
-		handle @nextDataHeader {
-			header Content-Type "application/json"
-			respond `{"pageProps":{"__N_REDIRECT":"/login","__N_REDIRECT_STATUS":307}}` 200
+			respond `{"pageProps":{"__N_REDIRECT":"https://auth.szycic.com/login?redirect=https://share.szycic.com","__N_REDIRECT_STATUS":307}}` 200
 		}
 
-		# REST API requests: Return JSON 401 instead of an HTML redirect
-		@api {
-			expression {http.error.status_code} == 401
-			path /api/*
-		}
+		@api expression {http.error.status_code} == 401 && path('/api/*')
 		handle @api {
 			header Content-Type "application/json"
-			respond `{"statusCode":401,"message":"Session expired or revoked. Please log in again.","redirect":"/login"}` 401
+			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.szycic.com/login?redirect=https://share.szycic.com"}` 401
 		}
 
-		# Standard browser document requests: 302 Redirect to /login
 		handle {
-			redir * /login 302
+			redir * https://auth.szycic.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
 
