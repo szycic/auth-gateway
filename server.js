@@ -1758,7 +1758,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     .container { width: 100%; max-width: 540px; }
     .top-bar {
       display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 1.25rem;
+      margin-bottom: 1.5rem;
     }
     h1 { font-size: 1.45rem; font-weight: 700; color: #ffffff; }
     .btn-logout {
@@ -1766,29 +1766,6 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);
     }
     .btn-logout:hover { color: #f87171; border-color: rgba(248, 113, 113, 0.4); }
-
-    .btn-install-pwa {
-      background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4);
-      color: #38bdf8; font-size: 0.775rem; font-weight: 700;
-      padding: 0.35rem 0.7rem; border-radius: 8px; cursor: pointer;
-      display: inline-flex; align-items: center; gap: 0.35rem;
-      transition: background 0.15s, transform 0.1s;
-    }
-    .btn-install-pwa:hover {
-      background: rgba(56, 189, 248, 0.25); transform: translateY(-1px);
-    }
-
-    .ios-install-banner {
-      background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.3);
-      border-radius: 12px; padding: 0.65rem 0.85rem; margin-bottom: 1.25rem;
-      display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-      font-size: 0.8rem; color: #cbd5e1; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    }
-    .btn-dismiss-ios {
-      background: none; border: none; color: #94a3b8; font-size: 1.1rem;
-      cursor: pointer; padding: 0 4px; line-height: 1;
-    }
-    .btn-dismiss-ios:hover { color: #ffffff; }
 
     /* Scan QR Button */
     .btn-scan-main {
@@ -1930,23 +1907,8 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
 <body>
   <div class="container">
     <div class="top-bar">
-      <div style="display: flex; align-items: center; gap: 0.65rem;">
-        <h1>Session Gateway</h1>
-        <button type="button" id="btnInstallPwa" class="btn-install-pwa" style="display: none;" onclick="installPwa()" title="Install app to your home screen">
-          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          <span>Install</span>
-        </button>
-      </div>
+      <h1>Session Gateway</h1>
       <a href="/auth/approver/logout" class="btn-logout">Sign Out</a>
-    </div>
-
-    <div id="iosInstallBanner" class="ios-install-banner" style="display: none;">
-      <div>
-        To install on iPhone: tap <b>Share</b> <svg style="width: 13px; height: 13px; vertical-align: -2px; display: inline;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg> then <b>Add to Home Screen</b> [+]
-      </div>
-      <button type="button" class="btn-dismiss-ios" onclick="dismissIosBanner()" aria-label="Dismiss">&times;</button>
     </div>
 
     ${notice ? `<div class="notice">${notice}</div>` : ''}
@@ -2097,39 +2059,6 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
         scannerStatus.textContent = 'Non-authorization QR code detected.';
         scanAnimFrame = requestAnimationFrame(scanFrame);
       }
-    }
-
-    // PWA Installation Handlers
-    let deferredInstallPrompt = null;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredInstallPrompt = e;
-      const btn = document.getElementById('btnInstallPwa');
-      if (btn) btn.style.display = 'inline-flex';
-    });
-
-    function installPwa() {
-      if (!deferredInstallPrompt) return;
-      deferredInstallPrompt.prompt();
-      deferredInstallPrompt.userChoice.then(() => {
-        deferredInstallPrompt = null;
-        const btn = document.getElementById('btnInstallPwa');
-        if (btn) btn.style.display = 'none';
-      });
-    }
-
-    // iOS Safari Installation Hint
-    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    if (isIos && !isStandalone && !sessionStorage.getItem('ios_pwa_dismissed')) {
-      const banner = document.getElementById('iosInstallBanner');
-      if (banner) banner.style.display = 'flex';
-    }
-
-    function dismissIosBanner() {
-      sessionStorage.setItem('ios_pwa_dismissed', 'true');
-      const banner = document.getElementById('iosInstallBanner');
-      if (banner) banner.style.display = 'none';
     }
 
     // Auto-open scanner if launched via shortcut ?action=scan
