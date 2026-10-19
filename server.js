@@ -25,7 +25,7 @@ const {
   QR_SESSION_TTL_MS,
   APPROVER_TTL_DAYS,
 } = config.session;
-const { DATA_DIR } = config;
+const DATA_DIR = config.DATA_DIR || config.dataDir || process.env.DATA_DIR || path.join(__dirname, 'data');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const PASSWORD_FILE = path.join(DATA_DIR, 'password.json');
 

@@ -92,6 +92,7 @@ const config = {
     ...(fileConfig.publicBypass || {}),
   },
   dataDir: DATA_DIR,
+  DATA_DIR: DATA_DIR,
 };
 
 module.exports = config;
