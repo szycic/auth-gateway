@@ -1,0 +1,29 @@
+# Minimalist, secure Node.js Alpine image
+FROM node:18-alpine AS builder
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Production runtime stage
+FROM node:18-alpine
+
+WORKDIR /usr/src/app
+
+ENV NODE_ENV=production \
+    PORT=3000
+
+# Run as non-root user for security
+USER node
+
+COPY --chown=node:node --from=builder /usr/src/app/node_modules ./node_modules
+COPY --chown=node:node package*.json ./
+COPY --chown=node:node server.js ./
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/auth/health || exit 1
+
+CMD ["node", "server.js"]
