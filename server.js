@@ -330,6 +330,13 @@ io.on('connection', (socket) => {
       socket.join(qrSessionId.trim());
     }
   });
+
+  socket.on('register-desktop', (sessionId) => {
+    if (typeof sessionId === 'string' && sessionId.trim().length > 0) {
+      socket.join('session:' + sessionId.trim());
+    }
+    socket.join('active-desktops');
+  });
 });
 
 // Helper for Secure Cookie Options
@@ -735,16 +742,23 @@ app.get('/auth/sessions', (req, res) => {
 // Revoke a specific session or all sessions
 app.post('/auth/sessions/revoke', (req, res) => {
   if (!isApprover(req)) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
     return res.status(401).send('Unauthorized.');
   }
 
   const { sessionId, all } = req.body;
+  const isAll = all === 'true' || all === true;
 
-  if (all === 'true') {
+  if (isAll) {
     const count = activeSessions.size;
     activeSessions.clear();
     savePersistedSessions();
     io.emit('session-revoked', { all: true });
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.json({ success: true, all: true, count, message: `Revoked all ${count} active sessions.` });
+    }
     return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Revoked all ${count} active sessions.`));
   }
 
@@ -753,12 +767,19 @@ app.post('/auth/sessions/revoke', (req, res) => {
       if (session.id === sessionId) {
         activeSessions.delete(token);
         savePersistedSessions();
-        io.emit('session-revoked', { sessionId });
+        io.to('session:' + sessionId).emit('session-revoked', { sessionId, token });
+        io.emit('session-revoked', { sessionId, token });
+        if (req.accepts('json') && !req.accepts('html')) {
+          return res.json({ success: true, sessionId, message: `Session for ${session.friendlyDevice} was revoked.` });
+        }
         return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Session for ${session.friendlyDevice} was revoked.`));
       }
     }
   }
 
+  if (req.accepts('json') && !req.accepts('html')) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
   return res.redirect('/auth/sessions');
 });
 
@@ -1776,10 +1797,10 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     const deviceName = s.friendlyDevice || 'Desktop Browser';
 
     return `
-      <div class="session-card">
+      <div class="session-card" id="session-card-${s.id}">
         <div class="session-info">
           <div class="session-header" id="header-${s.id}">
-            <span class="session-name">${escapeHtml(deviceName)}</span>
+            <span class="session-name" id="name-${s.id}">${escapeHtml(deviceName)}</span>
             <button type="button" class="btn-rename-trigger" onclick="openRename('${s.id}')" title="Rename device" aria-label="Rename device">
               <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1803,9 +1824,9 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
           </form>
           <div class="session-sub">${escapeHtml(s.ip)} &bull; Started ${timeLabel}</div>
         </div>
-        <form method="POST" action="/auth/sessions/revoke">
+        <form method="POST" action="/auth/sessions/revoke" onsubmit="handleRevoke(event, '${s.id}')">
           <input type="hidden" name="sessionId" value="${s.id}">
-          <button type="submit" class="btn-revoke" title="Revoke access">Revoke</button>
+          <button type="submit" class="btn-revoke" id="btn-revoke-${s.id}" title="Revoke access">Revoke</button>
         </form>
       </div>
     `;
@@ -1821,6 +1842,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="/socket.io/socket.io.js"></script>
   <script src="/auth/assets/jsqr.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1986,7 +2008,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       <a href="/auth/approver/logout" class="btn-logout">Sign Out</a>
     </div>
 
-    ${notice ? `<div class="notice">${notice}</div>` : ''}
+    ${notice ? `<div class="notice" id="dashboard-notice">${escapeHtml(notice)}</div>` : `<div class="notice" id="dashboard-notice" style="display: none;"></div>`}
 
     <!-- In-App Camera QR Scanner Trigger -->
     <button type="button" class="btn-scan-main" onclick="openScanner()">
@@ -1998,22 +2020,24 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
 
     <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.85rem; color: #ffffff;">Active Desktop Sessions</h2>
 
-    ${activeSessionsList.length > 0 ? `
-      <div class="session-list">
-        ${sessionsRows}
-      </div>
-      <form method="POST" action="/auth/sessions/revoke" class="revoke-all-form">
-        <input type="hidden" name="all" value="true">
-        <button type="submit" class="btn-revoke-all" onclick="return confirm('Revoke all authenticated desktop sessions?');">
-          Revoke All Active Sessions
-        </button>
-      </form>
-    ` : `
-      <div class="empty-state">
-        <p>No active desktop sessions.</p>
-        <p style="font-size: 0.8rem; margin-top: 0.4rem;">Tap "Scan Desktop QR Code" above to authorize a new computer.</p>
-      </div>
-    `}
+    <div id="sessions-container">
+      ${activeSessionsList.length > 0 ? `
+        <div class="session-list">
+          ${sessionsRows}
+        </div>
+        <form method="POST" action="/auth/sessions/revoke" class="revoke-all-form" onsubmit="handleRevokeAll(event)">
+          <input type="hidden" name="all" value="true">
+          <button type="submit" class="btn-revoke-all" id="btn-revoke-all">
+            Revoke All Active Sessions
+          </button>
+        </form>
+      ` : `
+        <div class="empty-state">
+          <p>No active desktop sessions.</p>
+          <p style="font-size: 0.8rem; margin-top: 0.4rem;">Tap "Scan Desktop QR Code" above to authorize a new computer.</p>
+        </div>
+      `}
+    </div>
   </div>
 
   <!-- In-App Scanner Modal -->
@@ -2057,6 +2081,113 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       if (!form) return;
       form.style.display = 'none';
       if (header) header.style.display = 'flex';
+    }
+
+    const socket = typeof io !== 'undefined' ? io() : null;
+    if (socket) {
+      socket.on('session-revoked', function(data) {
+        if (data && data.all) {
+          removeAllSessionCards('All sessions revoked.');
+        } else if (data && data.sessionId) {
+          removeSessionCard(data.sessionId, 'Session revoked.');
+        }
+      });
+    }
+
+    function showNotice(msg) {
+      let noticeEl = document.getElementById('dashboard-notice');
+      if (noticeEl) {
+        noticeEl.textContent = msg;
+        noticeEl.style.display = 'block';
+      }
+    }
+
+    function removeSessionCard(sessionId, noticeMsg) {
+      const card = document.getElementById('session-card-' + sessionId);
+      if (card) {
+        card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.95)';
+        setTimeout(() => {
+          card.remove();
+          const list = document.querySelector('.session-list');
+          if (list && list.children.length === 0) {
+            showEmptyState();
+          }
+        }, 250);
+      }
+      if (noticeMsg) showNotice(noticeMsg);
+    }
+
+    function removeAllSessionCards(noticeMsg) {
+      const list = document.querySelector('.session-list');
+      if (list) {
+        list.style.transition = 'opacity 0.25s ease';
+        list.style.opacity = '0';
+        setTimeout(() => {
+          showEmptyState();
+        }, 250);
+      }
+      if (noticeMsg) showNotice(noticeMsg);
+    }
+
+    function showEmptyState() {
+      const container = document.getElementById('sessions-container');
+      if (container) {
+        container.innerHTML = '<div class="empty-state">' +
+          '<p>No active desktop sessions.</p>' +
+          '<p style="font-size: 0.8rem; margin-top: 0.4rem;">Tap "Scan Desktop QR Code" above to authorize a new computer.</p>' +
+          '</div>';
+      }
+    }
+
+    async function handleRevoke(e, sessionId) {
+      if (e) e.preventDefault();
+      const btn = document.getElementById('btn-revoke-' + sessionId);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Revoking...';
+      }
+      try {
+        const res = await fetch('/auth/sessions/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        });
+        const data = await res.json();
+        removeSessionCard(sessionId, data.message || 'Session revoked.');
+      } catch (err) {
+        console.error(err);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Revoke';
+        }
+      }
+    }
+
+    async function handleRevokeAll(e) {
+      if (e) e.preventDefault();
+      if (!confirm('Revoke all authenticated desktop sessions?')) return;
+      const btn = document.getElementById('btn-revoke-all');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Revoking All...';
+      }
+      try {
+        const res = await fetch('/auth/sessions/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ all: true })
+        });
+        const data = await res.json();
+        removeAllSessionCards(data.message || 'All sessions revoked.');
+      } catch (err) {
+        console.error(err);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Revoke All Active Sessions';
+        }
+      }
     }
 
     let scannerStream = null;
@@ -2219,6 +2350,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   const isTrusted = session && session.isTrusted;
   const friendlyDevice = (session && session.friendlyDevice) || 'Current Device';
   const ip = (session && session.ip) || 'Connected';
+  const sessionId = (session && session.id) || '';
 
   const servicesHtml = services.map(svc => `
     <div class="service-card">
@@ -2245,6 +2377,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="/socket.io/socket.io.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -2398,8 +2531,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       ${servicesHtml || '<p style="color: #94a3b8; font-size: 0.85rem;">No services configured.</p>'}
     </div>
 
-    <div class="actions-row">
-      <a href="/auth/sessions" class="btn-action">Approver Dashboard &rarr;</a>
+    <div class="actions-row" style="justify-content: flex-end;">
       <a href="/auth/logout" class="btn-action btn-logout">Sign Out</a>
     </div>
   </div>
@@ -2420,6 +2552,43 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
         }
       }
     }
+
+    const socket = typeof io !== 'undefined' ? io() : null;
+    if (socket) {
+      socket.emit('register-desktop', '${escapeHtml(sessionId)}');
+
+      socket.on('session-revoked', function(data) {
+        if (data && (data.all || data.sessionId === '${escapeHtml(sessionId)}')) {
+          lockCurrentSession();
+        }
+      });
+    }
+
+    function lockCurrentSession() {
+      document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: \'Plus Jakarta Sans\', sans-serif; padding: 1.5rem;">' +
+        '<div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 24px; padding: 2.25rem 2rem; max-width: 400px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);">' +
+          '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">' +
+            '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />' +
+            '</svg>' +
+          '</div>' +
+          '<h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h1>' +
+          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>' +
+        '</div>' +
+      '</div>';
+      setTimeout(function() {
+        window.location.href = '/login?notice=' + encodeURIComponent('Your session has been revoked.');
+      }, 1000);
+    }
+
+    // Fast heartbeat check against /auth/verify every 10 seconds as safety net
+    setInterval(function() {
+      fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+        if (r.status === 401) {
+          lockCurrentSession();
+        }
+      }).catch(function() {});
+    }, 10000);
   </script>
   ${PWA_SW_SCRIPT}
 </body>
