@@ -1,0 +1,132 @@
+{
+	email dev@szycic.com
+}
+
+share.szycic.com {
+	# 1. Public authentication and real-time socket endpoints (auth-gateway)
+	handle /login* {
+		reverse_proxy auth-gateway:3000
+	}
+
+	handle /auth/* {
+		reverse_proxy auth-gateway:3000
+	}
+
+	handle /socket.io/* {
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 2. Public Static Assets (bypasses auth-gateway)
+	handle /_next/static/* {
+		reverse_proxy share-app:3000
+	}
+
+	handle /img/* {
+		reverse_proxy share-app:3000
+	}
+
+	handle /favicon.ico {
+		reverse_proxy share-app:3000
+	}
+
+	handle /robots.txt {
+		reverse_proxy share-app:3000
+	}
+
+	# 3. Public Share Download and Reverse Share Routes (bypasses auth-gateway)
+	# Direct share download links (e.g. /s/XO8uWmX2 or /share/XO8uWmX2)
+	handle /s/* {
+		reverse_proxy share-app:3000
+	}
+
+	handle /share/* {
+		reverse_proxy share-app:3000
+	}
+
+	# Reverse share upload links (e.g. /upload/c0sLiMFi)
+	handle /upload/* {
+		reverse_proxy share-app:3000
+	}
+
+	# Next.js client-side route data for public shares & reverse shares
+	handle /_next/data/*/s/* {
+		reverse_proxy share-app:3000
+	}
+
+	handle /_next/data/*/share/* {
+		reverse_proxy share-app:3000
+	}
+
+	handle /_next/data/*/upload/* {
+		reverse_proxy share-app:3000
+	}
+
+	# Public backend APIs for share downloads, reverse shares, and app configuration
+	handle /api/shares* {
+		reverse_proxy share-app:3000
+	}
+
+	handle /api/reverseShares* {
+		reverse_proxy share-app:3000
+	}
+
+	handle /api/configs* {
+		reverse_proxy share-app:3000
+	}
+
+	# 4. Protected Routes (Forward Auth required for /, /upload, /account, /admin, etc.)
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy share-app:3000
+	}
+
+	# 5. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		# Next.js Client-Side Page Transitions:
+		# Return Next.js redirect protocol so the client-side router smoothly navigates to /login
+		# without throwing a JSON parse error / client-side exception.
+		@nextData {
+			expression {http.error.status_code} == 401
+			path /_next/data/*
+		}
+		@nextDataHeader {
+			expression {http.error.status_code} == 401
+			header x-nextjs-data *
+		}
+		handle @nextData {
+			header Content-Type "application/json"
+			respond `{"pageProps":{"__N_REDIRECT":"/login","__N_REDIRECT_STATUS":307}}` 200
+		}
+		handle @nextDataHeader {
+			header Content-Type "application/json"
+			respond `{"pageProps":{"__N_REDIRECT":"/login","__N_REDIRECT_STATUS":307}}` 200
+		}
+
+		# REST API requests: Return JSON 401 instead of an HTML redirect
+		@api {
+			expression {http.error.status_code} == 401
+			path /api/*
+		}
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Session expired or revoked. Please log in again.","redirect":"/login"}` 401
+		}
+
+		# Standard browser document requests: 302 Redirect to /login
+		handle {
+			redir * /login 302
+		}
+	}
+
+	# Security headers
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+	}
+}

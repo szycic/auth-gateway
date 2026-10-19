@@ -1,0 +1,54 @@
+services:
+  share-app:
+    image: smp46/pingvin-share-x:latest
+    container_name: share-app
+    restart: unless-stopped
+    volumes:
+      - share-data:/opt/app/backend/data
+      - share-images:/opt/app/frontend/public/img
+    environment:
+      - TRUST_PROXY=true
+    networks:
+      - proxy-net
+
+  auth-gateway:
+    build:
+      context: ./auth-gateway
+      dockerfile: Dockerfile
+    container_name: auth-gateway
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - BASE_URL=https://share.szycic.com
+      - AUTH_COOKIE_NAME=share_auth_token
+      - APPROVER_COOKIE_NAME=gateway_approver_session
+      - APPROVER_PASSWORD=${APPROVER_PASSWORD:-szycic-share-admin}
+      - SESSION_TTL_HOURS=72
+      - QR_SESSION_TTL_MS=120000
+      - TARGET_APP_URL=http://share-app:3000
+    networks:
+      - proxy-net
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - proxy-net
+
+volumes:
+  share-data:
+  share-images:
+  caddy-data:
+  caddy-config:
+
+networks:
+  proxy-net:
+    driver: bridge
