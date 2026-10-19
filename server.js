@@ -1839,10 +1839,9 @@ app.get('/login', (req, res) => {
 // UI Templates: Approver Login, Decision & Sessions
 // ----------------------------------------------------
 
-// Shared PWA Head Tags & Service Worker Script
+// Shared Head Tags
 function getPwaHeadTags() {
   return `
-  <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#090d16">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1854,16 +1853,7 @@ function getPwaHeadTags() {
   <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">`;
 }
 
-const PWA_SW_SCRIPT = `
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/auth/' })
-          .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));
-      });
-    }
-  </script>
-`;
+const PWA_SW_SCRIPT = '';
 
 // 1. Setup Required Screen (When no password is set)
 function renderApproverSetupRequiredHtml() {
