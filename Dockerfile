@@ -12,9 +12,12 @@ FROM node:18-alpine
 WORKDIR /usr/src/app
 
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3000 \
+    DATA_DIR=/usr/src/app/data
 
-# Run as non-root user for security
+# Create data directory for session persistence and grant permissions to node user
+RUN mkdir -p /usr/src/app/data && chown -R node:node /usr/src/app
+
 USER node
 
 COPY --chown=node:node --from=builder /usr/src/app/node_modules ./node_modules

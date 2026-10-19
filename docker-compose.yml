@@ -17,6 +17,8 @@ services:
       dockerfile: Dockerfile
     container_name: auth-gateway
     restart: unless-stopped
+    volumes:
+      - gateway-data:/usr/src/app/data
     environment:
       - PORT=3000
       - BASE_URL=https://share.szycic.com
@@ -25,6 +27,7 @@ services:
       - APPROVER_PASSWORD=${APPROVER_PASSWORD:-szycic-share-admin}
       - SESSION_TTL_HOURS=72
       - QR_SESSION_TTL_MS=120000
+      - DATA_DIR=/usr/src/app/data
       - TARGET_APP_URL=http://share-app:3000
     networks:
       - proxy-net
@@ -46,6 +49,7 @@ services:
 volumes:
   share-data:
   share-images:
+  gateway-data:
   caddy-data:
   caddy-config:
 
