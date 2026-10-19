@@ -19,6 +19,23 @@ const HOST = process.env.HOST || '0.0.0.0';
 const BASE_URL = (process.env.BASE_URL || 'https://share.szycic.com').replace(/\/+$/, '');
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'share_auth_token';
 const APPROVER_COOKIE_NAME = process.env.APPROVER_COOKIE_NAME || 'gateway_approver_session';
+const SESSION_TTL_HOURS = parseInt(process.env.SESSION_TTL_HOURS || '72', 10);
+const QR_SESSION_TTL_MS = parseInt(process.env.QR_SESSION_TTL_MS || '120000', 10); // 2 minutes
+const APPROVER_TTL_DAYS = 30;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const PASSWORD_FILE = path.join(DATA_DIR, 'password.json');
+const TARGET_APP_URL = process.env.TARGET_APP_URL || 'http://share-app:3000';
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (err) {
+    console.error('[auth-gateway] Could not create DATA_DIR:', err.message);
+  }
+}
+
 // Password Hashing & Verification (Salted scrypt)
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const key = crypto.scryptSync(password, salt, 64);
@@ -38,17 +55,44 @@ function verifyPassword(password, storedHash) {
   );
 }
 
-// Initialize Approver Password Hash
-let approverPasswordHash = '';
-if (process.env.APPROVER_PASSWORD_HASH && process.env.APPROVER_PASSWORD_HASH.startsWith('scrypt$')) {
-  approverPasswordHash = process.env.APPROVER_PASSWORD_HASH.trim();
-  console.log('[auth-gateway] Loaded pre-hashed approver password (APPROVER_PASSWORD_HASH).');
-} else {
-  const rawPass = process.env.APPROVER_PASSWORD || 'szycic-share-admin';
-  approverPasswordHash = hashPassword(rawPass);
-  console.log('[auth-gateway] Auto-hashed approver password on startup with salted scrypt.');
-  // Wipe plaintext from process.env memory immediately
+// Cached hash if provided via APPROVER_PASSWORD at boot
+let cachedEnvPasswordHash = null;
+if (process.env.APPROVER_PASSWORD && process.env.APPROVER_PASSWORD.trim().length > 0) {
+  cachedEnvPasswordHash = hashPassword(process.env.APPROVER_PASSWORD.trim());
+  console.log('[auth-gateway] Initialized approver password from APPROVER_PASSWORD environment variable.');
   delete process.env.APPROVER_PASSWORD;
+}
+
+// Dynamic Approver Password Hash lookup (checks env, then persistent password.json)
+function getApproverPasswordHash() {
+  if (process.env.APPROVER_PASSWORD_HASH && process.env.APPROVER_PASSWORD_HASH.startsWith('scrypt$')) {
+    return process.env.APPROVER_PASSWORD_HASH.trim();
+  }
+  if (fs.existsSync(PASSWORD_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(PASSWORD_FILE, 'utf8'));
+      if (data && data.approverPasswordHash && data.approverPasswordHash.startsWith('scrypt$')) {
+        return data.approverPasswordHash.trim();
+      }
+    } catch (err) {
+      console.error('[auth-gateway] Failed to read PASSWORD_FILE:', err.message);
+    }
+  }
+  if (cachedEnvPasswordHash) {
+    return cachedEnvPasswordHash;
+  }
+  return null;
+}
+
+const activeHashOnBoot = getApproverPasswordHash();
+if (activeHashOnBoot) {
+  console.log('[auth-gateway] Approver password hash is active.');
+} else {
+  console.warn('\n*******************************************************************');
+  console.warn('⚠️  NO APPROVER PASSWORD CONFIGURED!');
+  console.warn('   Run: docker exec -it auth-gateway node set-password.js <password>');
+  console.warn('   (or: npm run set-password <password>)');
+  console.warn('*******************************************************************\n');
 }
 
 // Rate Limiting for Approver Login (Anti-Brute-Force)
@@ -75,21 +119,6 @@ setInterval(() => {
     }
   }
 }, 30 * 60 * 1000).unref();
-const SESSION_TTL_HOURS = parseInt(process.env.SESSION_TTL_HOURS || '72', 10);
-const QR_SESSION_TTL_MS = parseInt(process.env.QR_SESSION_TTL_MS || '120000', 10); // 2 minutes
-const APPROVER_TTL_DAYS = 30;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
-const TARGET_APP_URL = process.env.TARGET_APP_URL || 'http://share-app:3000';
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  } catch (err) {
-    console.error('[auth-gateway] Could not create DATA_DIR:', err.message);
-  }
-}
 
 // In-Memory State Stores
 // activeSessions: token -> { id, token, createdAt, expiresAt, isTrusted, ip, userAgent, friendlyDevice, type }
@@ -365,6 +394,10 @@ app.get('/auth/approver/login', (req, res) => {
   if (isApprover(req)) {
     return res.redirect(returnTo);
   }
+  const currentHash = getApproverPasswordHash();
+  if (!currentHash) {
+    return res.status(503).send(renderApproverSetupRequiredHtml());
+  }
   res.send(renderApproverLoginHtml({ returnTo }));
 });
 
@@ -373,6 +406,11 @@ app.post('/auth/approver/login', (req, res) => {
   const redirectTarget = returnTo && typeof returnTo === 'string' && returnTo.startsWith('/auth/')
     ? returnTo
     : '/auth/sessions';
+
+  const currentHash = getApproverPasswordHash();
+  if (!currentHash) {
+    return res.status(503).send(renderApproverSetupRequiredHtml());
+  }
 
   const clientIp = getClientIp(req);
   const now = Date.now();
@@ -395,7 +433,7 @@ app.post('/auth/approver/login', (req, res) => {
   }
 
   // Timing-safe salted scrypt comparison
-  const isValid = verifyPassword(password, approverPasswordHash);
+  const isValid = verifyPassword(password, currentHash);
 
   if (!isValid) {
     const record = attemptRecord || { count: 0, firstFailedAt: now, lockedUntil: null };
@@ -1114,7 +1152,80 @@ app.get('/login', (req, res) => {
 // UI Templates: Approver Login, Decision & Sessions
 // ----------------------------------------------------
 
-// 1. Approver Login HTML
+// 1. Setup Required Screen (When no password is set)
+function renderApproverSetupRequiredHtml() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup Required - Pingvin Share Auth</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%);
+      color: #f1f5f9; min-height: 100vh; display: flex; align-items: center;
+      justify-content: center; padding: 1.5rem;
+    }
+    .card {
+      width: 100%; max-width: 480px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px);
+      border-radius: 24px; padding: 2.25rem 2rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+      text-align: center;
+    }
+    .icon-warn {
+      width: 64px; height: 64px; border-radius: 20px;
+      background: rgba(245, 158, 11, 0.15); border: 1.5px solid #f59e0b;
+      color: #fbbf24; display: inline-flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.25rem auto;
+    }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff; }
+    p.desc { font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem; }
+    .cmd-box {
+      background: #030712; border: 1px solid #1f2937; border-radius: 12px;
+      padding: 0.85rem 1rem; text-align: left; margin-bottom: 1.25rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.825rem; color: #38bdf8; overflow-x: auto;
+    }
+    .cmd-label {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: #94a3b8; font-weight: 700; margin-bottom: 0.4rem; text-align: left;
+    }
+    .note {
+      font-size: 0.8rem; color: #64748b; line-height: 1.4; margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-warn">
+      <svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    </div>
+    <h1>No Password Configured</h1>
+    <p class="desc">For maximum security, there is no default password. Please configure your master approver password from your server terminal:</p>
+
+    <div class="cmd-label">Run on server (inside docker):</div>
+    <div class="cmd-box">docker exec -it auth-gateway node set-password.js &lt;your-password&gt;</div>
+
+    <div class="cmd-label">Or run with npm (in auth-gateway dir):</div>
+    <div class="cmd-box">npm run set-password &lt;your-password&gt;</div>
+
+    <p class="note">Once run, refresh this page to sign in. The new password takes effect immediately without needing to restart the container.</p>
+  </div>
+</body>
+</html>`;
+}
+
+// 2. Approver Login HTML
 function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
   return `<!DOCTYPE html>
 <html lang="en">
