@@ -36,34 +36,61 @@ function savePassword(password) {
 
   fs.writeFileSync(PASSWORD_FILE, JSON.stringify(payload, null, 2), 'utf8');
 
+  // Invalidate all active approver sessions in sessions.json
+  const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+  let invalidatedCount = 0;
+  if (fs.existsSync(SESSIONS_FILE)) {
+    try {
+      const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.approverSessions)) {
+        invalidatedCount = data.approverSessions.length;
+        data.approverSessions = [];
+        data.lastSaved = new Date().toISOString();
+        const tmp = `${SESSIONS_FILE}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+        fs.renameSync(tmp, SESSIONS_FILE);
+      }
+    } catch (err) {
+      console.warn('⚠️  Could not clear sessions.json:', err.message);
+    }
+  }
+
   console.log('\n======================================================');
   console.log('✅ Approver Password Successfully Configured!');
   console.log('======================================================');
   console.log(`Saved salted scrypt hash to: ${PASSWORD_FILE}`);
+  if (invalidatedCount > 0) {
+    console.log(`Invalidated ${invalidatedCount} active approver session(s).`);
+  } else {
+    console.log('All approver sessions invalidated.');
+  }
   console.log('The new password takes effect immediately (no restart needed).\n');
 }
 
-let nonTtyRl = null;
+let nonTtyLines = null;
+let nonTtyIndex = 0;
 
 /**
  * Prompts for input securely without printing plaintext to the terminal.
  * Masks typed characters with asterisks (*).
  */
 function readSecret(promptText) {
-  return new Promise((resolve) => {
-    // If input is non-interactive (e.g. piped or redirected stdin)
-    if (!process.stdin.isTTY) {
-      if (!nonTtyRl) {
-        nonTtyRl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
+  // If input is non-interactive (e.g. piped or redirected stdin)
+  if (!process.stdin.isTTY) {
+    if (!nonTtyLines) {
+      try {
+        const raw = fs.readFileSync(0, 'utf8');
+        nonTtyLines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      } catch (e) {
+        nonTtyLines = [];
       }
-      nonTtyRl.question(promptText, (ans) => {
-        resolve(ans ? ans.trim() : '');
-      });
-      return;
     }
+    const val = nonTtyLines[nonTtyIndex++] || '';
+    return Promise.resolve(val);
+  }
+
+  return new Promise((resolve) => {
 
     process.stdout.write(promptText);
 
@@ -130,7 +157,6 @@ async function main() {
   }
 
   savePassword(password);
-  if (nonTtyRl) nonTtyRl.close();
 }
 
 main().catch((err) => {
