@@ -16,16 +16,18 @@ const crypto = require('crypto');
 // Universal Configuration Loader
 const config = require('./config');
 
-const { PORT, HOST, BASE_URL } = config.server;
-const { TARGET_APP_URL } = config.downstream;
 const {
+  PORT,
+  HOST,
+  BASE_URL,
+  TARGET_APP_URL,
   AUTH_COOKIE_NAME,
   APPROVER_COOKIE_NAME,
   SESSION_TTL_HOURS,
   QR_SESSION_TTL_MS,
   APPROVER_TTL_DAYS,
-} = config.session;
-const DATA_DIR = config.DATA_DIR || config.dataDir || process.env.DATA_DIR || path.join(__dirname, 'data');
+  DATA_DIR,
+} = config;
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const PASSWORD_FILE = path.join(DATA_DIR, 'password.json');
 
