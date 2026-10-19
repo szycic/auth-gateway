@@ -24,6 +24,13 @@
       "subtitle": "Secure file sharing & storage portal",
       "url": "https://share.example.com",
       "allowedRedirects": ["https://share.example.com*"]
+    },
+    {
+      "id": "tools",
+      "name": "IT Tools",
+      "subtitle": "Handy collection of developer utilities",
+      "url": "https://tools.example.com",
+      "allowedRedirects": ["https://tools.example.com*"]
     }
   ]
 }
