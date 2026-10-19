@@ -2439,17 +2439,6 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       }
     }
 
-    const socket = typeof io !== 'undefined' ? io() : null;
-    if (socket) {
-      socket.on('session-revoked', function(data) {
-        if (data && data.all) {
-          removeAllSessionCards('All sessions were revoked.');
-        } else if (data && data.sessionId) {
-          removeSessionCard(data.sessionId, 'Session was revoked.');
-        }
-      });
-    }
-
     async function handleRevoke(e, sessionId) {
       if (e) e.preventDefault();
       const btn = document.getElementById('btn-revoke-' + sessionId);
