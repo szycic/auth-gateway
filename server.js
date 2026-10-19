@@ -1049,26 +1049,6 @@ app.get('/login', (req, res) => {
       color: #10b981; display: flex; align-items: center; justify-content: center;
       margin-bottom: 1rem;
     }
-    .service-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.45rem;
-      background: rgba(56, 189, 248, 0.12);
-      color: #38bdf8;
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      border-radius: 100px;
-      padding: 0.3rem 0.85rem;
-      font-size: 0.775rem;
-      font-weight: 600;
-      margin-bottom: 0.85rem;
-    }
-    .service-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #38bdf8;
-      box-shadow: 0 0 6px #38bdf8;
-    }
     .footer { margin-top: 1.75rem; font-size: 0.775rem; color: #64748b; }
     .approver-link {
       display: inline-block; margin-top: 0.85rem; color: #38bdf8;
@@ -1086,13 +1066,6 @@ app.get('/login', (req, res) => {
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
       </svg>
     </div>
-
-    ${matchedService ? `
-      <div class="service-pill">
-        <span class="service-dot"></span>
-        ${escapeHtml(matchedService.name)}
-      </div>
-    ` : ''}
 
     <h1>${escapeHtml(appDisplayName)}</h1>
     <p class="subtitle">${escapeHtml(appDisplaySubtitle)}</p>
