@@ -147,3 +147,37 @@ tools.example.com {
 		X-Content-Type-Options nosniff
 	}
 }
+
+# Quartz Digital Garden (Protected via auth.example.com)
+garden.example.com {
+	# 1. Direct login redirect to central auth service
+	handle /login* {
+		redir https://auth.example.com/login?redirect=https://garden.example.com/ 302
+	}
+
+	# 2. Forward Auth Protected Routes
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy garden:8080
+	}
+
+	# 3. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	# Security headers
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+	}
+}
