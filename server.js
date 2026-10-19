@@ -1,10 +1,13 @@
 /**
  * Pingvin Share Auth Gateway
- * High-performance Forward Auth server with Approver-gated QR code authentication & Session Management
+ * High-performance Forward Auth server with Approver-gated QR code authentication,
+ * Persistent Trusted Devices, and In-App Camera QR Scanner
  */
 
 const express = require('express');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const QRCode = require('qrcode');
 const cookieParser = require('cookie-parser');
@@ -20,10 +23,21 @@ const APPROVER_PASSWORD = process.env.APPROVER_PASSWORD || 'szycic-share-admin';
 const SESSION_TTL_HOURS = parseInt(process.env.SESSION_TTL_HOURS || '72', 10);
 const QR_SESSION_TTL_MS = parseInt(process.env.QR_SESSION_TTL_MS || '120000', 10); // 2 minutes
 const APPROVER_TTL_DAYS = 30;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const TARGET_APP_URL = process.env.TARGET_APP_URL || 'http://share-app:3000';
 
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (err) {
+    console.error('[auth-gateway] Could not create DATA_DIR:', err.message);
+  }
+}
+
 // In-Memory State Stores
-// activeSessions: token -> { id, token, createdAt, expiresAt, ip, userAgent, friendlyDevice, type }
+// activeSessions: token -> { id, token, createdAt, expiresAt, isTrusted, ip, userAgent, friendlyDevice, type }
 const activeSessions = new Map();
 
 // approverSessions: token -> { token, createdAt, expiresAt, ip, userAgent }
@@ -31,6 +45,55 @@ const approverSessions = new Map();
 
 // pendingQrSessions: qrSessionId -> { key, desktopIp, desktopUserAgent, friendlyDevice, createdAt, expiresAt, status }
 const pendingQrSessions = new Map();
+
+// Persistence Helpers
+function loadPersistedSessions() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      const now = Date.now();
+
+      if (Array.isArray(data.activeSessions)) {
+        for (const s of data.activeSessions) {
+          if (!s.expiresAt || s.expiresAt > now) {
+            activeSessions.set(s.token, s);
+          }
+        }
+      }
+
+      if (Array.isArray(data.approverSessions)) {
+        for (const a of data.approverSessions) {
+          if (!a.expiresAt || a.expiresAt > now) {
+            approverSessions.set(a.token, a);
+          }
+        }
+      }
+
+      console.log(`[auth-gateway] Loaded ${activeSessions.size} active sessions and ${approverSessions.size} approver sessions from disk.`);
+    }
+  } catch (err) {
+    console.error('[auth-gateway] Error reading persisted sessions:', err.message);
+  }
+}
+
+function savePersistedSessions() {
+  try {
+    const data = {
+      activeSessions: Array.from(activeSessions.values()),
+      approverSessions: Array.from(approverSessions.values()),
+      lastSaved: new Date().toISOString(),
+    };
+    const tmp = `${SESSIONS_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmp, SESSIONS_FILE);
+  } catch (err) {
+    console.error('[auth-gateway] Error persisting sessions to disk:', err.message);
+  }
+}
+
+// Initial load from storage
+loadPersistedSessions();
 
 // Helper: Friendly Device Parser from User-Agent
 function parseUserAgent(ua = '') {
@@ -56,8 +119,9 @@ function isValidSession(token) {
   if (!token || typeof token !== 'string') return false;
   const session = activeSessions.get(token);
   if (!session) return false;
-  if (Date.now() > session.expiresAt) {
+  if (session.expiresAt && Date.now() > session.expiresAt) {
     activeSessions.delete(token);
+    savePersistedSessions();
     return false;
   }
   return true;
@@ -69,8 +133,9 @@ function isApprover(req) {
   if (!token || typeof token !== 'string') return false;
   const session = approverSessions.get(token);
   if (!session) return false;
-  if (Date.now() > session.expiresAt) {
+  if (session.expiresAt && Date.now() > session.expiresAt) {
     approverSessions.delete(token);
+    savePersistedSessions();
     return false;
   }
   return true;
@@ -79,20 +144,30 @@ function isApprover(req) {
 // Periodic cleanup of expired sessions every 60 seconds
 setInterval(() => {
   const now = Date.now();
+  let changed = false;
+
   for (const [id, session] of pendingQrSessions.entries()) {
     if (now > session.expiresAt) {
       pendingQrSessions.delete(id);
     }
   }
+
   for (const [token, session] of activeSessions.entries()) {
-    if (now > session.expiresAt) {
+    if (session.expiresAt && now > session.expiresAt) {
       activeSessions.delete(token);
+      changed = true;
     }
   }
+
   for (const [token, session] of approverSessions.entries()) {
-    if (now > session.expiresAt) {
+    if (session.expiresAt && now > session.expiresAt) {
       approverSessions.delete(token);
+      changed = true;
     }
+  }
+
+  if (changed) {
+    savePersistedSessions();
   }
 }, 60 * 1000);
 
@@ -153,22 +228,36 @@ app.get('/auth/health', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 2. Forward Auth Verification Endpoint
+// 2. Serve Assets (jsQR for in-app scanner)
+// ----------------------------------------------------
+app.get('/auth/assets/jsqr.js', (req, res) => {
+  const localFile = path.join(__dirname, 'node_modules/jsqr/dist/jsQR.js');
+  if (fs.existsSync(localFile)) {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+    return res.sendFile(localFile);
+  }
+  return res.redirect('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+});
+
+// ----------------------------------------------------
+// 3. Forward Auth Verification Endpoint
 // Caddy queries this endpoint for every protected request
 // ----------------------------------------------------
 app.get('/auth/verify', (req, res) => {
   const token = req.cookies[AUTH_COOKIE_NAME];
   if (isValidSession(token)) {
+    const session = activeSessions.get(token);
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',
-      'X-Auth-Role': 'guest',
+      'X-Auth-Role': session && session.isTrusted ? 'trusted_device' : 'guest',
     }).send('OK');
   }
   return res.status(401).send('Unauthorized');
 });
 
 // ----------------------------------------------------
-// 3. QR Code Initialization Endpoint (Desktop)
+// 4. QR Code Initialization Endpoint (Desktop)
 // ----------------------------------------------------
 app.get('/auth/qr-init', async (req, res) => {
   try {
@@ -214,7 +303,7 @@ app.get('/auth/qr-init', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 4. Approver Login Routes
+// 5. Approver Login Routes
 // ----------------------------------------------------
 app.get('/auth/approver/login', (req, res) => {
   const returnTo = req.query.returnTo || '/auth/sessions';
@@ -262,6 +351,7 @@ app.post('/auth/approver/login', (req, res) => {
     userAgent: req.headers['user-agent'],
   });
 
+  savePersistedSessions();
   res.cookie(APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
   return res.redirect(redirectTarget);
 });
@@ -271,6 +361,7 @@ app.get('/auth/approver/logout', (req, res) => {
   const token = req.cookies[APPROVER_COOKIE_NAME];
   if (token) {
     approverSessions.delete(token);
+    savePersistedSessions();
   }
   const opts = getCookieOptions(req);
   delete opts.maxAge;
@@ -279,7 +370,7 @@ app.get('/auth/approver/logout', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 5. QR Approval Screen (Mobile Scanner Target)
+// 6. QR Approval Screen (Mobile Scanner Target)
 // ----------------------------------------------------
 app.get('/auth/qr-approve', (req, res) => {
   const { id, key } = req.query;
@@ -343,14 +434,14 @@ app.get('/auth/qr-approve', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 6. QR Action Handler (Approve / Reject)
+// 7. QR Action Handler (Approve / Reject)
 // ----------------------------------------------------
 app.post('/auth/qr-action', (req, res) => {
   if (!isApprover(req)) {
     return res.status(401).send('Unauthorized approver.');
   }
 
-  const { id, key, action } = req.body;
+  const { id, key, action, trusted } = req.body;
   if (!id || !key || typeof id !== 'string' || typeof key !== 'string') {
     return res.status(400).send('Invalid request parameters.');
   }
@@ -376,7 +467,6 @@ app.post('/auth/qr-action', (req, res) => {
   pendingQrSessions.delete(id);
 
   if (action === 'reject') {
-    // Notify desktop of rejection
     io.to(id).emit('rejected', { message: 'Authorization was rejected by the approver.' });
 
     return res.send(renderStatusNoticeHtml({
@@ -389,20 +479,28 @@ app.post('/auth/qr-action', (req, res) => {
   }
 
   // Action is APPROVE -> Grant desktop guest session
+  const isTrusted = trusted === 'true';
   const sessionToken = crypto.randomBytes(48).toString('base64url');
   const sessionId = crypto.randomUUID();
-  const tokenExpiresAt = Date.now() + SESSION_TTL_HOURS * 3600 * 1000;
+
+  // Trusted device gets permanent 10-year expiration; otherwise standard TTL
+  const tokenExpiresAt = isTrusted
+    ? Date.now() + 10 * 365 * 24 * 3600 * 1000 // 10 years permanent
+    : Date.now() + SESSION_TTL_HOURS * 3600 * 1000;
 
   activeSessions.set(sessionToken, {
     id: sessionId,
     token: sessionToken,
     createdAt: Date.now(),
     expiresAt: tokenExpiresAt,
+    isTrusted,
     ip: session.desktopIp,
     userAgent: session.desktopUserAgent,
     friendlyDevice: session.friendlyDevice,
-    type: 'desktop_guest',
+    type: isTrusted ? 'trusted_device' : 'desktop_guest',
   });
+
+  savePersistedSessions();
 
   // Emit real-time approved event to desktop room
   io.to(id).emit('approved', {
@@ -410,8 +508,10 @@ app.post('/auth/qr-action', (req, res) => {
   });
 
   return res.send(renderStatusNoticeHtml({
-    title: 'Desktop Approved!',
-    message: `Granted guest upload access to ${session.friendlyDevice} (${session.desktopIp}). You can revoke this session at any time below.`,
+    title: isTrusted ? 'Trusted Device Authorized!' : 'Desktop Approved!',
+    message: isTrusted
+      ? `Permanently authorized ${session.friendlyDevice} (${session.desktopIp}) as a Trusted Device.`
+      : `Granted guest upload access to ${session.friendlyDevice} (${session.desktopIp}).`,
     type: 'success',
     actionUrl: '/auth/sessions',
     actionLabel: 'Manage Active Sessions',
@@ -419,8 +519,7 @@ app.post('/auth/qr-action', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 7. Session Management Dashboard (`/auth/sessions`)
-// Allows logged-in approvers to view & revoke active sessions
+// 8. Session Management Dashboard (`/auth/sessions`)
 // ----------------------------------------------------
 app.get('/auth/sessions', (req, res) => {
   if (!isApprover(req)) {
@@ -429,6 +528,7 @@ app.get('/auth/sessions', (req, res) => {
 
   res.send(renderSessionsDashboardHtml({
     activeSessionsList: Array.from(activeSessions.values()),
+    notice: req.query.notice,
   }));
 });
 
@@ -443,6 +543,7 @@ app.post('/auth/sessions/revoke', (req, res) => {
   if (all === 'true') {
     const count = activeSessions.size;
     activeSessions.clear();
+    savePersistedSessions();
     io.emit('session-revoked', { all: true });
     return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Revoked all ${count} active sessions.`));
   }
@@ -451,6 +552,7 @@ app.post('/auth/sessions/revoke', (req, res) => {
     for (const [token, session] of activeSessions.entries()) {
       if (session.id === sessionId) {
         activeSessions.delete(token);
+        savePersistedSessions();
         io.emit('session-revoked', { sessionId });
         return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Session for ${session.friendlyDevice} was revoked.`));
       }
@@ -461,14 +563,18 @@ app.post('/auth/sessions/revoke', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 8. Desktop Token Exchange Endpoint
-// Redirect target when desktop receives Socket.io 'approved'
+// 9. Desktop Token Exchange Endpoint
 // ----------------------------------------------------
 app.get('/auth/exchange', (req, res) => {
   const { token } = req.query;
 
   if (token && typeof token === 'string' && isValidSession(token)) {
-    res.cookie(AUTH_COOKIE_NAME, token, getCookieOptions(req));
+    const session = activeSessions.get(token);
+    const maxAgeMs = session && session.isTrusted
+      ? 10 * 365 * 24 * 3600 * 1000 // 10 years permanent
+      : SESSION_TTL_HOURS * 3600 * 1000;
+
+    res.cookie(AUTH_COOKIE_NAME, token, getCookieOptions(req, maxAgeMs));
     return res.redirect('/');
   }
 
@@ -476,12 +582,13 @@ app.get('/auth/exchange', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 9. Logout Endpoint (Desktop)
+// 10. Logout Endpoint (Desktop)
 // ----------------------------------------------------
 app.get('/auth/logout', (req, res) => {
   const token = req.cookies[AUTH_COOKIE_NAME];
   if (token) {
     activeSessions.delete(token);
+    savePersistedSessions();
   }
 
   const cookieOptions = getCookieOptions(req);
@@ -492,8 +599,7 @@ app.get('/auth/logout', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 10. Fallback Reverse Proxy for Downstream App (/auth/*)
-// Passes Pingvin Share internal routes (e.g. /auth/signIn) to share-app
+// 11. Fallback Reverse Proxy for Downstream App (/auth/*)
 // ----------------------------------------------------
 app.all('/auth/*', (req, res) => {
   const targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
@@ -524,10 +630,7 @@ app.all('/auth/*', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 10b. Public Share Routes Proxy with Navigation Enforcement
-// When unauthenticated users view public shares (/s/*, /share/*, /upload/*),
-// inject a script that intercepts navigation away (e.g. clicking Home/Upload)
-// and forces a full browser request so Caddy forward_auth triggers immediately.
+// 12. Public Share Routes Proxy with Navigation Enforcement
 // ----------------------------------------------------
 const PUBLIC_NAV_SCRIPT = `<script>
 (function() {
@@ -612,8 +715,7 @@ app.all(['/s/*', '/share/*', '/upload/*'], (req, res) => {
 });
 
 // ----------------------------------------------------
-// 11. Desktop Login View (`/login`)
-// Dynamic QR Code, Real-Time Socket.io, Sleek Dark UI
+// 13. Desktop Login View (`/login`)
 // ----------------------------------------------------
 app.get('/login', (req, res) => {
   if (isValidSession(req.cookies[AUTH_COOKIE_NAME])) {
@@ -1049,7 +1151,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
       margin-bottom: 1.5rem;
     }
-    .header { text-align: center; margin-bottom: 1.75rem; }
+    .header { text-align: center; margin-bottom: 1.5rem; }
     .badge-wrap {
       display: inline-flex; align-items: center; gap: 0.4rem;
       background: rgba(56, 189, 248, 0.12); color: #38bdf8;
@@ -1061,15 +1163,31 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
     .device-info {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px; padding: 1.25rem; margin-bottom: 1.75rem;
+      border-radius: 16px; padding: 1.15rem; margin-bottom: 1.25rem;
     }
     .info-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 0.5rem 0; font-size: 0.875rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 0.45rem 0; font-size: 0.875rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     }
     .info-row:last-child { border-bottom: none; }
     .info-label { color: #94a3b8; }
     .info-val { color: #f8fafc; font-weight: 600; }
+
+    /* Trusted Device Toggle Container */
+    .trust-box {
+      background: rgba(2, 132, 199, 0.08);
+      border: 1px solid rgba(2, 132, 199, 0.25);
+      border-radius: 16px; padding: 1rem 1.15rem; margin-bottom: 1.5rem;
+      display: flex; align-items: center; gap: 0.85rem; cursor: pointer;
+      user-select: none;
+    }
+    .trust-box input[type="checkbox"] {
+      width: 20px; height: 20px; accent-color: #0284c7; cursor: pointer;
+    }
+    .trust-text { text-align: left; }
+    .trust-title { display: block; font-size: 0.925rem; font-weight: 600; color: #ffffff; margin-bottom: 0.15rem; }
+    .trust-desc { display: block; font-size: 0.775rem; color: #94a3b8; line-height: 1.3; }
+
     .btn-group { display: flex; gap: 0.75rem; }
     .btn {
       flex: 1; padding: 0.85rem 1rem; border-radius: 12px; font-weight: 600;
@@ -1096,24 +1214,33 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       <h1>Authorize Desktop Access?</h1>
     </div>
 
-    <div class="device-info">
-      <div class="info-row">
-        <span class="info-label">Device</span>
-        <span class="info-val">${friendlyDevice}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">IP Address</span>
-        <span class="info-val">${desktopIp}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Access Level</span>
-        <span class="info-val" style="color: #38bdf8;">Guest Uploader</span>
-      </div>
-    </div>
-
     <form method="POST" action="/auth/qr-action">
       <input type="hidden" name="id" value="${id}">
       <input type="hidden" name="key" value="${key}">
+
+      <div class="device-info">
+        <div class="info-row">
+          <span class="info-label">Device</span>
+          <span class="info-val">${friendlyDevice}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">IP Address</span>
+          <span class="info-val">${desktopIp}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Access Level</span>
+          <span class="info-val" style="color: #38bdf8;">Guest Uploader</span>
+        </div>
+      </div>
+
+      <label class="trust-box">
+        <input type="checkbox" name="trusted" value="true" checked>
+        <div class="trust-text">
+          <span class="trust-title">Trust this device (Permanent access)</span>
+          <span class="trust-desc">Keep signed in permanently until manually revoked.</span>
+        </div>
+      </label>
+
       <div class="btn-group">
         <button type="submit" name="action" value="reject" class="btn btn-reject">Reject</button>
         <button type="submit" name="action" value="approve" class="btn btn-approve">Approve Desktop</button>
@@ -1128,8 +1255,8 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
 </html>`;
 }
 
-// 3. Sessions Dashboard HTML (View & Revoke Active Sessions)
-function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
+// 3. Sessions Dashboard HTML with In-App QR Scanner
+function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
   const sessionsRows = activeSessionsList.map((s) => {
     const elapsedMinutes = Math.floor((Date.now() - s.createdAt) / 60000);
     const timeLabel = elapsedMinutes < 1 ? 'Just now' : `${elapsedMinutes}m ago`;
@@ -1137,12 +1264,23 @@ function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
     return `
       <div class="session-card">
         <div class="session-info">
-          <div class="session-name">${s.friendlyDevice || 'Desktop Browser'}</div>
+          <div class="session-header">
+            <span class="session-name">${s.friendlyDevice || 'Desktop Browser'}</span>
+            ${s.isTrusted
+              ? `<span class="badge-trusted">
+                   <svg style="width: 12px; height: 12px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                   </svg>
+                   Trusted &bull; Permanent
+                 </span>`
+              : `<span class="badge-temp">Temporary</span>`
+            }
+          </div>
           <div class="session-sub">${s.ip} &bull; Started ${timeLabel}</div>
         </div>
         <form method="POST" action="/auth/sessions/revoke">
           <input type="hidden" name="sessionId" value="${s.id}">
-          <button type="submit" class="btn-revoke">Log Out</button>
+          <button type="submit" class="btn-revoke" title="Revoke access">Revoke</button>
         </form>
       </div>
     `;
@@ -1156,7 +1294,8 @@ function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
   <title>Active Sessions - Pingvin Share Gateway</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="/auth/assets/jsqr.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1176,6 +1315,27 @@ function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
       padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);
     }
     .btn-logout:hover { color: #f87171; border-color: rgba(248, 113, 113, 0.4); }
+
+    /* Scan QR Button */
+    .btn-scan-main {
+      width: 100%; padding: 0.95rem 1.25rem;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff; border: none; border-radius: 16px;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 0.65rem;
+      box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4);
+      margin-bottom: 1.75rem; transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-scan-main:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 30px -5px rgba(2, 132, 199, 0.5);
+    }
+
+    .notice {
+      background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981;
+      color: #a7f3d0; padding: 0.75rem 1rem; border-radius: 12px;
+      font-size: 0.875rem; margin-bottom: 1.25rem;
+    }
     .session-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem; }
     .session-card {
       background: rgba(15, 23, 42, 0.8);
@@ -1184,8 +1344,21 @@ function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
       display: flex; justify-content: space-between; align-items: center;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
-    .session-name { font-weight: 600; font-size: 0.95rem; color: #ffffff; margin-bottom: 0.2rem; }
+    .session-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; flex-wrap: wrap; }
+    .session-name { font-weight: 600; font-size: 0.95rem; color: #ffffff; }
     .session-sub { font-size: 0.8rem; color: #94a3b8; }
+
+    .badge-trusted {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399; font-size: 0.725rem; font-weight: 700;
+      padding: 0.15rem 0.5rem; border-radius: 6px;
+    }
+    .badge-temp {
+      background: rgba(148, 163, 184, 0.12); color: #94a3b8;
+      font-size: 0.725rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 6px;
+    }
+
     .btn-revoke {
       background: rgba(239, 68, 68, 0.15); color: #f87171;
       border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 10px;
@@ -1193,6 +1366,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
       cursor: pointer; transition: background 0.2s;
     }
     .btn-revoke:hover { background: rgba(239, 68, 68, 0.3); }
+
     .empty-state {
       background: rgba(15, 23, 42, 0.6); border: 1px dashed rgba(255, 255, 255, 0.15);
       border-radius: 16px; padding: 2.5rem 1rem; text-align: center; color: #94a3b8;
@@ -1203,19 +1377,72 @@ function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
       cursor: pointer; text-decoration: underline;
     }
     .btn-revoke-all:hover { color: #ef4444; }
-    .notice {
-      background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981;
-      color: #a7f3d0; padding: 0.75rem 1rem; border-radius: 12px;
-      font-size: 0.875rem; margin-bottom: 1.25rem;
+
+    /* In-App Camera QR Scanner Modal Overlay */
+    .scanner-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.95);
+      z-index: 9999; display: none; flex-direction: column;
+      align-items: center; justify-content: center; padding: 1.5rem;
+    }
+    .scanner-overlay.active { display: flex; }
+    .scanner-header {
+      width: 100%; max-width: 420px; display: flex;
+      justify-content: space-between; align-items: center; margin-bottom: 1.5rem;
+    }
+    .scanner-title { font-size: 1.25rem; font-weight: 700; color: #ffffff; }
+    .btn-close-scanner {
+      background: rgba(255, 255, 255, 0.1); border: none; color: #ffffff;
+      width: 40px; height: 40px; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; cursor: pointer;
+    }
+    .btn-close-scanner:hover { background: rgba(255, 255, 255, 0.2); }
+
+    .scanner-viewfinder {
+      position: relative; width: 300px; height: 300px;
+      border-radius: 24px; overflow: hidden; background: #000000;
+      box-shadow: 0 0 30px rgba(2, 132, 199, 0.3);
+    }
+    .scanner-video { width: 100%; height: 100%; object-fit: cover; }
+    .scanner-laser {
+      position: absolute; top: 0; left: 0; width: 100%; height: 3px;
+      background: linear-gradient(90deg, transparent, #38bdf8, #0284c7, transparent);
+      box-shadow: 0 0 15px #38bdf8;
+      animation: laser 2.2s infinite ease-in-out;
+    }
+    @keyframes laser {
+      0% { top: 5%; } 50% { top: 95%; } 100% { top: 5%; }
+    }
+    .scanner-corners {
+      position: absolute; inset: 16px; pointer-events: none;
+      border: 2px dashed rgba(56, 189, 248, 0.6); border-radius: 16px;
+    }
+    .scanner-tip {
+      margin-top: 1.5rem; font-size: 0.9rem; color: #cbd5e1; text-align: center;
+      max-width: 320px; line-height: 1.4;
+    }
+    .scanner-status {
+      margin-top: 0.75rem; font-size: 0.85rem; color: #38bdf8; font-weight: 600;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="top-bar">
-      <h1>Active Sessions</h1>
-      <a href="/auth/approver/logout" class="btn-logout">Approver Sign Out</a>
+      <h1>Session Gateway</h1>
+      <a href="/auth/approver/logout" class="btn-logout">Sign Out</a>
     </div>
+
+    ${notice ? `<div class="notice">${notice}</div>` : ''}
+
+    <!-- In-App Camera QR Scanner Trigger -->
+    <button type="button" class="btn-scan-main" onclick="openScanner()">
+      <svg style="width: 24px; height: 24px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+      </svg>
+      Scan Desktop QR Code
+    </button>
+
+    <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.85rem; color: #ffffff;">Active Desktop Sessions</h2>
 
     ${activeSessionsList.length > 0 ? `
       <div class="session-list">
@@ -1224,16 +1451,117 @@ function renderSessionsDashboardHtml({ activeSessionsList = [] }) {
       <form method="POST" action="/auth/sessions/revoke" class="revoke-all-form">
         <input type="hidden" name="all" value="true">
         <button type="submit" class="btn-revoke-all" onclick="return confirm('Revoke all authenticated desktop sessions?');">
-          Log Out All Active Sessions
+          Revoke All Active Sessions
         </button>
       </form>
     ` : `
       <div class="empty-state">
         <p>No active desktop sessions.</p>
-        <p style="font-size: 0.8rem; margin-top: 0.4rem;">Scan the QR code on a desktop to authorize a session.</p>
+        <p style="font-size: 0.8rem; margin-top: 0.4rem;">Tap "Scan Desktop QR Code" above to authorize a new computer.</p>
       </div>
     `}
   </div>
+
+  <!-- In-App Scanner Modal -->
+  <div class="scanner-overlay" id="scannerModal">
+    <div class="scanner-header">
+      <div class="scanner-title">Scan QR Code</div>
+      <button class="btn-close-scanner" onclick="closeScanner()" aria-label="Close">
+        <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="scanner-viewfinder">
+      <video id="scannerVideo" class="scanner-video" playsinline muted autoplay></video>
+      <div class="scanner-laser"></div>
+      <div class="scanner-corners"></div>
+      <canvas id="scannerCanvas" style="display: none;"></canvas>
+    </div>
+
+    <p class="scanner-tip">Point your phone camera directly at the QR code on your computer screen.</p>
+    <div class="scanner-status" id="scannerStatus">Starting camera...</div>
+  </div>
+
+  <script>
+    let scannerStream = null;
+    let scanAnimFrame = null;
+    const scannerModal = document.getElementById('scannerModal');
+    const scannerVideo = document.getElementById('scannerVideo');
+    const scannerCanvas = document.getElementById('scannerCanvas');
+    const scannerStatus = document.getElementById('scannerStatus');
+    const canvasCtx = scannerCanvas.getContext('2d');
+
+    async function openScanner() {
+      scannerModal.classList.add('active');
+      scannerStatus.textContent = 'Initializing camera...';
+
+      try {
+        scannerStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } }
+        });
+        scannerVideo.srcObject = scannerStream;
+        await scannerVideo.play();
+        scannerStatus.textContent = 'Scanning for QR code...';
+        scanFrame();
+      } catch (err) {
+        console.error('Camera error:', err);
+        scannerStatus.innerHTML = '<span style="color: #ef4444;">Camera permission denied or camera unavailable.</span>';
+      }
+    }
+
+    function closeScanner() {
+      if (scannerStream) {
+        scannerStream.getTracks().forEach(t => t.stop());
+        scannerStream = null;
+      }
+      if (scanAnimFrame) {
+        cancelAnimationFrame(scanAnimFrame);
+        scanAnimFrame = null;
+      }
+      scannerModal.classList.remove('active');
+    }
+
+    function scanFrame() {
+      if (!scannerModal.classList.contains('active')) return;
+
+      if (scannerVideo.readyState === scannerVideo.HAVE_ENOUGH_DATA) {
+        scannerCanvas.width = scannerVideo.videoWidth;
+        scannerCanvas.height = scannerVideo.videoHeight;
+        canvasCtx.drawImage(scannerVideo, 0, 0, scannerCanvas.width, scannerCanvas.height);
+
+        const imgData = canvasCtx.getImageData(0, 0, scannerCanvas.width, scannerCanvas.height);
+
+        // Scan via jsQR
+        if (typeof jsQR !== 'undefined') {
+          const code = jsQR(imgData.data, imgData.width, imgData.height, {
+            inversionAttempts: 'dontInvert',
+          });
+
+          if (code && code.data) {
+            handleDecodedQr(code.data);
+            return;
+          }
+        }
+      }
+
+      scanAnimFrame = requestAnimationFrame(scanFrame);
+    }
+
+    function handleDecodedQr(url) {
+      if (url.includes('/auth/qr-approve')) {
+        scannerStatus.innerHTML = '<span style="color: #10b981; font-weight: 700;">QR Detected! Redirecting to authorization...</span>';
+        if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+        setTimeout(() => {
+          window.location.href = url;
+        }, 300);
+      } else {
+        scannerStatus.textContent = 'Non-authorization QR code detected.';
+        scanAnimFrame = requestAnimationFrame(scanFrame);
+      }
+    }
+  </script>
 </body>
 </html>`;
 }
@@ -1306,6 +1634,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
 server.listen(PORT, HOST, () => {
   console.log(`[auth-gateway] Server running on http://${HOST}:${PORT}`);
   console.log(`[auth-gateway] Public URL: ${BASE_URL}`);
+  console.log(`[auth-gateway] Data directory: ${DATA_DIR}`);
   console.log(`[auth-gateway] Session cookie: ${AUTH_COOKIE_NAME}`);
   console.log(`[auth-gateway] Approver cookie: ${APPROVER_COOKIE_NAME}`);
   console.log(`[auth-gateway] Target downstream app: ${TARGET_APP_URL}`);
