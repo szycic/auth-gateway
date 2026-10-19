@@ -1349,17 +1349,6 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
       padding: 0.25rem; border-radius: 6px; transition: color 0.2s;
     }
     .btn-toggle-pw:hover { color: #38bdf8; }
-    .pw-options {
-      display: flex; align-items: center; justify-content: flex-end;
-      margin-top: 0.5rem; margin-bottom: 1.25rem;
-    }
-    .pw-options label {
-      display: inline-flex; align-items: center; gap: 0.45rem;
-      font-size: 0.8rem; color: #94a3b8; cursor: pointer; user-select: none; margin-bottom: 0;
-    }
-    .pw-options input[type="checkbox"] {
-      width: 15px; height: 15px; accent-color: #0284c7; cursor: pointer;
-    }
     .btn {
       width: 100%; padding: 0.85rem 1.25rem;
       background: #0284c7; color: #ffffff; font-weight: 600;
@@ -1388,7 +1377,7 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
 
     <form method="POST" action="/auth/approver/login">
       <input type="hidden" name="returnTo" value="${returnTo}">
-      <div class="form-group" style="margin-bottom: 0.25rem;">
+      <div class="form-group">
         <label for="password">Approver Password</label>
         <div class="password-wrapper">
           <input type="password" id="password" name="password" required autofocus placeholder="Enter password...">
@@ -1404,40 +1393,23 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
         </div>
       </div>
 
-      <div class="pw-options">
-        <label>
-          <input type="checkbox" id="showPwCheckbox" onchange="togglePasswordCheckbox(this)">
-          Show password
-        </label>
-      </div>
-
       <button type="submit" class="btn">Sign In as Approver</button>
     </form>
   </div>
 
   <script>
-    function updatePasswordVisibility(isVisible) {
+    function togglePasswordVisibility() {
       const input = document.getElementById('password');
       const eyeIcon = document.getElementById('eyeIcon');
       const eyeOffIcon = document.getElementById('eyeOffIcon');
       const btn = document.getElementById('togglePwBtn');
-      const checkbox = document.getElementById('showPwCheckbox');
+      const isVisible = input.type === 'password';
 
       input.type = isVisible ? 'text' : 'password';
       eyeIcon.style.display = isVisible ? 'none' : 'block';
       eyeOffIcon.style.display = isVisible ? 'block' : 'none';
       btn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
       btn.setAttribute('title', isVisible ? 'Hide password' : 'Show password');
-      if (checkbox) checkbox.checked = isVisible;
-    }
-
-    function togglePasswordVisibility() {
-      const input = document.getElementById('password');
-      updatePasswordVisibility(input.type === 'password');
-    }
-
-    function togglePasswordCheckbox(cb) {
-      updatePasswordVisibility(cb.checked);
     }
   </script>
 </body>
