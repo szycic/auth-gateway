@@ -1019,10 +1019,6 @@ app.get('/login', (req, res) => {
       <span id="statusText">Awaiting approver scan (<span id="timerCount">120</span>s)</span>
     </div>
 
-    <div>
-      <a href="/auth/approver/login" class="approver-link">Approver Portal &bull; Manage Sessions</a>
-    </div>
-
     <div class="footer">
       Protected Gateway &bull; szycic.com
     </div>
@@ -1038,21 +1034,23 @@ app.get('/login', (req, res) => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     const expiredOverlay = document.getElementById('expiredOverlay');
     const statusText = document.getElementById('statusText');
-    const timerCount = document.getElementById('timerCount');
     const mainCard = document.getElementById('mainCard');
 
     function startTimer(durationMs) {
       clearInterval(timerInterval);
       secondsLeft = Math.floor(durationMs / 1000);
-      timerCount.textContent = secondsLeft;
+      statusText.innerHTML = 'Awaiting approver scan (<span id="timerCount">' + secondsLeft + '</span>s)';
 
       timerInterval = setInterval(() => {
         secondsLeft--;
+        const countSpan = document.getElementById('timerCount');
+        if (countSpan) {
+          countSpan.textContent = secondsLeft;
+        }
+
         if (secondsLeft <= 0) {
           clearInterval(timerInterval);
           onSessionExpired();
-        } else {
-          timerCount.textContent = secondsLeft;
         }
       }, 1000);
     }
@@ -1080,7 +1078,6 @@ app.get('/login', (req, res) => {
         loadingOverlay.classList.remove('active');
 
         startTimer(data.ttlMs || 120000);
-        statusText.innerHTML = 'Awaiting approver scan (<span id="timerCount">' + secondsLeft + '</span>s)';
       } catch (err) {
         console.error(err);
         statusText.textContent = 'Failed to load QR code';
