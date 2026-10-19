@@ -109,6 +109,37 @@ if (activeHashOnBoot) {
   console.warn('*******************************************************************\n');
 }
 
+let currentPasswordHash = activeHashOnBoot;
+
+function syncPasswordChanges() {
+  const latestHash = getApproverPasswordHash();
+  if (latestHash !== currentPasswordHash) {
+    console.log('[auth-gateway] Detected approver password change.');
+    currentPasswordHash = latestHash;
+    const count = approverSessions.size;
+    if (count > 0) {
+      approverSessions.clear();
+      savePersistedSessions();
+      console.log(`[auth-gateway] Invalidated all ${count} approver session(s) due to password change.`);
+    }
+  }
+}
+
+// Watch password.json / DATA_DIR for password updates
+try {
+  if (fs.existsSync(PASSWORD_FILE)) {
+    fs.watchFile(PASSWORD_FILE, { interval: 1000 }, syncPasswordChanges);
+  } else if (fs.existsSync(DATA_DIR)) {
+    fs.watch(DATA_DIR, (eventType, filename) => {
+      if (filename === 'password.json') {
+        syncPasswordChanges();
+      }
+    });
+  }
+} catch (e) {
+  setInterval(syncPasswordChanges, 3000).unref();
+}
+
 // Rate Limiting for Approver Login (Anti-Brute-Force)
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes lockout
@@ -235,6 +266,13 @@ function isApprover(req) {
   const session = approverSessions.get(token);
   if (!session) return false;
   if (session.expiresAt && Date.now() > session.expiresAt) {
+    approverSessions.delete(token);
+    savePersistedSessions();
+    return false;
+  }
+  const currentHash = getApproverPasswordHash();
+  if (!currentHash || (session.passwordHash && session.passwordHash !== currentHash)) {
+    console.log('[auth-gateway] Invalidating approver session due to password change/mismatch.');
     approverSessions.delete(token);
     savePersistedSessions();
     return false;
@@ -754,6 +792,7 @@ app.post('/auth/approver/login', (req, res) => {
     token: approverToken,
     createdAt: Date.now(),
     expiresAt: Date.now() + maxAgeMs,
+    passwordHash: currentHash,
     ip: req.ip || req.headers['x-forwarded-for'],
     userAgent: req.headers['user-agent'],
   });
