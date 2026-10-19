@@ -33,19 +33,19 @@ share.szycic.com {
 		reverse_proxy share-app:3000
 	}
 
-	# 3. Public Share Download and Reverse Share Routes (bypasses auth-gateway)
-	# Direct share download links (e.g. /s/XO8uWmX2 or /share/XO8uWmX2)
+	# 3. Public Share Download and Reverse Share Routes
+	# Routed through auth-gateway to inject client-side navigation enforcement
+	# so navigating away to protected routes immediately triggers authentication
 	handle /s/* {
-		reverse_proxy share-app:3000
+		reverse_proxy auth-gateway:3000
 	}
 
 	handle /share/* {
-		reverse_proxy share-app:3000
+		reverse_proxy auth-gateway:3000
 	}
 
-	# Reverse share upload links (e.g. /upload/c0sLiMFi)
 	handle /upload/* {
-		reverse_proxy share-app:3000
+		reverse_proxy auth-gateway:3000
 	}
 
 	# Next.js client-side route data for public shares & reverse shares
