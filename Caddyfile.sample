@@ -131,7 +131,7 @@ tools.example.com {
 				error 401
 			}
 		}
-		reverse_proxy it-tools:80
+		reverse_proxy auth-gateway:3000
 	}
 
 	# 3. Intelligent handling of 401 Unauthorized errors
@@ -171,13 +171,7 @@ garden.example.com {
 				error 401
 			}
 		}
-		reverse_proxy garden:8080 {
-			@notFound status 404
-			handle_response @notFound {
-				rewrite * /404.html
-				reverse_proxy garden:8080
-			}
-		}
+		reverse_proxy auth-gateway:3000
 	}
 
 	# 4. Intelligent handling of 401 Unauthorized errors

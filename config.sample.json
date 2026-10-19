@@ -23,6 +23,7 @@
       "name": "Pingvin Share",
       "subtitle": "Secure file sharing & storage portal",
       "url": "https://share.example.com",
+      "upstream": "http://share-app:3000",
       "allowedRedirects": ["https://share.example.com*"]
     },
     {
@@ -30,6 +31,7 @@
       "name": "IT Tools",
       "subtitle": "Handy collection of developer utilities",
       "url": "https://tools.example.com",
+      "upstream": "http://it-tools:80",
       "allowedRedirects": ["https://tools.example.com*"]
     },
     {
@@ -37,6 +39,7 @@
       "name": "Digital Garden",
       "subtitle": "Personal knowledge base & digital garden",
       "url": "https://garden.example.com",
+      "upstream": "http://garden:8080",
       "allowedRedirects": ["https://garden.example.com*"]
     }
   ]
