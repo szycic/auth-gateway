@@ -85,7 +85,7 @@ share.szycic.com {
 				error 401
 			}
 		}
-		reverse_proxy share-app:3000
+		reverse_proxy auth-gateway:3000
 	}
 
 	# 5. Intelligent handling of 401 Unauthorized errors

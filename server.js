@@ -155,6 +155,9 @@ function loadPersistedSessions() {
       if (Array.isArray(data.activeSessions)) {
         for (const s of data.activeSessions) {
           if (!s.expiresAt || s.expiresAt > now) {
+            if (!s.id) {
+              s.id = crypto.randomUUID();
+            }
             activeSessions.set(s.token, s);
           }
         }
@@ -318,7 +321,21 @@ app.get('/sw.js', (req, res) => {
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
-    origin: BASE_URL,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      try {
+        const u = new URL(origin);
+        if (
+          origin === BASE_URL ||
+          u.hostname === 'szycic.com' ||
+          u.hostname.endsWith('.szycic.com') ||
+          u.hostname === 'localhost'
+        ) {
+          return callback(null, true);
+        }
+      } catch (e) {}
+      return callback(null, true);
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -376,7 +393,7 @@ app.get('/auth/health', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 2. Serve Assets (jsQR for in-app scanner)
+// 2. Serve Assets (jsQR for in-app scanner & auth-watchdog.js)
 // ----------------------------------------------------
 app.get('/auth/assets/jsqr.js', (req, res) => {
   const localFile = path.join(__dirname, 'node_modules/jsqr/dist/jsQR.js');
@@ -388,11 +405,171 @@ app.get('/auth/assets/jsqr.js', (req, res) => {
   return res.redirect('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
 });
 
+const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
+  if (window.__szycicWatchdogLoaded) return;
+  window.__szycicWatchdogLoaded = true;
+
+  var AUTH_URL = 'https://auth.szycic.com';
+  var isLocked = false;
+
+  function lockdown() {
+    if (isLocked) return;
+    isLocked = true;
+
+    var existing = document.getElementById('szycic-lockout-overlay');
+    if (existing) return;
+
+    var overlay = document.createElement('div');
+    overlay.id = 'szycic-lockout-overlay';
+    overlay.style.cssText = [
+      'position: fixed',
+      'top: 0',
+      'left: 0',
+      'width: 100vw',
+      'height: 100vh',
+      'background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%)',
+      'color: #f1f5f9',
+      'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      'z-index: 2147483647',
+      'display: flex',
+      'align-items: center',
+      'justify-content: center',
+      'padding: 1.5rem',
+      'box-sizing: border-box',
+      'animation: szycicFadeIn 0.25s ease-out'
+    ].join(' !important;') + ' !important;';
+
+    overlay.innerHTML = [
+      '<style>',
+      '@keyframes szycicFadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }',
+      '@keyframes szycicSpin { to { transform: rotate(360deg); } }',
+      '</style>',
+      '<div style="background: rgba(15, 23, 42, 0.94); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 24px; padding: 2.25rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); box-sizing: border-box;">',
+        '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">',
+          '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">',
+            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />',
+          '</svg>',
+        '</div>',
+        '<h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h2>',
+        '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>',
+        '<div style="width: 24px; height: 24px; border: 2.5px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: szycicSpin 0.7s linear infinite; margin: 0 auto;"></div>',
+      '</div>'
+    ].join('');
+
+    document.documentElement.appendChild(overlay);
+
+    setTimeout(function() {
+      var redirectTarget = window.location.href;
+      window.location.href = AUTH_URL + '/login?redirect=' + encodeURIComponent(redirectTarget) + '&notice=' + encodeURIComponent('Your session has been revoked.');
+    }, 1000);
+  }
+
+  function verifySession() {
+    if (isLocked) return;
+    fetch(AUTH_URL + '/auth/verify', {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store'
+    }).then(function(res) {
+      if (res.status === 401) {
+        lockdown();
+      }
+    }).catch(function() {});
+  }
+
+  setInterval(verifySession, 2000);
+
+  function initSocket() {
+    if (typeof io === 'undefined') {
+      var script = document.createElement('script');
+      script.src = AUTH_URL + '/socket.io/socket.io.js';
+      script.onload = function() {
+        connectSocket();
+      };
+      document.head.appendChild(script);
+    } else {
+      connectSocket();
+    }
+  }
+
+  function connectSocket() {
+    try {
+      var socket = io(AUTH_URL, {
+        withCredentials: true,
+        transports: ['websocket', 'polling']
+      });
+      socket.emit('register-desktop', '');
+      socket.on('session-revoked', function() {
+        verifySession();
+      });
+    } catch (e) {}
+  }
+
+  if (window.fetch) {
+    var origFetch = window.fetch;
+    window.fetch = function() {
+      return origFetch.apply(this, arguments).then(function(res) {
+        if (res.status === 401) {
+          verifySession();
+        }
+        return res;
+      });
+    };
+  }
+
+  if (window.XMLHttpRequest) {
+    var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      this._url = url;
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function() {
+      this.addEventListener('load', function() {
+        if (this.status === 401) {
+          verifySession();
+        }
+      });
+      return origSend.apply(this, arguments);
+    };
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      verifySession();
+    }
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSocket);
+  } else {
+    initSocket();
+  }
+})();`;
+
+app.get('/auth/assets/auth-watchdog.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  return res.send(AUTH_WATCHDOG_SCRIPT_CONTENT);
+});
+
 // ----------------------------------------------------
 // 3. Forward Auth Verification Endpoint
 // Caddy queries this endpoint for every protected request across all domains
 // ----------------------------------------------------
-app.get('/auth/verify', (req, res) => {
+app.all('/auth/verify', (req, res) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (isValidSession(token)) {
     const session = activeSessions.get(token);
@@ -764,13 +941,14 @@ app.post('/auth/sessions/revoke', (req, res) => {
 
   if (sessionId) {
     for (const [token, session] of activeSessions.entries()) {
-      if (session.id === sessionId) {
+      if (session.id === sessionId || session.token === sessionId || token === sessionId) {
+        const sid = session.id || sessionId;
         activeSessions.delete(token);
         savePersistedSessions();
-        io.to('session:' + sessionId).emit('session-revoked', { sessionId, token });
-        io.emit('session-revoked', { sessionId, token });
+        io.to('session:' + sid).emit('session-revoked', { sessionId: sid, token });
+        io.emit('session-revoked', { sessionId: sid, token });
         if (req.accepts('json') && !req.accepts('html')) {
-          return res.json({ success: true, sessionId, message: `Session for ${session.friendlyDevice} was revoked.` });
+          return res.json({ success: true, sessionId: sid, message: `Session for ${session.friendlyDevice} was revoked.` });
         }
         return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Session for ${session.friendlyDevice} was revoked.`));
       }
@@ -1069,6 +1247,124 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
     proxyPublicBypassRoute(req, res);
   });
 }
+
+function proxyToTargetApp(req, res) {
+  if (!TARGET_APP_URL || !TARGET_APP_URL.trim()) {
+    return res.status(502).send(renderStatusNoticeHtml({
+      title: 'Service Unavailable',
+      message: 'Downstream application is not configured.',
+      actionUrl: '/',
+      actionLabel: 'Return Home',
+      type: 'error',
+    }));
+  }
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(req.originalUrl || req.url, TARGET_APP_URL);
+  } catch (err) {
+    return res.status(400).send(renderStatusNoticeHtml({
+      title: 'Invalid Request',
+      message: 'The requested URL is invalid.',
+      actionUrl: '/',
+      actionLabel: 'Return Home',
+      type: 'error',
+    }));
+  }
+
+  const downstreamHost = req.headers.host || 'share.szycic.com';
+  const proxyHeaders = {
+    ...req.headers,
+    host: downstreamHost,
+    'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
+    'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
+  };
+
+  const isHtmlExpected = (req.headers.accept || '').includes('text/html');
+  if (isHtmlExpected && req.method === 'GET') {
+    delete proxyHeaders['accept-encoding'];
+  }
+
+  const proxyReq = http.request(
+    targetUrl,
+    {
+      method: req.method,
+      headers: proxyHeaders,
+    },
+    (proxyRes) => {
+      const contentType = proxyRes.headers['content-type'] || '';
+      const isHtml = contentType.includes('text/html');
+
+      if (isHtml && req.method === 'GET') {
+        let body = '';
+        proxyRes.setEncoding('utf8');
+        proxyRes.on('data', (chunk) => { body += chunk; });
+        proxyRes.on('end', () => {
+          const watchdogTag = '<script src="https://auth.szycic.com/auth/assets/auth-watchdog.js"></script>';
+          if (body.includes('</body>')) {
+            body = body.replace('</body>', `${watchdogTag}</body>`);
+          } else {
+            body += watchdogTag;
+          }
+          const headers = { ...proxyRes.headers };
+          delete headers['content-length'];
+          headers['content-length'] = Buffer.byteLength(body);
+          res.writeHead(proxyRes.statusCode, headers);
+          res.end(body);
+        });
+      } else {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
+      }
+    }
+  );
+
+  proxyReq.on('error', (err) => {
+    console.error('[target-app proxy error]', err.message);
+    res.status(502).send(renderStatusNoticeHtml({
+      title: 'Service Unavailable',
+      message: 'The downstream service is currently unreachable.',
+      actionUrl: '/',
+      actionLabel: 'Return Home',
+      type: 'error',
+    }));
+  });
+
+  if (req.body && Object.keys(req.body).length > 0) {
+    const ct = (req.headers['content-type'] || '').toLowerCase();
+    let bodyData;
+    if (ct.includes('application/json')) {
+      bodyData = JSON.stringify(req.body);
+    } else if (ct.includes('application/x-www-form-urlencoded')) {
+      bodyData = new URLSearchParams(req.body).toString();
+    }
+    if (bodyData) {
+      proxyReq.write(bodyData);
+    }
+    proxyReq.end();
+  } else {
+    req.pipe(proxyReq);
+  }
+}
+
+// Route requests intended for downstream target app (e.g. share.szycic.com)
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').split(':')[0].toLowerCase();
+  let authHost = 'auth.szycic.com';
+  try {
+    authHost = new URL(BASE_URL).hostname.toLowerCase();
+  } catch (e) {}
+
+  if (req.path.startsWith('/auth/') || req.path === '/login') {
+    return next();
+  }
+
+  if (TARGET_APP_URL && host && host !== authHost && host !== 'localhost') {
+    return proxyToTargetApp(req, res);
+  }
+
+  next();
+});
 
 // ----------------------------------------------------
 // 14. Central Services Portal View (`/`)
@@ -2141,6 +2437,17 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       }
     }
 
+    const socket = typeof io !== 'undefined' ? io() : null;
+    if (socket) {
+      socket.on('session-revoked', function(data) {
+        if (data && data.all) {
+          removeAllSessionCards('All sessions were revoked.');
+        } else if (data && data.sessionId) {
+          removeSessionCard(data.sessionId, 'Session was revoked.');
+        }
+      });
+    }
+
     async function handleRevoke(e, sessionId) {
       if (e) e.preventDefault();
       const btn = document.getElementById('btn-revoke-' + sessionId);
@@ -2152,12 +2459,18 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
         const res = await fetch('/auth/sessions/revoke', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ sessionId })
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(function() { return {}; });
+          throw new Error(errData.error || ('Revocation failed (' + res.status + ')'));
+        }
         const data = await res.json();
         removeSessionCard(sessionId, data.message || 'Session revoked.');
       } catch (err) {
         console.error(err);
+        alert('Could not revoke session: ' + err.message);
         if (btn) {
           btn.disabled = false;
           btn.textContent = 'Revoke';
@@ -2177,12 +2490,18 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
         const res = await fetch('/auth/sessions/revoke', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ all: true })
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(function() { return {}; });
+          throw new Error(errData.error || ('Revocation failed (' + res.status + ')'));
+        }
         const data = await res.json();
         removeAllSessionCards(data.message || 'All sessions revoked.');
       } catch (err) {
         console.error(err);
+        alert('Could not revoke all sessions: ' + err.message);
         if (btn) {
           btn.disabled = false;
           btn.textContent = 'Revoke All Active Sessions';
@@ -2351,6 +2670,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   const friendlyDevice = (session && session.friendlyDevice) || 'Current Device';
   const ip = (session && session.ip) || 'Connected';
   const sessionId = (session && session.id) || '';
+  const sessionToken = (session && session.token) || '';
 
   const servicesHtml = services.map(svc => `
     <div class="service-card">
@@ -2558,8 +2878,12 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       socket.emit('register-desktop', '${escapeHtml(sessionId)}');
 
       socket.on('session-revoked', function(data) {
-        if (data && (data.all || data.sessionId === '${escapeHtml(sessionId)}')) {
+        if (data && (data.all || data.sessionId === '${escapeHtml(sessionId)}' || (data.token && data.token === '${escapeHtml(sessionToken)}'))) {
           lockCurrentSession();
+        } else {
+          fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+            if (r.status === 401) lockCurrentSession();
+          }).catch(function() {});
         }
       });
     }
@@ -2581,14 +2905,22 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       }, 1000);
     }
 
-    // Fast heartbeat check against /auth/verify every 10 seconds as safety net
+    // Fast heartbeat check against /auth/verify every 2 seconds as safety net
     setInterval(function() {
       fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
         if (r.status === 401) {
           lockCurrentSession();
         }
       }).catch(function() {});
-    }, 10000);
+    }, 2000);
+
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+          if (r.status === 401) lockCurrentSession();
+        }).catch(function() {});
+      }
+    });
   </script>
   ${PWA_SW_SCRIPT}
 </body>
