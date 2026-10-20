@@ -2925,11 +2925,15 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
             id="pairCodeInput"
             class="pair-code-input"
             inputmode="numeric"
-            autocomplete="off"
+            autocomplete="one-time-code"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
             placeholder="•••• - ••••"
-            maxlength="11"
+            maxlength="14"
             oninput="handlePairCodeInput(this)"
-            onkeydown="if(event.key==='Escape')closePairCodeModal()"
+            onpaste="handlePairCodePaste(event)"
+            onkeydown="handlePairCodeKeydown(event)"
           />
         </div>
         <div class="pair-modal-error" id="pairCodeError" style="display: none;"></div>
@@ -3191,18 +3195,66 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       if (modal) modal.classList.remove('active');
     }
 
-    function handlePairCodeInput(el) {
-      let digits = el.value.replace(/\D/g, '').slice(0, 8);
-      if (digits.length > 4) {
-        el.value = digits.slice(0, 4) + ' - ' + digits.slice(4);
-      } else {
-        el.value = digits;
+    function handlePairCodeKeydown(e) {
+      if (e.key === 'Escape') {
+        closePairCodeModal();
+        return;
       }
+      if (e.key === '-' || e.key === ' ') {
+        e.preventDefault();
+      }
+    }
+
+    function handlePairCodePaste(e) {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+      const digits = text.replace(/\D/g, '').slice(0, 8);
+      const input = document.getElementById('pairCodeInput');
+      if (!input) return;
+
+      let formatted = '';
+      if (digits.length > 4) {
+        formatted = digits.slice(0, 4) + ' - ' + digits.slice(4);
+      } else {
+        formatted = digits;
+      }
+      input.value = formatted;
+      const end = formatted.length;
+      try { input.setSelectionRange(end, end); } catch (err) {}
+
       const errEl = document.getElementById('pairCodeError');
       if (errEl) errEl.style.display = 'none';
 
       if (digits.length === 8) {
         verifyPairCode(digits);
+      }
+    }
+
+    function handlePairCodeInput(el) {
+      const rawDigits = el.value.replace(/\D/g, '').slice(0, 8);
+      let formatted = '';
+      if (rawDigits.length > 4) {
+        formatted = rawDigits.slice(0, 4) + ' - ' + rawDigits.slice(4);
+      } else {
+        formatted = rawDigits;
+      }
+
+      el.value = formatted;
+      const endPos = formatted.length;
+      try {
+        el.setSelectionRange(endPos, endPos);
+      } catch (err) {}
+      setTimeout(() => {
+        try {
+          el.setSelectionRange(endPos, endPos);
+        } catch (err) {}
+      }, 0);
+
+      const errEl = document.getElementById('pairCodeError');
+      if (errEl) errEl.style.display = 'none';
+
+      if (rawDigits.length === 8) {
+        verifyPairCode(rawDigits);
       }
     }
 
