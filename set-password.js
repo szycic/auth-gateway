@@ -19,8 +19,8 @@ function hashPassword(password) {
 
 function savePassword(password) {
   const trimmed = password.trim();
-  if (trimmed.length < 6) {
-    console.error('\n❌ Error: Password must be at least 6 characters long.\n');
+  if (trimmed.length < 10) {
+    console.error('\n❌ Error: Password must be at least 10 characters long.\n');
     process.exit(1);
   }
 
@@ -140,12 +140,12 @@ async function main() {
   }
 
   console.log('\n=== Configure Approver Password ===');
-  console.log('Password must be at least 6 characters long.\n');
+  console.log('Password must be at least 10 characters long.\n');
 
   const password = await readSecret('Enter new approver password: ');
 
-  if (!password || password.trim().length < 6) {
-    console.error('\n❌ Error: Password must be at least 6 characters long.\n');
+  if (!password || password.trim().length < 10) {
+    console.error('\n❌ Error: Password must be at least 10 characters long.\n');
     process.exit(1);
   }
 

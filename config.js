@@ -34,11 +34,6 @@ const DEFAULT_CONFIG = {
   downstream: {
     targetUrl: process.env.TARGET_APP_URL || '',
   },
-  publicBypass: {
-    enabled: false,
-    paths: [],
-    pattern: '',
-  },
 };
 
 function loadConfigFile() {
@@ -106,10 +101,6 @@ const config = {
     ...(fileConfig.downstream || {}),
     targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
   },
-  publicBypass: {
-    ...DEFAULT_CONFIG.publicBypass,
-    ...(fileConfig.publicBypass || {}),
-  },
   dataDir: DATA_DIR,
   DATA_DIR: DATA_DIR,
   PORT: parseInt(process.env.PORT || (fileConfig.server && fileConfig.server.port) || DEFAULT_CONFIG.server.port, 10),
@@ -154,8 +145,8 @@ const config = {
     if (!redirectUrl || typeof redirectUrl !== 'string') return false;
     const trimmed = redirectUrl.trim();
 
-    // Relative path starting with single slash (not protocol-relative //)
-    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return true;
+    // Relative path starting with single slash (reject protocol-relative // and backslash bypasses /\ or /\\)
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.startsWith('/\\')) return true;
 
     try {
       const parsed = new URL(trimmed);
@@ -173,13 +164,13 @@ const config = {
         return true;
       }
 
-      // Check configured service patterns
+      // Check configured services by parsed hostname
       for (const svc of this.services) {
-        if (Array.isArray(svc.allowedRedirects)) {
-          for (const pattern of svc.allowedRedirects) {
-            if (pattern === '*' || trimmed === pattern) return true;
-            if (pattern.endsWith('*') && trimmed.startsWith(pattern.slice(0, -1))) return true;
-          }
+        if (svc && svc.url) {
+          try {
+            const targetHostname = new URL(svc.url).hostname.toLowerCase();
+            if (parsed.hostname.toLowerCase() === targetHostname) return true;
+          } catch {}
         }
       }
     } catch {
