@@ -244,12 +244,7 @@ uptime.example.com {
 
 # Dozzle Service (Protected via auth.example.com)
 dozzle.example.com {
-	# 1. Direct login redirect to central auth service
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://dozzle.example.com/ 302
-	}
-
-	# 2. Real-time streaming APIs & WebSockets (checked via forward_auth, then direct to dozzle:8080)
+	# 1. Real-time streaming APIs & WebSockets (checked via forward_auth, then direct to dozzle:8080)
 	handle /api/* {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -259,12 +254,10 @@ dozzle.example.com {
 				error 401
 			}
 		}
-		reverse_proxy dozzle:8080 {
-			flush_interval -1
-		}
+		reverse_proxy dozzle:8080
 	}
 
-	# 3. Web UI routes with auth-watchdog injection
+	# 2. Web UI routes with auth-watchdog injection
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -277,7 +270,7 @@ dozzle.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 4. Intelligent handling of 401 Unauthorized errors
+	# 3. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
