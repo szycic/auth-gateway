@@ -540,86 +540,89 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
 
   var AUTH_URL = '${BASE_URL}';
   var isLocked = false;
-  var activeEventSources = [];
-  var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-
-  function isUnauthorizedResponse(res) {
-    if (!res) return false;
-    if (res.status === 401 || res.status === 403) return true;
-    if (res.redirected) {
-      var u = res.url || '';
-      if (u.indexOf('/login') !== -1 || u.indexOf('/auth/') !== -1) return true;
-    }
-    return false;
-  }
-
-  // Intercept EventSource (used by Dozzle logs streaming) so streams can be tracked and closed on revoke
-  if (window.EventSource) {
-    var OrigEventSource = window.EventSource;
-    var PatchedEventSource = function(url, init) {
-      var es = init !== undefined ? new OrigEventSource(url, init) : new OrigEventSource(url);
-      activeEventSources.push(es);
-      es.addEventListener('error', function() {
-        if (!isLocked) verifySession();
-      });
-      return es;
-    };
-    PatchedEventSource.prototype = OrigEventSource.prototype;
-    PatchedEventSource.CONNECTING = OrigEventSource.CONNECTING !== undefined ? OrigEventSource.CONNECTING : 0;
-    PatchedEventSource.OPEN = OrigEventSource.OPEN !== undefined ? OrigEventSource.OPEN : 1;
-    PatchedEventSource.CLOSED = OrigEventSource.CLOSED !== undefined ? OrigEventSource.CLOSED : 2;
-    window.EventSource = PatchedEventSource;
-  }
 
   function lockdown() {
     if (isLocked) return;
     isLocked = true;
 
-    // Immediately abort all network activity (EventSource, active fetch, SSE)
-    try {
-      if (window.stop) window.stop();
-    } catch (e) {}
+    var existing = document.getElementById('szycic-lockout-overlay');
+    if (existing) return;
 
-    activeEventSources.forEach(function(es) {
-      try { es.close(); } catch (e) {}
-    });
-    activeEventSources = [];
+    var overlay = document.createElement('div');
+    overlay.id = 'szycic-lockout-overlay';
+    overlay.style.cssText = [
+      'position: fixed',
+      'top: 0',
+      'left: 0',
+      'width: 100vw',
+      'height: 100vh',
+      'background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%)',
+      'color: #f1f5f9',
+      'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      'z-index: 2147483647',
+      'display: flex',
+      'align-items: center',
+      'justify-content: center',
+      'padding: 1.5rem',
+      'box-sizing: border-box',
+      'animation: szycicFadeIn 0.25s ease-out'
+    ].join(' !important;') + ' !important;';
 
-    // Clear and freeze DOM immediately so container logs and background content vanish
-    try {
-      document.documentElement.innerHTML = '<head><meta charset="utf-8"><title>Session Revoked</title></head><body style="margin:0;background:#090d16;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,\\'Segoe UI\\',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;overflow:hidden;"><div style="background:rgba(15,23,42,0.96);border:1px solid rgba(239,68,68,0.45);border-radius:24px;padding:2.25rem 2rem;max-width:420px;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);"><div style="width:64px;height:64px;border-radius:50%;background:rgba(239,68,68,0.15);border:2px solid #ef4444;color:#ef4444;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.25rem;"><svg style="width:32px;height:32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div><h2 style="font-size:1.35rem;font-weight:700;margin-bottom:0.5rem;color:#ffffff;">Session Revoked</h2><p style="font-size:0.9rem;color:#94a3b8;line-height:1.5;margin-bottom:1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p></div></body>';
-    } catch (e) {}
+    overlay.innerHTML = [
+      '<style>',
+      '@keyframes szycicFadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }',
+      '@keyframes szycicSpin { to { transform: rotate(360deg); } }',
+      '</style>',
+      '<div style="background: rgba(15, 23, 42, 0.94); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 24px; padding: 2.25rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); box-sizing: border-box;">',
+        '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">',
+          '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">',
+            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />',
+          '</svg>',
+        '</div>',
+        '<h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h2>',
+        '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>',
+        '<div style="width: 24px; height: 24px; border: 2.5px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: szycicSpin 0.7s linear infinite; margin: 0 auto;"></div>',
+      '</div>'
+    ].join('');
 
-    var redirectTarget = window.location.href;
-    var loginUrl = AUTH_URL + '/login?redirect=' + encodeURIComponent(redirectTarget) + '&notice=' + encodeURIComponent('Your session has been revoked.');
-    try {
-      window.location.replace(loginUrl);
-    } catch (e) {
-      window.location.href = loginUrl;
-    }
+    document.documentElement.appendChild(overlay);
+
+    setTimeout(function() {
+      var redirectTarget = window.location.href;
+      window.location.href = AUTH_URL + '/login?redirect=' + encodeURIComponent(redirectTarget) + '&notice=' + encodeURIComponent('Your session has been revoked.');
+    }, 1000);
   }
 
   function verifySession() {
     if (isLocked) return;
-    var fetchFn = nativeFetch || window.fetch;
-    if (!fetchFn) return;
-    fetchFn(AUTH_URL + '/auth/verify', {
+    fetch(AUTH_URL + '/auth/verify', {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store'
     }).then(function(res) {
-      if (isUnauthorizedResponse(res)) {
+      if (res.status === 401) {
         lockdown();
       }
     }).catch(function() {});
   }
 
-  // Poll verify endpoint every 1 second for rapid revoking
-  setInterval(verifySession, 1000);
+  setInterval(verifySession, 2000);
+
+  function initSocket() {
+    if (typeof io === 'undefined') {
+      var script = document.createElement('script');
+      script.src = AUTH_URL + '/socket.io/socket.io.js';
+      script.onload = function() {
+        connectSocket();
+      };
+      document.head.appendChild(script);
+    } else {
+      connectSocket();
+    }
+  }
 
   function connectSocket() {
     try {
-      if (typeof io === 'undefined') return;
       var socket = io(AUTH_URL, {
         withCredentials: true,
         transports: ['websocket', 'polling']
@@ -627,26 +630,16 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
       socket.emit('register-desktop', '');
       socket.on('session-revoked', function() {
         verifySession();
-        lockdown();
       });
     } catch (e) {}
-  }
-
-  if (typeof io !== 'undefined') {
-    connectSocket();
-  } else {
-    var socketScript = document.createElement('script');
-    socketScript.src = AUTH_URL + '/socket.io/socket.io.js';
-    socketScript.onload = connectSocket;
-    (document.head || document.documentElement).appendChild(socketScript);
   }
 
   if (window.fetch) {
     var origFetch = window.fetch;
     window.fetch = function() {
       return origFetch.apply(this, arguments).then(function(res) {
-        if (isUnauthorizedResponse(res)) {
-          lockdown();
+        if (res.status === 401) {
+          verifySession();
         }
         return res;
       });
@@ -662,8 +655,8 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
     };
     XMLHttpRequest.prototype.send = function() {
       this.addEventListener('load', function() {
-        if (this.status === 401 || this.status === 403 || (this.responseURL && (this.responseURL.indexOf('/login') !== -1 || this.responseURL.indexOf('/auth/') !== -1))) {
-          lockdown();
+        if (this.status === 401) {
+          verifySession();
         }
       });
       return origSend.apply(this, arguments);
@@ -675,6 +668,12 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
       verifySession();
     }
   });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSocket);
+  } else {
+    initSocket();
+  }
 })();`;
 
 app.get('/auth/assets/auth-watchdog.js', (req, res) => {
@@ -1702,15 +1701,11 @@ function proxyToTargetApp(req, res) {
         proxyRes.setEncoding('utf8');
         proxyRes.on('data', (chunk) => { body += chunk; });
         proxyRes.on('end', () => {
-          const watchdogTags = `<script src="${BASE_URL}/socket.io/socket.io.js"></script><script src="${BASE_URL}/auth/assets/auth-watchdog.js"></script>`;
-          if (body.includes('<head>')) {
-            body = body.replace('<head>', `<head>${watchdogTags}`);
-          } else if (/<head[^>]*>/i.test(body)) {
-            body = body.replace(/(<head[^>]*>)/i, `$1${watchdogTags}`);
-          } else if (body.includes('</body>')) {
-            body = body.replace('</body>', `${watchdogTags}</body>`);
+          const watchdogTag = `<script src="${BASE_URL}/auth/assets/auth-watchdog.js"></script>`;
+          if (body.includes('</body>')) {
+            body = body.replace('</body>', `${watchdogTag}</body>`);
           } else {
-            body += watchdogTags;
+            body += watchdogTag;
           }
           const headers = { ...proxyRes.headers };
           delete headers['transfer-encoding'];
