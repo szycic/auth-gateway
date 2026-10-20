@@ -196,7 +196,16 @@ uptime.example.com {
 		redir https://auth.example.com/login?redirect=https://uptime.example.com/ 302
 	}
 
-	# 2. WebSocket traffic for Uptime Kuma (forward_auth check, then direct to kuma:3001)
+	# 2. Public Push Monitor Webhooks & Status Badges (bypasses forward auth)
+	handle /api/push/* {
+		reverse_proxy kuma:3001
+	}
+
+	handle /api/badge/* {
+		reverse_proxy kuma:3001
+	}
+
+	# 3. WebSocket traffic for Uptime Kuma (forward_auth check, then direct to kuma:3001)
 	handle /socket.io/* {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
