@@ -290,9 +290,10 @@ dozzle.example.com {
 	}
 }
 
-# Catch-all block for unmapped subdomains
-*.example.com {
+# Unused/forwarded subdomains without services
+vm.example.com {
 	respond "Not Found" 404
 }
+
 
 
