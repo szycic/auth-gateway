@@ -1,4 +1,4 @@
-const CACHE_NAME = 'szycic-auth-v2';
+const CACHE_NAME = 'szycic-auth-v3';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/icon.svg',
@@ -39,13 +39,10 @@ self.addEventListener('fetch', (event) => {
   // Dynamic auth check and session action routes: always fetch fresh from network
   const isDynamicRoute =
     url.pathname.startsWith('/auth/verify') ||
+    url.pathname.startsWith('/auth/init') ||
     url.pathname.startsWith('/auth/sessions') ||
     url.pathname.startsWith('/auth/code') ||
     url.pathname.startsWith('/auth/approve') ||
-    url.pathname.startsWith('/auth/qr-approve') ||
-    url.pathname.startsWith('/auth/qr-init') ||
-    url.pathname.startsWith('/auth/qr-session') ||
-    url.pathname.startsWith('/auth/qr-action') ||
     url.pathname.startsWith('/auth/exchange') ||
     url.pathname.startsWith('/auth/logout');
 
