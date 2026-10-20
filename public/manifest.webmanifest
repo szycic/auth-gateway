@@ -48,6 +48,18 @@
           "sizes": "192x192"
         }
       ]
+    },
+    {
+      "name": "Enter Authorization PIN",
+      "short_name": "Enter PIN",
+      "description": "Quickly enter an 8-digit desktop pairing code",
+      "url": "/auth/sessions?action=pin&source=pwa",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }
