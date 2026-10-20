@@ -65,6 +65,14 @@
       "url": "https://glances.example.com",
       "upstream": "http://glances:61208",
       "allowedRedirects": ["https://glances.example.com*"]
+    },
+    {
+      "id": "pdf",
+      "name": "Stirling PDF",
+      "subtitle": "Locally hosted PDF manipulation & conversion suite",
+      "url": "https://pdf.example.com",
+      "upstream": "http://stirling-pdf:8080",
+      "allowedRedirects": ["https://pdf.example.com*"]
     }
   ]
 }
