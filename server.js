@@ -418,12 +418,13 @@ function getCookieOptions(req, maxAgeMs) {
 
 // Helper: Auto-Mint Trusted Device Session for Approver
 function mintApproverSession(req, res) {
-  const sessionToken = crypto.randomBytes(48).toString('base64url');
-  const sessionId = crypto.randomUUID();
-  const maxAgeMs = 10 * 365 * 24 * 3600 * 1000; // 10 years permanent
+  const approverToken = req.cookies[APPROVER_COOKIE_NAME];
+  const appSession = approverToken ? approverSessions.get(approverToken) : null;
   const clientIp = getClientIp(req);
   const ua = req.headers['user-agent'] || 'Unknown';
-  const friendlyDevice = `Approver Phone (${parseUserAgent(ua)})`;
+  const friendlyDevice = (appSession && appSession.friendlyDevice)
+    ? appSession.friendlyDevice
+    : `Approver Phone (${parseUserAgent(ua)})`;
 
   const sessionObj = {
     id: sessionId,
@@ -1152,21 +1153,47 @@ app.get('/auth/logout', (req, res) => {
 // ----------------------------------------------------
 app.post('/auth/device/rename', (req, res) => {
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
-  if (!isValidSession(token)) {
+  const approverToken = req.cookies[APPROVER_COOKIE_NAME];
+  const appSession = approverToken ? approverSessions.get(approverToken) : null;
+  const isApproverUser = isApprover(req);
+
+  // If neither a valid guest session nor an approver, redirect to login
+  if (!isValidSession(token) && !isApproverUser) {
     return res.redirect('/login');
   }
 
-  const session = activeSessions.get(token);
-  if (!session) return res.redirect('/login');
-
-  const { name } = req.body;
+  const { name, sessionId } = req.body;
   const trimmed = typeof name === 'string' ? name.trim().slice(0, 50) : '';
+
+  let session = activeSessions.get(token);
+
+  // If approver and session wasn't found by cookie token, look up by sessionId or IP
+  if (!session && isApproverUser) {
+    if (sessionId) {
+      session = Array.from(activeSessions.values()).find(s => s.id === sessionId);
+    }
+    if (!session) {
+      const clientIp = getClientIp(req);
+      session = Array.from(activeSessions.values()).find(s => s.ip === clientIp && s.isTrusted);
+    }
+    if (!session) {
+      session = mintApproverSession(req, res);
+    }
+  }
+
   if (trimmed) {
-    session.friendlyDevice = trimmed;
+    if (session) {
+      session.friendlyDevice = trimmed;
+    }
+    // Also save friendlyDevice on the approver session so it survives token rotations & page refreshes
+    if (appSession) {
+      appSession.friendlyDevice = trimmed;
+    }
     savePersistedSessions();
   }
 
-  return res.redirect('/?notice=' + encodeURIComponent(`Device renamed to "${session.friendlyDevice}".`));
+  const displayName = trimmed || (session && session.friendlyDevice) || 'device';
+  return res.redirect('/?notice=' + encodeURIComponent(`Device renamed to "${displayName}".`));
 });
 
 // ----------------------------------------------------
@@ -1557,6 +1584,13 @@ app.get('/', (req, res) => {
     } else {
       return res.redirect('/login');
     }
+  }
+
+  // Ensure approver's custom device name is reflected in the active session
+  const approverToken = req.cookies[APPROVER_COOKIE_NAME];
+  const appSession = approverToken ? approverSessions.get(approverToken) : null;
+  if (appSession && appSession.friendlyDevice && session) {
+    session.friendlyDevice = appSession.friendlyDevice;
   }
 
   return res.send(renderPortalDashboardHtml({
@@ -3065,16 +3099,16 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
     .btn-edit-portal {
       background: none; border: none; color: #94a3b8;
       display: inline-flex; align-items: center; justify-content: center;
-      cursor: pointer; padding: 2px 4px; border-radius: 6px;
+      cursor: pointer; padding: 4px 6px; border-radius: 6px;
       transition: color 0.15s, background 0.15s;
     }
-    .btn-edit-portal:hover { color: #38bdf8; background: rgba(56, 189, 248, 0.1); }
+    .btn-edit-portal:hover { color: #38bdf8; background: rgba(56, 189, 248, 0.15); }
     .portal-rename-input {
       background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(56, 189, 248, 0.4);
-      border-radius: 8px; color: #ffffff; padding: 0.25rem 0.5rem;
-      font-size: 0.85rem; font-family: inherit; outline: none; width: 150px;
+      border-radius: 8px; color: #ffffff; padding: 0.35rem 0.6rem;
+      font-size: 0.85rem; font-family: inherit; outline: none; width: 175px;
     }
-    .portal-rename-input:focus { border-color: #38bdf8; }
+    .portal-rename-input:focus { border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25); }
     .btn-rename-save {
       background: #0284c7; color: #ffffff; border: none; border-radius: 8px;
       padding: 0.25rem 0.6rem; font-size: 0.775rem; font-weight: 600; cursor: pointer;
@@ -3144,13 +3178,14 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
         <div style="display: flex; align-items: center; gap: 0.4rem;" id="portal-title-row">
           <span class="device-title">${escapeHtml(friendlyDevice)}</span>
           <button type="button" class="btn-edit-portal" onclick="togglePortalRename()" title="Rename this device" aria-label="Rename this device">
-            <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <svg style="width: 14px; height: 14px; pointer-events: none;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
           </button>
         </div>
         <form method="POST" action="/auth/device/rename" id="portal-rename-form" style="display: none; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">
-          <input type="text" name="name" class="portal-rename-input" value="${escapeHtml(friendlyDevice)}" maxlength="40" required placeholder="Device name">
+          <input type="hidden" name="sessionId" value="${escapeHtml(sessionId)}">
+          <input type="text" name="name" class="portal-rename-input" value="${escapeHtml(friendlyDevice)}" maxlength="40" required placeholder="Device name" onkeydown="if(event.key==='Escape')togglePortalRename()">
           <button type="submit" class="btn-rename-save">Save</button>
           <button type="button" class="btn-rename-cancel" onclick="togglePortalRename()">Cancel</button>
         </form>
