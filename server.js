@@ -1012,11 +1012,7 @@ app.get('/auth/sessions', (req, res) => {
 // ----------------------------------------------------
 // 8b. Dedicated PWA Authenticator App (`/pwa`)
 // ----------------------------------------------------
-app.get('/pwa', (req, res) => {
-  return res.redirect('/pwa/');
-});
-
-app.get('/pwa/', (req, res) => {
+app.get(['/pwa', '/pwa/'], (req, res) => {
   if (!isApprover(req)) {
     const currentHash = getApproverPasswordHash();
     if (!currentHash) {
