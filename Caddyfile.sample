@@ -196,12 +196,8 @@ uptime.example.com {
 		redir https://auth.example.com/login?redirect=https://uptime.example.com/ 302
 	}
 
-	# 2. Public Push Monitor Webhooks & Status Badges (bypasses forward auth)
+	# 2. Public Push Monitor Webhooks (bypasses forward auth)
 	handle /api/push/* {
-		reverse_proxy kuma:3001
-	}
-
-	handle /api/badge/* {
 		reverse_proxy kuma:3001
 	}
 
