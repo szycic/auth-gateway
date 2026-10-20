@@ -1414,7 +1414,7 @@ app.all('/auth/*', (req, res) => {
     res.status(502).send(renderStatusNoticeHtml({
       title: 'Service Unavailable',
       message: 'The downstream service is currently unreachable.',
-      actionUrl: '/',
+      actionUrl: BASE_URL || 'https://auth.szycic.com',
       actionLabel: 'Return Home',
       type: 'error',
     }));
@@ -1540,7 +1540,7 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
       res.status(502).send(renderStatusNoticeHtml({
         title: 'Service Unavailable',
         message: 'The downstream service is currently unreachable.',
-        actionUrl: '/',
+        actionUrl: BASE_URL || 'https://auth.szycic.com',
         actionLabel: 'Return Home',
         type: 'error',
       }));
@@ -1646,7 +1646,7 @@ function proxyToTargetApp(req, res) {
     return res.status(403).send(renderStatusNoticeHtml({
       title: 'Access Restricted',
       message: `Your active session is not authorized to access ${matchedService.name}.`,
-      actionUrl: '/',
+      actionUrl: BASE_URL || 'https://auth.szycic.com',
       actionLabel: 'Return to Dashboard',
       type: 'error',
     }));
@@ -1657,7 +1657,7 @@ function proxyToTargetApp(req, res) {
     return res.status(502).send(renderStatusNoticeHtml({
       title: 'Service Unavailable',
       message: 'Downstream application is not configured.',
-      actionUrl: '/',
+      actionUrl: BASE_URL || 'https://auth.szycic.com',
       actionLabel: 'Return Home',
       type: 'error',
     }));
@@ -1670,7 +1670,7 @@ function proxyToTargetApp(req, res) {
     return res.status(400).send(renderStatusNoticeHtml({
       title: 'Invalid Request',
       message: 'The requested URL is invalid.',
-      actionUrl: '/',
+      actionUrl: BASE_URL || 'https://auth.szycic.com',
       actionLabel: 'Return Home',
       type: 'error',
     }));
@@ -1735,7 +1735,7 @@ function proxyToTargetApp(req, res) {
     res.status(502).send(renderStatusNoticeHtml({
       title: 'Service Unavailable',
       message: 'The downstream service is currently unreachable.',
-      actionUrl: '/',
+      actionUrl: BASE_URL || 'https://auth.szycic.com',
       actionLabel: 'Return Home',
       type: 'error',
     }));
