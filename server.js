@@ -538,7 +538,7 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
   if (window.__szycicWatchdogLoaded) return;
   window.__szycicWatchdogLoaded = true;
 
-  var AUTH_URL = 'https://auth.szycic.com';
+  var AUTH_URL = '${BASE_URL}';
   var isLocked = false;
 
   function lockdown() {
@@ -1508,6 +1508,12 @@ if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.p
             delete headers['transfer-encoding'];
             delete headers['content-length'];
             headers['content-length'] = Buffer.byteLength(body);
+            if (headers['content-security-policy']) {
+              headers['content-security-policy'] = relaxCspHeader(headers['content-security-policy'], BASE_URL);
+            }
+            if (headers['content-security-policy-report-only']) {
+              headers['content-security-policy-report-only'] = relaxCspHeader(headers['content-security-policy-report-only'], BASE_URL);
+            }
             res.writeHead(proxyRes.statusCode, headers);
             res.end(body);
           });
@@ -1578,6 +1584,46 @@ function getUpstreamUrlForHost(hostHeader = '') {
   return TARGET_APP_URL || 'http://share-app:3000';
 }
 
+// Helper to relax Content-Security-Policy headers so injected auth-watchdog.js can load and connect to WebSocket/verify API
+function relaxCspForWatchdog(csp, authBaseUrl = BASE_URL) {
+  if (!csp || typeof csp !== 'string') return csp;
+  let authOrigin = 'https://auth.szycic.com';
+  try {
+    authOrigin = new URL(authBaseUrl).origin;
+  } catch (e) {}
+  const wsOrigin = authOrigin.replace(/^http/, 'ws');
+
+  let updated = csp;
+
+  // 1. Allow script execution from authOrigin
+  if (/script-src-elem\s+/i.test(updated)) {
+    updated = updated.replace(/(script-src-elem\s+[^;]+)/i, `$1 ${authOrigin}`);
+  }
+  if (/script-src\s+/i.test(updated)) {
+    updated = updated.replace(/(script-src\s+[^;]+)/i, `$1 ${authOrigin}`);
+  } else if (/default-src\s+/i.test(updated)) {
+    updated = updated.replace(/(default-src\s+[^;]+)/i, `$1 ${authOrigin}`);
+  }
+
+  // 2. Allow API fetch and WebSocket connections to authOrigin and wsOrigin
+  if (/connect-src\s+/i.test(updated)) {
+    updated = updated.replace(/(connect-src\s+[^;]+)/i, `$1 ${authOrigin} ${wsOrigin}`);
+  } else {
+    updated = updated.trim();
+    if (updated.length > 0 && !updated.endsWith(';')) updated += ';';
+    updated += ` connect-src 'self' ${authOrigin} ${wsOrigin};`;
+  }
+
+  return updated;
+}
+
+function relaxCspHeader(val, authBaseUrl) {
+  if (Array.isArray(val)) {
+    return val.map((item) => relaxCspForWatchdog(item, authBaseUrl));
+  }
+  return relaxCspForWatchdog(val, authBaseUrl);
+}
+
 function proxyToTargetApp(req, res) {
   const matchedService = config.getService(req.headers.host);
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
@@ -1644,7 +1690,7 @@ function proxyToTargetApp(req, res) {
         proxyRes.setEncoding('utf8');
         proxyRes.on('data', (chunk) => { body += chunk; });
         proxyRes.on('end', () => {
-          const watchdogTag = '<script src="https://auth.szycic.com/auth/assets/auth-watchdog.js"></script>';
+          const watchdogTag = `<script src="${BASE_URL}/auth/assets/auth-watchdog.js"></script>`;
           if (body.includes('</body>')) {
             body = body.replace('</body>', `${watchdogTag}</body>`);
           } else {
@@ -1654,6 +1700,12 @@ function proxyToTargetApp(req, res) {
           delete headers['transfer-encoding'];
           delete headers['content-length'];
           headers['content-length'] = Buffer.byteLength(body);
+          if (headers['content-security-policy']) {
+            headers['content-security-policy'] = relaxCspHeader(headers['content-security-policy'], BASE_URL);
+          }
+          if (headers['content-security-policy-report-only']) {
+            headers['content-security-policy-report-only'] = relaxCspHeader(headers['content-security-policy-report-only'], BASE_URL);
+          }
           res.writeHead(proxyRes.statusCode, headers);
           res.end(body);
         });
