@@ -57,6 +57,14 @@
       "url": "https://dozzle.example.com",
       "upstream": "http://dozzle:8080",
       "allowedRedirects": ["https://dozzle.example.com*"]
+    },
+    {
+      "id": "glances",
+      "name": "Glances",
+      "subtitle": "System monitoring & performance dashboard",
+      "url": "https://glances.example.com",
+      "upstream": "http://glances:61208",
+      "allowedRedirects": ["https://glances.example.com*"]
     }
   ]
 }

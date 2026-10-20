@@ -265,10 +265,55 @@ dozzle.example.com {
 	}
 }
 
+# Glances Service (Protected via auth.example.com)
+glances.example.com {
+	# 1. REST APIs (checked via forward_auth, then direct to glances:61208)
+	handle /api/* {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy glances:61208
+	}
+
+	# 2. Web UI routes with auth-watchdog injection
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 3. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://glances.example.com"}` 401
+		}
+
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	# Security headers
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+	}
+}
+
 # Unused/forwarded subdomains without services
 vm.example.com {
 	respond "Not Found" 404
 }
-
-
-
