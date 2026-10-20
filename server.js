@@ -1010,6 +1010,11 @@ app.get('/auth/approve', (req, res) => {
     ? config.getService(session.serviceId)
     : (session.redirect ? config.getService(session.redirect) : (session.serviceName ? config.getService(session.serviceName) : null));
 
+  // Set cache prevention headers so mobile browser never serves a stale approval form
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   // Render the Approval Decision Screen on Mobile
   res.send(renderApprovalDecisionHtml({
     id,
@@ -2742,30 +2747,42 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       margin-top: 0.45rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.4;
     }
 
-    /* Target Platform Only Toggle Box */
+    /* Target Platform Only Toggle Box (Prominent on Main Card) */
     .only-platform-box {
-      background: rgba(56, 189, 248, 0.07);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 12px;
-      padding: 0.75rem 0.95rem;
-      margin-bottom: 0.75rem;
+      background: rgba(2, 132, 199, 0.08);
+      border: 1px solid rgba(2, 132, 199, 0.28);
+      border-radius: 16px;
+      padding: 1rem 1.15rem;
+      margin-bottom: 1rem;
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.85rem;
       cursor: pointer;
       user-select: none;
       transition: background 0.15s, border-color 0.15s;
     }
     .only-platform-box:hover {
-      background: rgba(56, 189, 248, 0.12);
-      border-color: rgba(56, 189, 248, 0.4);
+      background: rgba(2, 132, 199, 0.14);
+      border-color: rgba(56, 189, 248, 0.45);
+    }
+    .only-platform-box-picker {
+      flex-direction: column;
+      align-items: stretch;
+      cursor: default;
+    }
+    .only-platform-label {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      cursor: pointer;
+      width: 100%;
     }
     .only-platform-box input[type="checkbox"] {
-      width: 18px; height: 18px; accent-color: #38bdf8; cursor: pointer; flex-shrink: 0;
+      width: 20px; height: 20px; accent-color: #0284c7; cursor: pointer; flex-shrink: 0;
     }
     .only-platform-text { text-align: left; }
-    .only-platform-title { display: block; font-size: 0.85rem; font-weight: 600; color: #38bdf8; margin-bottom: 0.1rem; }
-    .only-platform-desc { display: block; font-size: 0.725rem; color: #94a3b8; line-height: 1.3; }
+    .only-platform-title { display: block; font-size: 0.925rem; font-weight: 600; color: #ffffff; margin-bottom: 0.15rem; }
+    .only-platform-desc { display: block; font-size: 0.775rem; color: #94a3b8; line-height: 1.3; }
 
     .services-header-actions {
       display: flex; align-items: center; gap: 0.75rem;
@@ -2886,6 +2903,33 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
         </div>
       </div>
 
+      <!-- Service Access Restriction Toggle (Prominent on Main Screen) -->
+      ${targetService ? `
+      <label class="only-platform-box" id="platformToggleContainer">
+        <input type="checkbox" id="onlyPlatformToggle" data-target-id="${escapeHtml(targetService.id)}" onchange="handleOnlyPlatformToggle(this, '${escapeHtml(targetService.id)}')">
+        <div class="only-platform-text">
+          <span class="only-platform-title">Grant access only to ${escapeHtml(targetService.name)}</span>
+          <span class="only-platform-desc">Lock this session exclusively to ${escapeHtml(targetService.name)} (uncheck other services).</span>
+        </div>
+      </label>
+      ` : `
+      <div class="only-platform-box only-platform-box-picker" id="platformToggleContainer">
+        <label class="only-platform-label">
+          <input type="checkbox" id="onlyPlatformToggle" onchange="handleGenericPlatformToggle(this)">
+          <div class="only-platform-text">
+            <span class="only-platform-title">Restrict to single platform</span>
+            <span class="only-platform-desc">Limit this device to one service instead of full access.</span>
+          </div>
+        </label>
+        <div id="platformPickerWrap" style="display: none; margin-top: 0.75rem; width: 100%;">
+          <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.35rem;">Select allowed platform:</label>
+          <select id="platformPickerSelect" class="adv-select" onchange="handlePlatformPickerChange(this)">
+            ${servicesList.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      `}
+
       <label class="trust-box">
         <input type="checkbox" name="trusted" id="trustedCheckbox" value="true" onchange="handleTrustChange(this)">
         <div class="trust-text">
@@ -2941,18 +2985,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
                 <button type="button" class="btn-toggle-all" onclick="toggleAllServices()">Toggle All</button>
               </div>
             </div>
-
-            ${targetService ? `
-            <label class="only-platform-box">
-              <input type="checkbox" id="onlyPlatformToggle" data-target-id="${escapeHtml(targetService.id)}" onchange="handleOnlyPlatformToggle(this, '${escapeHtml(targetService.id)}')">
-              <div class="only-platform-text">
-                <span class="only-platform-title">Grant access only to ${escapeHtml(targetService.name)}</span>
-                <span class="only-platform-desc">Lock this session exclusively to ${escapeHtml(targetService.name)}.</span>
-              </div>
-            </label>
-            ` : ''}
-
-            <div class="adv-desc">Or customize individual service permissions:</div>
+            <div class="adv-desc">Customize individual service permissions:</div>
             <div class="services-checklist">
               ${servicesChecklistHtml}
             </div>
@@ -3027,6 +3060,35 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       }
     }
 
+    function handleGenericPlatformToggle(toggle) {
+      var wrap = document.getElementById('platformPickerWrap');
+      var sel = document.getElementById('platformPickerSelect');
+      var boxes = document.querySelectorAll('.service-checkbox');
+
+      if (toggle.checked) {
+        if (wrap) wrap.style.display = 'block';
+        var selectedId = sel ? sel.value : (boxes[0] ? boxes[0].value : '');
+        boxes.forEach(function(b) {
+          b.checked = (b.value.toLowerCase() === selectedId.toLowerCase());
+        });
+      } else {
+        if (wrap) wrap.style.display = 'none';
+        boxes.forEach(function(b) {
+          b.checked = true;
+        });
+      }
+    }
+
+    function handlePlatformPickerChange(sel) {
+      var toggle = document.getElementById('onlyPlatformToggle');
+      if (!toggle || !toggle.checked) return;
+      var selectedId = sel.value;
+      var boxes = document.querySelectorAll('.service-checkbox');
+      boxes.forEach(function(b) {
+        b.checked = (b.value.toLowerCase() === selectedId.toLowerCase());
+      });
+    }
+
     function selectOnlyTargetService(targetId) {
       var toggle = document.getElementById('onlyPlatformToggle');
       if (toggle) {
@@ -3048,21 +3110,35 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       var toggle = document.getElementById('onlyPlatformToggle');
       if (!toggle) return;
       var targetId = toggle.getAttribute('data-target-id');
-      if (!targetId) return;
-
       var boxes = document.querySelectorAll('.service-checkbox');
-      var targetFound = false;
-      var anyOtherChecked = false;
 
-      boxes.forEach(function(b) {
-        if (b.value.toLowerCase() === targetId.toLowerCase()) {
-          if (b.checked) targetFound = true;
+      if (targetId) {
+        var targetFound = false;
+        var anyOtherChecked = false;
+
+        boxes.forEach(function(b) {
+          if (b.value.toLowerCase() === targetId.toLowerCase()) {
+            if (b.checked) targetFound = true;
+          } else {
+            if (b.checked) anyOtherChecked = true;
+          }
+        });
+
+        toggle.checked = targetFound && !anyOtherChecked;
+      } else {
+        var wrap = document.getElementById('platformPickerWrap');
+        var sel = document.getElementById('platformPickerSelect');
+        var checkedBoxes = Array.from(boxes).filter(function(b) { return b.checked; });
+
+        if (checkedBoxes.length === 1) {
+          toggle.checked = true;
+          if (wrap) wrap.style.display = 'block';
+          if (sel) sel.value = checkedBoxes[0].value;
         } else {
-          if (b.checked) anyOtherChecked = true;
+          toggle.checked = false;
+          if (wrap) wrap.style.display = 'none';
         }
-      });
-
-      toggle.checked = targetFound && !anyOtherChecked;
+      }
     }
 
     function toggleAllServices() {
