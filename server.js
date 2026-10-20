@@ -647,6 +647,15 @@ app.all('/auth/verify', (req, res) => {
     }).send('OK');
   }
 
+  // Seamlessly authorize master approver on protected services without forcing redirect
+  if (isApprover(req)) {
+    return res.status(200).set({
+      'X-Auth-Status': 'authenticated',
+      'X-Auth-Role': 'trusted_device',
+      'X-Auth-User': 'approver',
+    }).send('OK');
+  }
+
   return res.status(401).send('Unauthorized');
 });
 
@@ -1003,13 +1012,17 @@ app.get('/auth/sessions', (req, res) => {
 // ----------------------------------------------------
 // 8b. Dedicated PWA Authenticator App (`/pwa`)
 // ----------------------------------------------------
-app.get(['/pwa', '/pwa/'], (req, res) => {
+app.get('/pwa', (req, res) => {
+  return res.redirect('/pwa/');
+});
+
+app.get('/pwa/', (req, res) => {
   if (!isApprover(req)) {
     const currentHash = getApproverPasswordHash();
     if (!currentHash) {
       return res.status(503).send(renderApproverSetupRequiredHtml());
     }
-    return res.send(renderApproverLoginHtml({ returnTo: '/pwa', error: req.query.error || '', isPwa: true }));
+    return res.send(renderApproverLoginHtml({ returnTo: '/pwa/', error: req.query.error || '', isPwa: true }));
   }
 
   const activeSessionsList = Array.from(activeSessions.values()).sort(
@@ -1059,7 +1072,7 @@ app.post('/pwa/login', (req, res) => {
       record.lockedUntil = now + LOGIN_LOCKOUT_MS;
       failedLoginAttempts.set(clientIp, record);
       return res.status(429).send(renderApproverLoginHtml({
-        returnTo: '/pwa',
+        returnTo: '/pwa/',
         isPwa: true,
         error: 'Too many failed attempts. Account locked for 15 minutes.',
       }));
@@ -1067,7 +1080,7 @@ app.post('/pwa/login', (req, res) => {
       failedLoginAttempts.set(clientIp, record);
       const remainingAttempts = MAX_LOGIN_ATTEMPTS - record.count;
       return res.status(401).send(renderApproverLoginHtml({
-        returnTo: '/pwa',
+        returnTo: '/pwa/',
         isPwa: true,
         error: `Incorrect approver password. (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`,
       }));
@@ -1091,7 +1104,7 @@ app.post('/pwa/login', (req, res) => {
   res.cookie(APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
   mintApproverSession(req, res);
 
-  return res.redirect('/pwa');
+  return res.redirect('/pwa/');
 });
 
 // Revoke a specific session or all sessions
@@ -1606,12 +1619,14 @@ app.use((req, res, next) => {
 // ----------------------------------------------------
 function getPwaHeadTags(isPwa = false) {
   return `
-  ${isPwa ? '<link rel="manifest" href="/manifest.webmanifest">' : ''}
-  <meta name="theme-color" content="#090d16">
+  ${isPwa ? `
+  <link rel="manifest" href="/manifest.webmanifest">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.name || 'Szycic Auth')}">
+  ` : ''}
+  <meta name="theme-color" content="#090d16">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
