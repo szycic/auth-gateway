@@ -14,12 +14,7 @@ auth.szycic.com {
 
 # Pingvin Share Service (Protected via auth.szycic.com)
 share.szycic.com {
-	# 1. Direct login redirect to central auth service
-	handle /login* {
-		redir https://auth.szycic.com/login?redirect=https://share.szycic.com/ 302
-	}
-
-	# 2. Public Static Assets (bypasses forward auth)
+	# 1. Public Static Assets (bypasses forward auth)
 	handle /_next/static/* {
 		reverse_proxy share-app:3000
 	}
@@ -36,7 +31,7 @@ share.szycic.com {
 		reverse_proxy share-app:3000
 	}
 
-	# 3. Public Share Download and Reverse Share Routes
+	# 2. Public Share Download and Reverse Share Routes
 	handle /s/* {
 		reverse_proxy share-app:3000
 	}
@@ -75,7 +70,7 @@ share.szycic.com {
 		reverse_proxy share-app:3000
 	}
 
-	# 4. Protected Routes (Forward Auth required for /, /account, /admin, etc.)
+	# 3. Protected Routes (Forward Auth required for /, /account, /admin, etc.)
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -88,7 +83,7 @@ share.szycic.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 5. Intelligent handling of 401 Unauthorized errors
+	# 4. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
 		@nextData expression {http.error.status_code} == 401 && (path('/_next/data/*') || header({'x-nextjs-data': '*'}))
 		handle @nextData {
@@ -116,12 +111,7 @@ share.szycic.com {
 
 # IT Tools Service (Protected via auth.example.com)
 tools.example.com {
-	# 1. Direct login redirect to central auth service
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://tools.example.com/ 302
-	}
-
-	# 2. Forward Auth Protected Routes
+	# 1. Forward Auth Protected Routes
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -134,7 +124,7 @@ tools.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 3. Intelligent handling of 401 Unauthorized errors
+	# 2. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
 		handle {
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
@@ -152,16 +142,11 @@ tools.example.com {
 garden.example.com {
 	encode gzip
 
-	# 1. Direct login redirect to central auth service
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://garden.example.com/ 302
-	}
-
-	# 2. Immutable Cache for Quartz Hashed Assets
+	# 1. Immutable Cache for Quartz Hashed Assets
 	@hashed path_regexp hashed -[0-9a-f]{8}\.(css|js)$
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
 
-	# 3. Forward Auth Protected Routes
+	# 2. Forward Auth Protected Routes
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -174,7 +159,7 @@ garden.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 4. Intelligent handling of 401 Unauthorized errors
+	# 3. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
@@ -191,17 +176,12 @@ garden.example.com {
 
 # Uptime Kuma Service (Protected via auth.example.com)
 uptime.example.com {
-	# 1. Direct login redirect to central auth service
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://uptime.example.com/ 302
-	}
-
-	# 2. Public Push Monitor Webhooks (bypasses forward auth)
+	# 1. Public Push Monitor Webhooks (bypasses forward auth)
 	handle /api/push/* {
 		reverse_proxy kuma:3001
 	}
 
-	# 3. WebSocket traffic for Uptime Kuma (forward_auth check, then direct to kuma:3001)
+	# 2. WebSocket traffic for Uptime Kuma (forward_auth check, then direct to kuma:3001)
 	handle /socket.io/* {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -227,7 +207,7 @@ uptime.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 3. Intelligent handling of 401 Unauthorized errors
+	# 4. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
