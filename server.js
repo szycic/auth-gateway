@@ -3062,29 +3062,6 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25);
     }
 
-    .btn-edit-portal {
-      background: none; border: none; color: #94a3b8;
-      display: inline-flex; align-items: center; justify-content: center;
-      cursor: pointer; padding: 2px 4px; border-radius: 6px;
-      transition: color 0.15s, background 0.15s;
-    }
-    .btn-edit-portal:hover { color: #38bdf8; background: rgba(56, 189, 248, 0.1); }
-    .portal-rename-input {
-      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(56, 189, 248, 0.4);
-      border-radius: 8px; color: #ffffff; padding: 0.25rem 0.5rem;
-      font-size: 0.85rem; font-family: inherit; outline: none; width: 150px;
-    }
-    .portal-rename-input:focus { border-color: #38bdf8; }
-    .btn-rename-save {
-      background: #0284c7; color: #ffffff; border: none; border-radius: 8px;
-      padding: 0.25rem 0.6rem; font-size: 0.775rem; font-weight: 600; cursor: pointer;
-    }
-    .btn-rename-save:hover { background: #0369a1; }
-    .btn-rename-cancel {
-      background: rgba(255, 255, 255, 0.1); color: #94a3b8; border: none; border-radius: 8px;
-      padding: 0.25rem 0.5rem; font-size: 0.775rem; cursor: pointer;
-    }
-    .btn-rename-cancel:hover { color: #ffffff; background: rgba(255, 255, 255, 0.18); }
 
     .section-title {
       font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
@@ -3140,20 +3117,8 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
     ${notice ? `<div style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #a7f3d0; padding: 0.65rem 0.9rem; border-radius: 12px; font-size: 0.85rem; margin-bottom: 1.25rem;">${escapeHtml(notice)}</div>` : ''}
 
     <div class="session-badge">
-      <div style="flex: 1; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 0.4rem;" id="portal-title-row">
-          <span class="device-title">${escapeHtml(friendlyDevice)}</span>
-          <button type="button" class="btn-edit-portal" onclick="togglePortalRename()" title="Rename this device" aria-label="Rename this device">
-            <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-          </button>
-        </div>
-        <form method="POST" action="/auth/device/rename" id="portal-rename-form" style="display: none; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">
-          <input type="text" name="name" class="portal-rename-input" value="${escapeHtml(friendlyDevice)}" maxlength="40" required placeholder="Device name">
-          <button type="submit" class="btn-rename-save">Save</button>
-          <button type="button" class="btn-rename-cancel" onclick="togglePortalRename()">Cancel</button>
-        </form>
+      <div>
+        <div class="device-title">${escapeHtml(friendlyDevice)}</div>
         <div class="device-sub">${escapeHtml(ip)}</div>
       </div>
       <span class="status-tag ${isTrusted ? 'status-trusted' : 'status-guest'}">
@@ -3172,23 +3137,9 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
     </div>
   </div>
 
-  <script>
-    function togglePortalRename() {
-      const form = document.getElementById('portal-rename-form');
-      const titleRow = document.getElementById('portal-title-row');
-      if (!form) return;
-      const isHidden = form.style.display === 'none';
-      form.style.display = isHidden ? 'flex' : 'none';
-      if (titleRow) titleRow.style.display = isHidden ? 'none' : 'flex';
-      if (isHidden) {
-        const input = form.querySelector('input[name="name"]');
-        if (input) {
-          input.focus();
-          input.select();
-        }
-      }
-    }
 
+
+  <script>
     const socket = typeof io !== 'undefined' ? io() : null;
     if (socket) {
       socket.emit('register-desktop', '${escapeHtml(sessionId)}');
