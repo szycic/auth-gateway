@@ -708,31 +708,30 @@ app.get('/auth/qr-init', async (req, res) => {
 // 5. Approver Login Routes
 // ----------------------------------------------------
 app.get(['/auth/approver', '/auth/approver/'], (req, res) => {
-  const returnTo = req.query.returnTo || '/auth/sessions';
+  const returnTo = req.query.returnTo || req.query.redirect || '/';
   if (isApprover(req)) {
-    return res.redirect(returnTo);
+    return res.redirect(config.normalizeRedirect(returnTo, '/'));
   }
-  const target = '/auth/approver/login' + (req.query.returnTo ? `?returnTo=${encodeURIComponent(req.query.returnTo)}` : '');
+  const target = '/auth/approver/login' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : '');
   return res.redirect(target);
 });
 
 app.get('/auth/approver/login', (req, res) => {
-  const returnTo = req.query.returnTo || '/auth/sessions';
+  const returnTo = req.query.returnTo || req.query.redirect || '/';
   if (isApprover(req)) {
-    return res.redirect(returnTo);
+    return res.redirect(config.normalizeRedirect(returnTo, '/'));
   }
   const currentHash = getApproverPasswordHash();
   if (!currentHash) {
     return res.status(503).send(renderApproverSetupRequiredHtml());
   }
-  res.send(renderApproverLoginHtml({ returnTo }));
+  res.send(renderApproverLoginHtml({ returnTo, isPwa: false }));
 });
 
 app.post('/auth/approver/login', (req, res) => {
   const { password, returnTo } = req.body;
-  const redirectTarget = returnTo && typeof returnTo === 'string' && returnTo.startsWith('/auth/')
-    ? returnTo
-    : '/auth/sessions';
+  const rawTarget = returnTo || req.query.returnTo || req.query.redirect || '';
+  const redirectTarget = config.normalizeRedirect(rawTarget, '/');
 
   const currentHash = getApproverPasswordHash();
   if (!currentHash) {
@@ -983,7 +982,102 @@ app.get('/auth/sessions', (req, res) => {
   res.send(renderSessionsDashboardHtml({
     activeSessionsList: Array.from(activeSessions.values()),
     notice: req.query.notice,
+    isPwa: false,
   }));
+});
+
+// ----------------------------------------------------
+// 8b. Dedicated PWA Authenticator App (`/pwa`)
+// ----------------------------------------------------
+app.get(['/pwa', '/pwa/'], (req, res) => {
+  if (!isApprover(req)) {
+    const currentHash = getApproverPasswordHash();
+    if (!currentHash) {
+      return res.status(503).send(renderApproverSetupRequiredHtml());
+    }
+    return res.send(renderApproverLoginHtml({ returnTo: '/pwa', error: req.query.error || '', isPwa: true }));
+  }
+
+  const activeSessionsList = Array.from(activeSessions.values()).sort(
+    (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
+  );
+
+  return res.send(renderSessionsDashboardHtml({
+    activeSessionsList,
+    notice: req.query.notice || '',
+    isPwa: true,
+  }));
+});
+
+app.post('/pwa/login', (req, res) => {
+  const { password } = req.body;
+  const currentHash = getApproverPasswordHash();
+  if (!currentHash) {
+    return res.status(503).send(renderApproverSetupRequiredHtml());
+  }
+
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+  const attemptRecord = failedLoginAttempts.get(clientIp);
+
+  if (attemptRecord && attemptRecord.lockedUntil && attemptRecord.lockedUntil > now) {
+    const remainingMins = Math.ceil((attemptRecord.lockedUntil - now) / 60000);
+    return res.status(429).send(renderApproverLoginHtml({
+      returnTo: '/pwa',
+      isPwa: true,
+      error: `Too many failed attempts. Locked out for ${remainingMins} more minute(s).`,
+    }));
+  }
+
+  if (!password || typeof password !== 'string') {
+    return res.status(400).send(renderApproverLoginHtml({
+      returnTo: '/pwa',
+      isPwa: true,
+      error: 'Please enter the approver password.',
+    }));
+  }
+
+  const isValid = verifyPassword(password, currentHash);
+  if (!isValid) {
+    const record = attemptRecord || { count: 0, firstFailedAt: now, lockedUntil: null };
+    record.count += 1;
+    if (record.count >= MAX_LOGIN_ATTEMPTS) {
+      record.lockedUntil = now + LOGIN_LOCKOUT_MS;
+      failedLoginAttempts.set(clientIp, record);
+      return res.status(429).send(renderApproverLoginHtml({
+        returnTo: '/pwa',
+        isPwa: true,
+        error: 'Too many failed attempts. Account locked for 15 minutes.',
+      }));
+    } else {
+      failedLoginAttempts.set(clientIp, record);
+      const remainingAttempts = MAX_LOGIN_ATTEMPTS - record.count;
+      return res.status(401).send(renderApproverLoginHtml({
+        returnTo: '/pwa',
+        isPwa: true,
+        error: `Incorrect approver password. (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`,
+      }));
+    }
+  }
+
+  failedLoginAttempts.delete(clientIp);
+
+  const approverToken = crypto.randomBytes(48).toString('base64url');
+  const maxAgeMs = APPROVER_TTL_DAYS * 24 * 3600 * 1000;
+  approverSessions.set(approverToken, {
+    token: approverToken,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + maxAgeMs,
+    passwordHash: currentHash,
+    ip: req.ip || req.headers['x-forwarded-for'],
+    userAgent: req.headers['user-agent'],
+  });
+
+  savePersistedSessions();
+  res.cookie(APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
+  mintApproverSession(req, res);
+
+  return res.redirect('/pwa');
 });
 
 // Revoke a specific session or all sessions
@@ -1490,9 +1584,9 @@ app.use((req, res, next) => {
 // ----------------------------------------------------
 // Shared PWA Head Tags & Service Worker Script
 // ----------------------------------------------------
-function getPwaHeadTags() {
+function getPwaHeadTags(isPwa = false) {
   return `
-  <link rel="manifest" href="/manifest.webmanifest">
+  ${isPwa ? '<link rel="manifest" href="/manifest.webmanifest">' : ''}
   <meta name="theme-color" content="#090d16">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1504,16 +1598,21 @@ function getPwaHeadTags() {
   <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">`;
 }
 
-const PWA_SW_SCRIPT = `
+function getPwaSwScript(isPwa = false) {
+  if (!isPwa) return '';
+  return `
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        navigator.serviceWorker.register('/sw.js', { scope: '/pwa/' })
           .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));
       });
     }
   </script>
 `;
+}
+
+const PWA_SW_SCRIPT = getPwaSwScript(true);
 
 // ----------------------------------------------------
 // 14. Central Services Portal View (`/`)
@@ -1576,7 +1675,7 @@ app.get('/login', (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in to ${escapeHtml(appDisplayName)}</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(false)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1708,6 +1807,78 @@ app.get('/login', (req, res) => {
       margin-bottom: 1rem;
     }
     .footer { margin-top: 1.75rem; font-size: 0.775rem; color: #64748b; }
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 1.5rem 0 1rem;
+      color: #64748b;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .auth-divider::before, .auth-divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .auth-divider span {
+      padding: 0 0.75rem;
+    }
+    .login-error-badge {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      border-radius: 10px;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.85rem;
+      text-align: left;
+    }
+    .pw-form {
+      margin-bottom: 0.5rem;
+    }
+    .pw-field-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .pw-field-row input {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      font-size: 0.95rem;
+      color: #ffffff;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .pw-field-row input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+    }
+    .btn-pw-submit {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 12px;
+      padding: 0.75rem 1.15rem;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      transition: transform 0.15s, box-shadow 0.15s;
+      white-space: nowrap;
+    }
+    .btn-pw-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(2, 132, 199, 0.4);
+    }
   </style>
 </head>
 <body>
@@ -1744,6 +1915,32 @@ app.get('/login', (req, res) => {
       <div class="status-dot"></div>
       <span id="statusText">Awaiting approver scan (<span id="timerCount">120</span>s)</span>
     </div>
+
+    <div class="auth-divider">
+      <span>or sign in with password</span>
+    </div>
+
+    ${req.query.error ? `<div class="login-error-badge">${escapeHtml(req.query.error)}</div>` : ''}
+
+    <form method="POST" action="/login" class="pw-form">
+      <input type="hidden" name="redirect" value="${escapeHtml(redirectTarget)}">
+      <div class="pw-field-row">
+        <input
+          type="password"
+          name="password"
+          id="loginPassword"
+          placeholder="Master Approver Password"
+          required
+          autocomplete="current-password"
+        >
+        <button type="submit" class="btn-pw-submit" title="Sign In with Password">
+          <span>Sign In</span>
+          <svg style="width: 16px; height: 16px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </button>
+      </div>
+    </form>
 
     <div class="footer">
       ${config.app.footerText}
@@ -1860,9 +2057,68 @@ app.get('/login', (req, res) => {
 
     initQrSession();
   </script>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`);
+});
+
+// Direct Password Login Endpoint (`POST /login`)
+app.post('/login', (req, res) => {
+  const { password, redirect } = req.body;
+  const rawRedirect = redirect || req.query.redirect || req.query.returnTo || '';
+  const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '/';
+
+  const currentHash = getApproverPasswordHash();
+  if (!currentHash) {
+    return res.status(503).send(renderApproverSetupRequiredHtml());
+  }
+
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+  const attemptRecord = failedLoginAttempts.get(clientIp);
+
+  if (attemptRecord && attemptRecord.lockedUntil && attemptRecord.lockedUntil > now) {
+    const remainingMins = Math.ceil((attemptRecord.lockedUntil - now) / 60000);
+    const err = `Too many failed attempts. Locked out for ${remainingMins} min.`;
+    return res.redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}&error=${encodeURIComponent(err)}`);
+  }
+
+  if (!password || typeof password !== 'string') {
+    return res.redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}&error=${encodeURIComponent('Please enter your password.')}`);
+  }
+
+  const isValid = verifyPassword(password, currentHash);
+  if (!isValid) {
+    const record = attemptRecord || { count: 0, firstFailedAt: now, lockedUntil: null };
+    record.count += 1;
+    if (record.count >= MAX_LOGIN_ATTEMPTS) {
+      record.lockedUntil = now + LOGIN_LOCKOUT_MS;
+      failedLoginAttempts.set(clientIp, record);
+      return res.redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}&error=${encodeURIComponent('Account locked for 15 minutes due to failed attempts.')}`);
+    } else {
+      failedLoginAttempts.set(clientIp, record);
+      const remaining = MAX_LOGIN_ATTEMPTS - record.count;
+      return res.redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}&error=${encodeURIComponent(`Incorrect password. (${remaining} attempt${remaining === 1 ? '' : 's'} remaining)`)}`);
+    }
+  }
+
+  failedLoginAttempts.delete(clientIp);
+
+  const approverToken = crypto.randomBytes(48).toString('base64url');
+  const maxAgeMs = APPROVER_TTL_DAYS * 24 * 3600 * 1000;
+  approverSessions.set(approverToken, {
+    token: approverToken,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + maxAgeMs,
+    passwordHash: currentHash,
+    ip: req.ip || req.headers['x-forwarded-for'],
+    userAgent: req.headers['user-agent'],
+  });
+  savePersistedSessions();
+
+  res.cookie(APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
+  mintApproverSession(req, res);
+
+  return res.redirect(redirectTarget);
 });
 
 // ----------------------------------------------------
@@ -1877,7 +2133,7 @@ function renderApproverSetupRequiredHtml() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Setup Required - ${config.app.name}</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(false)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1939,20 +2195,19 @@ function renderApproverSetupRequiredHtml() {
 
     <p class="note">Once run, refresh this page to sign in. The new password takes effect immediately without needing to restart the container.</p>
   </div>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
 
 // 2. Approver Login HTML
-function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
+function renderApproverLoginHtml({ returnTo = '/', error = '', isPwa = false }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Approver Authentication - ${config.app.name}</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(isPwa)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2031,8 +2286,8 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
 
     ${error ? `<div class="error-box">${error}</div>` : ''}
 
-    <form method="POST" action="/auth/approver/login">
-      <input type="hidden" name="returnTo" value="${returnTo}">
+    <form method="POST" action="${isPwa ? '/pwa/login' : '/auth/approver/login'}">
+      <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
       <div class="form-group">
         <label for="password">Approver Password</label>
         <div class="password-wrapper">
@@ -2068,7 +2323,7 @@ function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
       btn.setAttribute('title', isVisible ? 'Hide password' : 'Show password');
     }
   </script>
-  ${PWA_SW_SCRIPT}
+  ${isPwa ? PWA_SW_SCRIPT : ''}
 </body>
 </html>`;
 }
@@ -2087,7 +2342,7 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Master Approver - Self Authorization</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(false)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2145,7 +2400,7 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
   <div class="card">
     <div class="icon">
       <svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
       </svg>
     </div>
     <h1>Master Approver Device</h1>
@@ -2157,13 +2412,12 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
     </form>
     <a href="/auth/sessions" class="btn-link">Open Sessions &amp; QR Scanner</a>
   </div>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
 
 // 2. Approval Decision HTML (Mobile Scanned Screen)
-function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expiresAt, activeSessionsList }) {
+function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expiresAt, activeSessionsList, isPwa = false }) {
   const activeCount = activeSessionsList.length;
 
   return `<!DOCTYPE html>
@@ -2172,7 +2426,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Authorize Desktop - ${config.app.name}</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(isPwa)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2316,12 +2570,12 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
   <div class="bottom-link">
     Currently active sessions: <b>${activeCount}</b> &bull; <a href="/auth/sessions">Manage Sessions</a>
   </div>
-  ${PWA_SW_SCRIPT}
+  ${isPwa ? PWA_SW_SCRIPT : ''}
 </body>
 </html>`;
 }
 
-function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
+function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '', isPwa = false }) {
   const sessionsRows = activeSessionsList.map((s) => {
     const elapsedMinutes = Math.floor((Date.now() - s.createdAt) / 60000);
     const timeLabel = elapsedMinutes < 1 ? 'Just now' : `${elapsedMinutes}m ago`;
@@ -2369,7 +2623,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Active Sessions - ${config.app.name}</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(isPwa)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2820,7 +3074,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       });
     }
   </script>
-  ${PWA_SW_SCRIPT}
+  ${isPwa ? PWA_SW_SCRIPT : ''}
 </body>
 </html>`;
 }
@@ -2837,7 +3091,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)} - ${escapeHtml(config.app.name || 'Szycic Auth')}</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(false)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2886,7 +3140,6 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
     <p>${escapeHtml(message)}</p>
     ${actionUrl ? `<a href="${actionUrl}" class="btn">${escapeHtml(actionLabel || 'Continue')}</a>` : ''}
   </div>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2920,7 +3173,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Szycic Auth Portal</title>
-  ${getPwaHeadTags()}
+  ${getPwaHeadTags(false)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3150,7 +3403,6 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       }
     });
   </script>
-  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
