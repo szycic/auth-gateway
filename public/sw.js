@@ -39,6 +39,8 @@ self.addEventListener('fetch', (event) => {
   // Dynamic auth check and session action routes: always fetch fresh from network
   const isDynamicRoute =
     url.pathname.startsWith('/auth/verify') ||
+    url.pathname.startsWith('/auth/approve') ||
+    url.pathname.startsWith('/auth/qr-approve') ||
     url.pathname.startsWith('/auth/qr-init') ||
     url.pathname.startsWith('/auth/qr-session') ||
     url.pathname.startsWith('/auth/qr-action') ||
