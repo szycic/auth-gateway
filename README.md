@@ -187,12 +187,7 @@ Use this pattern for standard web applications (e.g. IT-Tools, personal dashboar
 
 ```caddy
 tools.example.com {
-	# 1. Direct login redirect
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://tools.example.com/ 302
-	}
-
-	# 2. Forward Auth + Watchdog injection via auth-gateway
+	# 1. Forward Auth + Watchdog injection via auth-gateway
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -205,7 +200,7 @@ tools.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 3. Handle 401 errors by redirecting to central auth login
+	# 2. Handle 401 errors by redirecting to central auth login
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
@@ -213,7 +208,7 @@ tools.example.com {
 		}
 	}
 
-	# 4. Security headers
+	# 3. Security headers
 	header {
 		X-Frame-Options SAMEORIGIN
 		X-Content-Type-Options nosniff
@@ -229,12 +224,7 @@ Use this pattern when certain routes must bypass authentication while protecting
 
 ```caddy
 share.example.com {
-	# 1. Direct login redirect
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://share.example.com/ 302
-	}
-
-	# 2. Public bypasses (no forward_auth, directly to upstream container)
+	# 1. Public bypasses (no forward_auth, directly to upstream container)
 	handle /s/* {
 		reverse_proxy share-app:3000
 	}
@@ -245,7 +235,7 @@ share.example.com {
 		reverse_proxy share-app:3000
 	}
 
-	# 3. Protected routes (requires forward auth & routes through auth-gateway)
+	# 2. Protected routes (requires forward auth & routes through auth-gateway)
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -258,7 +248,7 @@ share.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 4. Redirect unauthenticated requests to login
+	# 3. Redirect unauthenticated requests to login
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
@@ -281,17 +271,12 @@ For applications that use WebSockets, forward auth should verify the session, bu
 
 ```caddy
 uptime.example.com {
-	# 1. Direct login redirect
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://uptime.example.com/ 302
-	}
-
-	# 2. Public webhooks / push monitors (bypasses auth completely)
+	# 1. Public webhooks / push monitors (bypasses auth completely)
 	handle /api/push/* {
 		reverse_proxy kuma:3001
 	}
 
-	# 3. WebSocket connections (forward_auth check, then direct proxy to container)
+	# 2. WebSocket connections (forward_auth check, then direct proxy to container)
 	handle /socket.io/* {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -304,7 +289,7 @@ uptime.example.com {
 		reverse_proxy kuma:3001
 	}
 
-	# 4. Protected web UI (forward auth + auth-watchdog injection)
+	# 3. Protected web UI (forward auth + auth-watchdog injection)
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -317,7 +302,7 @@ uptime.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 5. Redirect 401s to login
+	# 4. Redirect 401s to login
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
@@ -385,10 +370,6 @@ Add the site block to your `Caddyfile` on your reverse proxy host (choose Patter
 
 ```caddy
 myapp.example.com {
-	handle /login* {
-		redir https://auth.example.com/login?redirect=https://myapp.example.com/ 302
-	}
-
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
