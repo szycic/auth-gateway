@@ -130,6 +130,10 @@ const config = {
     const byId = this.services.find(s => s.id && s.id.toLowerCase() === term);
     if (byId) return byId;
 
+    // Match by Name
+    const byName = this.services.find(s => s.name && s.name.toLowerCase() === term);
+    if (byName) return byName;
+
     // Match by URL or hostname
     try {
       const parsed = new URL(term.startsWith('http') ? term : `https://${term}`);
