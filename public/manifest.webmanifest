@@ -1,10 +1,10 @@
 {
-  "id": "/",
+  "id": "/pwa",
   "name": "Szycic Auth Gateway",
   "short_name": "Szycic Auth",
   "description": "Mobile Authenticator and Device Approval Gateway for Szycic services",
-  "start_url": "/auth/sessions?source=pwa",
-  "scope": "/",
+  "start_url": "/pwa",
+  "scope": "/pwa/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#090d16",
@@ -41,7 +41,7 @@
       "name": "Scan Desktop QR",
       "short_name": "Scan QR",
       "description": "Quickly scan a desktop login QR code",
-      "url": "/auth/sessions?action=scan&source=pwa",
+      "url": "/pwa?action=scan",
       "icons": [
         {
           "src": "/icon-192.png",
