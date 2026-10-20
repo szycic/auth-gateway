@@ -734,7 +734,7 @@ app.get('/auth/approver/login', (req, res) => {
   if (!currentHash) {
     return res.status(503).send(renderApproverSetupRequiredHtml());
   }
-  res.send(renderApproverLoginHtml({ returnTo, isPwa: false }));
+  res.send(renderApproverLoginHtml({ returnTo }));
 });
 
 app.post('/auth/approver/login', (req, res) => {
@@ -1005,102 +1005,7 @@ app.get('/auth/sessions', (req, res) => {
   res.send(renderSessionsDashboardHtml({
     activeSessionsList: Array.from(activeSessions.values()),
     notice: req.query.notice,
-    isPwa: false,
   }));
-});
-
-// ----------------------------------------------------
-// 8b. Dedicated PWA Authenticator App (`/pwa`)
-// ----------------------------------------------------
-app.get(['/pwa', '/pwa/'], (req, res) => {
-  if (!isApprover(req)) {
-    const currentHash = getApproverPasswordHash();
-    if (!currentHash) {
-      return res.status(503).send(renderApproverSetupRequiredHtml());
-    }
-    return res.send(renderApproverLoginHtml({ returnTo: '/pwa/', error: req.query.error || '', isPwa: true }));
-  }
-
-  const activeSessionsList = Array.from(activeSessions.values()).sort(
-    (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
-  );
-
-  return res.send(renderSessionsDashboardHtml({
-    activeSessionsList,
-    notice: req.query.notice || '',
-    isPwa: true,
-  }));
-});
-
-app.post('/pwa/login', (req, res) => {
-  const { password } = req.body;
-  const currentHash = getApproverPasswordHash();
-  if (!currentHash) {
-    return res.status(503).send(renderApproverSetupRequiredHtml());
-  }
-
-  const clientIp = getClientIp(req);
-  const now = Date.now();
-  const attemptRecord = failedLoginAttempts.get(clientIp);
-
-  if (attemptRecord && attemptRecord.lockedUntil && attemptRecord.lockedUntil > now) {
-    const remainingMins = Math.ceil((attemptRecord.lockedUntil - now) / 60000);
-    return res.status(429).send(renderApproverLoginHtml({
-      returnTo: '/pwa',
-      isPwa: true,
-      error: `Too many failed attempts. Locked out for ${remainingMins} more minute(s).`,
-    }));
-  }
-
-  if (!password || typeof password !== 'string') {
-    return res.status(400).send(renderApproverLoginHtml({
-      returnTo: '/pwa',
-      isPwa: true,
-      error: 'Please enter the approver password.',
-    }));
-  }
-
-  const isValid = verifyPassword(password, currentHash);
-  if (!isValid) {
-    const record = attemptRecord || { count: 0, firstFailedAt: now, lockedUntil: null };
-    record.count += 1;
-    if (record.count >= MAX_LOGIN_ATTEMPTS) {
-      record.lockedUntil = now + LOGIN_LOCKOUT_MS;
-      failedLoginAttempts.set(clientIp, record);
-      return res.status(429).send(renderApproverLoginHtml({
-        returnTo: '/pwa/',
-        isPwa: true,
-        error: 'Too many failed attempts. Account locked for 15 minutes.',
-      }));
-    } else {
-      failedLoginAttempts.set(clientIp, record);
-      const remainingAttempts = MAX_LOGIN_ATTEMPTS - record.count;
-      return res.status(401).send(renderApproverLoginHtml({
-        returnTo: '/pwa/',
-        isPwa: true,
-        error: `Incorrect approver password. (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`,
-      }));
-    }
-  }
-
-  failedLoginAttempts.delete(clientIp);
-
-  const approverToken = crypto.randomBytes(48).toString('base64url');
-  const maxAgeMs = APPROVER_TTL_DAYS * 24 * 3600 * 1000;
-  approverSessions.set(approverToken, {
-    token: approverToken,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + maxAgeMs,
-    passwordHash: currentHash,
-    ip: req.ip || req.headers['x-forwarded-for'],
-    userAgent: req.headers['user-agent'],
-  });
-
-  savePersistedSessions();
-  res.cookie(APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
-  mintApproverSession(req, res);
-
-  return res.redirect('/pwa/');
 });
 
 // Revoke a specific session or all sessions
@@ -1613,37 +1518,30 @@ app.use((req, res, next) => {
 // ----------------------------------------------------
 // Shared PWA Head Tags & Service Worker Script
 // ----------------------------------------------------
-function getPwaHeadTags(isPwa = false) {
+function getPwaHeadTags() {
   return `
-  ${isPwa ? `
   <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#090d16">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.name || 'Szycic Auth')}">
-  ` : ''}
-  <meta name="theme-color" content="#090d16">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">`;
 }
 
-function getPwaSwScript(isPwa = false) {
-  if (!isPwa) return '';
-  return `
+const PWA_SW_SCRIPT = `
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/pwa/' })
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
           .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));
       });
     }
   </script>
 `;
-}
-
-const PWA_SW_SCRIPT = getPwaSwScript(true);
 
 // ----------------------------------------------------
 // 14. Central Services Portal View (`/`)
@@ -1706,7 +1604,7 @@ app.get('/login', (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in to ${escapeHtml(appDisplayName)}</title>
-  ${getPwaHeadTags(false)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1990,6 +1888,7 @@ app.get('/login', (req, res) => {
 
     initQrSession();
   </script>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`);
 });
@@ -2066,7 +1965,7 @@ function renderApproverSetupRequiredHtml() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Setup Required - ${config.app.name}</title>
-  ${getPwaHeadTags(false)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2128,19 +2027,20 @@ function renderApproverSetupRequiredHtml() {
 
     <p class="note">Once run, refresh this page to sign in. The new password takes effect immediately without needing to restart the container.</p>
   </div>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
 
 // 2. Approver Login HTML
-function renderApproverLoginHtml({ returnTo = '/', error = '', isPwa = false }) {
+function renderApproverLoginHtml({ returnTo = '/auth/sessions', error = '' }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Approver Authentication - ${config.app.name}</title>
-  ${getPwaHeadTags(isPwa)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2219,7 +2119,7 @@ function renderApproverLoginHtml({ returnTo = '/', error = '', isPwa = false }) 
 
     ${error ? `<div class="error-box">${error}</div>` : ''}
 
-    <form method="POST" action="${isPwa ? '/pwa/login' : '/auth/approver/login'}">
+    <form method="POST" action="/auth/approver/login">
       <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
       <div class="form-group">
         <label for="password">Approver Password</label>
@@ -2256,7 +2156,7 @@ function renderApproverLoginHtml({ returnTo = '/', error = '', isPwa = false }) 
       btn.setAttribute('title', isVisible ? 'Hide password' : 'Show password');
     }
   </script>
-  ${isPwa ? PWA_SW_SCRIPT : ''}
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -2275,7 +2175,7 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Master Approver - Self Authorization</title>
-  ${getPwaHeadTags(false)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2345,12 +2245,13 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
     </form>
     <a href="/auth/sessions" class="btn-link">Open Sessions &amp; QR Scanner</a>
   </div>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
 
 // 2. Approval Decision HTML (Mobile Scanned Screen)
-function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expiresAt, activeSessionsList, isPwa = false }) {
+function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expiresAt, activeSessionsList }) {
   const activeCount = activeSessionsList.length;
 
   return `<!DOCTYPE html>
@@ -2359,7 +2260,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Authorize Desktop - ${config.app.name}</title>
-  ${getPwaHeadTags(isPwa)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2503,12 +2404,12 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
   <div class="bottom-link">
     Currently active sessions: <b>${activeCount}</b> &bull; <a href="/auth/sessions">Manage Sessions</a>
   </div>
-  ${isPwa ? PWA_SW_SCRIPT : ''}
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
 
-function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '', isPwa = false }) {
+function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
   const sessionsRows = activeSessionsList.map((s) => {
     const elapsedMinutes = Math.floor((Date.now() - s.createdAt) / 60000);
     const timeLabel = elapsedMinutes < 1 ? 'Just now' : `${elapsedMinutes}m ago`;
@@ -2556,7 +2457,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '', isP
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Active Sessions - ${config.app.name}</title>
-  ${getPwaHeadTags(isPwa)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3007,7 +2908,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '', isP
       });
     }
   </script>
-  ${isPwa ? PWA_SW_SCRIPT : ''}
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -3024,7 +2925,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)} - ${escapeHtml(config.app.name || 'Szycic Auth')}</title>
-  ${getPwaHeadTags(false)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -3073,6 +2974,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
     <p>${escapeHtml(message)}</p>
     ${actionUrl ? `<a href="${actionUrl}" class="btn">${escapeHtml(actionLabel || 'Continue')}</a>` : ''}
   </div>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
@@ -3106,7 +3008,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Szycic Auth Portal</title>
-  ${getPwaHeadTags(false)}
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3336,6 +3238,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
       }
     });
   </script>
+  ${PWA_SW_SCRIPT}
 </body>
 </html>`;
 }
