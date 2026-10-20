@@ -1571,6 +1571,9 @@ function getUpstreamUrlForHost(hostHeader = '') {
   if (host === 'uptime.szycic.com') {
     return 'http://kuma:3001';
   }
+  if (host === 'dozzle.szycic.com') {
+    return 'http://dozzle:8080';
+  }
 
   return TARGET_APP_URL || 'http://share-app:3000';
 }

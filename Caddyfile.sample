@@ -241,3 +241,52 @@ uptime.example.com {
 		X-Content-Type-Options nosniff
 	}
 }
+
+# Dozzle Service (Protected via auth.example.com)
+dozzle.example.com {
+	# 1. Direct login redirect to central auth service
+	handle /login* {
+		redir https://auth.example.com/login?redirect=https://dozzle.example.com/ 302
+	}
+
+	# 2. Real-time streaming APIs & WebSockets (checked via forward_auth, then direct to dozzle:8080)
+	handle /api/* {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy dozzle:8080
+	}
+
+	# 3. Web UI routes with auth-watchdog injection
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 4. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		@unauthorized expression {http.error.status_code} == 401
+		handle @unauthorized {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	# Security headers
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+	}
+}
+
