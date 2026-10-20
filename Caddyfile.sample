@@ -196,8 +196,8 @@ uptime.example.com {
 		redir https://auth.example.com/login?redirect=https://uptime.example.com/ 302
 	}
 
-	# 2. Forward Auth Protected Routes (All routes require auth)
-	handle {
+	# 2. WebSocket traffic for Uptime Kuma (forward_auth check, then direct to kuma:3001)
+	handle /socket.io/* {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
 			copy_headers X-Auth-Status X-Auth-Role
@@ -207,6 +207,19 @@ uptime.example.com {
 			}
 		}
 		reverse_proxy kuma:3001
+	}
+
+	# 3. Forward Auth Protected Routes with auth-watchdog injection
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
 	}
 
 	# 3. Intelligent handling of 401 Unauthorized errors
