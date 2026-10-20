@@ -41,6 +41,14 @@
       "url": "https://garden.example.com",
       "upstream": "http://garden:8080",
       "allowedRedirects": ["https://garden.example.com*"]
+    },
+    {
+      "id": "uptime",
+      "name": "Uptime Kuma",
+      "subtitle": "Service monitoring & uptime status",
+      "url": "https://uptime.example.com",
+      "upstream": "http://kuma:3001",
+      "allowedRedirects": ["https://uptime.example.com*"]
     }
   ]
 }

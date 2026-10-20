@@ -188,3 +188,38 @@ garden.example.com {
 		X-Content-Type-Options nosniff
 	}
 }
+
+# Uptime Kuma Service (Protected via auth.example.com)
+uptime.example.com {
+	# 1. Direct login redirect to central auth service
+	handle /login* {
+		redir https://auth.example.com/login?redirect=https://uptime.example.com/ 302
+	}
+
+	# 2. Forward Auth Protected Routes (All routes require auth)
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy kuma:3001
+	}
+
+	# 3. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		@unauthorized expression {http.error.status_code} == 401
+		handle @unauthorized {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	# Security headers
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+	}
+}
