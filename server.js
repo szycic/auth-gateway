@@ -336,8 +336,18 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static PWA assets (manifest, sw.js, icons)
-app.use(express.static(path.join(__dirname, 'public'), {
+// Helper to check if request is targeting the central Auth Gateway host
+function isAuthDomain(req) {
+  const host = (req.headers.host || '').split(':')[0].toLowerCase();
+  let authHost = 'auth.szycic.com';
+  try {
+    authHost = new URL(BASE_URL).hostname.toLowerCase();
+  } catch (e) {}
+  return !host || host === authHost || host === 'localhost' || host === '127.0.0.1';
+}
+
+// Serve static PWA assets (manifest, sw.js, icons) ONLY for Auth Gateway host or /auth/ paths
+const servePwaStatic = express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('sw.js')) {
       res.setHeader('Service-Worker-Allowed', '/');
@@ -349,20 +359,30 @@ app.use(express.static(path.join(__dirname, 'public'), {
       res.setHeader('Cache-Control', 'public, max-age=604800');
     }
   },
-}));
+});
 
-// Route aliases for PWA manifest & worker
-app.get('/manifest.json', (req, res) => {
+app.use((req, res, next) => {
+  if (isAuthDomain(req) || req.path.startsWith('/auth/')) {
+    return servePwaStatic(req, res, next);
+  }
+  next();
+});
+
+// Route aliases for PWA manifest & worker (only on Auth Gateway domain)
+app.get('/manifest.json', (req, res, next) => {
+  if (!isAuthDomain(req)) return next();
   res.sendFile(path.join(__dirname, 'public/manifest.webmanifest'), {
     headers: { 'Content-Type': 'application/manifest+json' },
   });
 });
-app.get('/manifest.webmanifest', (req, res) => {
+app.get('/manifest.webmanifest', (req, res, next) => {
+  if (!isAuthDomain(req)) return next();
   res.sendFile(path.join(__dirname, 'public/manifest.webmanifest'), {
     headers: { 'Content-Type': 'application/manifest+json' },
   });
 });
-app.get('/sw.js', (req, res) => {
+app.get('/sw.js', (req, res, next) => {
+  if (!isAuthDomain(req)) return next();
   res.sendFile(path.join(__dirname, 'public/sw.js'), {
     headers: {
       'Content-Type': 'application/javascript',
