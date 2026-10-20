@@ -259,7 +259,9 @@ dozzle.example.com {
 				error 401
 			}
 		}
-		reverse_proxy dozzle:8080
+		reverse_proxy dozzle:8080 {
+			flush_interval -1
+		}
 	}
 
 	# 3. Web UI routes with auth-watchdog injection
