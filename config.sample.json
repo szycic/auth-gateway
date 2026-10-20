@@ -49,6 +49,14 @@
       "url": "https://uptime.example.com",
       "upstream": "http://kuma:3001",
       "allowedRedirects": ["https://uptime.example.com*"]
+    },
+    {
+      "id": "dozzle",
+      "name": "Dozzle",
+      "subtitle": "Real-time Docker container log viewer",
+      "url": "https://dozzle.example.com",
+      "upstream": "http://dozzle:8080",
+      "allowedRedirects": ["https://dozzle.example.com*"]
     }
   ]
 }
