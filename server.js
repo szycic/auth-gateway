@@ -3192,10 +3192,15 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       }
     }
 
-    // Auto-open scanner if launched via shortcut ?action=scan
-    if (new URLSearchParams(window.location.search).get('action') === 'scan') {
+    // Auto-open scanner or PIN modal if launched via shortcut
+    const actionParam = new URLSearchParams(window.location.search).get('action');
+    if (actionParam === 'scan') {
       window.addEventListener('DOMContentLoaded', () => {
         setTimeout(openScanner, 250);
+      });
+    } else if (actionParam === 'pin' || actionParam === 'code') {
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(openPairCodeModal, 250);
       });
     }
 
