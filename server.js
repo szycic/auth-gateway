@@ -540,62 +540,95 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
 
   var AUTH_URL = '${BASE_URL}';
   var isLocked = false;
+  var activeEventSources = [];
+  var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+
+  // Intercept EventSource (used by Dozzle logs streaming) so streams can be tracked and closed on revoke
+  if (window.EventSource) {
+    var OrigEventSource = window.EventSource;
+    window.EventSource = function(url, options) {
+      var es = new OrigEventSource(url, options);
+      activeEventSources.push(es);
+      es.addEventListener('error', function() {
+        if (!isLocked) verifySession();
+      });
+      return es;
+    };
+    window.EventSource.prototype = OrigEventSource.prototype;
+  }
 
   function lockdown() {
     if (isLocked) return;
     isLocked = true;
 
+    // Immediately terminate all active EventSource streams (e.g. Dozzle live logs)
+    activeEventSources.forEach(function(es) {
+      try { es.close(); } catch (e) {}
+    });
+    activeEventSources = [];
+
+    // Hide application container so background content ceases rendering
+    try {
+      var appEl = document.getElementById('app') || document.querySelector('main');
+      if (appEl) appEl.style.display = 'none';
+      if (document.body) document.body.style.overflow = 'hidden';
+    } catch (e) {}
+
     var existing = document.getElementById('szycic-lockout-overlay');
-    if (existing) return;
+    if (!existing) {
+      var overlay = document.createElement('div');
+      overlay.id = 'szycic-lockout-overlay';
+      overlay.style.cssText = [
+        'position: fixed',
+        'inset: 0',
+        'width: 100vw',
+        'height: 100vh',
+        'background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%)',
+        'color: #f1f5f9',
+        'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        'z-index: 2147483647',
+        'display: flex',
+        'align-items: center',
+        'justify-content: center',
+        'padding: 1.5rem',
+        'box-sizing: border-box',
+        'animation: szycicFadeIn 0.2s ease-out'
+      ].join(' !important;') + ' !important;';
 
-    var overlay = document.createElement('div');
-    overlay.id = 'szycic-lockout-overlay';
-    overlay.style.cssText = [
-      'position: fixed',
-      'top: 0',
-      'left: 0',
-      'width: 100vw',
-      'height: 100vh',
-      'background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%)',
-      'color: #f1f5f9',
-      'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      'z-index: 2147483647',
-      'display: flex',
-      'align-items: center',
-      'justify-content: center',
-      'padding: 1.5rem',
-      'box-sizing: border-box',
-      'animation: szycicFadeIn 0.25s ease-out'
-    ].join(' !important;') + ' !important;';
+      overlay.innerHTML = [
+        '<style>',
+        '@keyframes szycicFadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }',
+        '@keyframes szycicSpin { to { transform: rotate(360deg); } }',
+        '</style>',
+        '<div style="background: rgba(15, 23, 42, 0.96); border: 1px solid rgba(239, 68, 68, 0.45); border-radius: 24px; padding: 2.25rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8); backdrop-filter: blur(16px); box-sizing: border-box;">',
+          '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">',
+            '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">',
+              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />',
+            '</svg>',
+          '</div>',
+          '<h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h2>',
+          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>',
+          '<div style="width: 24px; height: 24px; border: 2.5px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: szycicSpin 0.7s linear infinite; margin: 0 auto;"></div>',
+        '</div>'
+      ].join('');
 
-    overlay.innerHTML = [
-      '<style>',
-      '@keyframes szycicFadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }',
-      '@keyframes szycicSpin { to { transform: rotate(360deg); } }',
-      '</style>',
-      '<div style="background: rgba(15, 23, 42, 0.94); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 24px; padding: 2.25rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); box-sizing: border-box;">',
-        '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">',
-          '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">',
-            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />',
-          '</svg>',
-        '</div>',
-        '<h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h2>',
-        '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>',
-        '<div style="width: 24px; height: 24px; border: 2.5px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: szycicSpin 0.7s linear infinite; margin: 0 auto;"></div>',
-      '</div>'
-    ].join('');
-
-    document.documentElement.appendChild(overlay);
+      var container = document.body || document.documentElement;
+      if (container) {
+        container.appendChild(overlay);
+      }
+    }
 
     setTimeout(function() {
       var redirectTarget = window.location.href;
       window.location.href = AUTH_URL + '/login?redirect=' + encodeURIComponent(redirectTarget) + '&notice=' + encodeURIComponent('Your session has been revoked.');
-    }, 1000);
+    }, 600);
   }
 
   function verifySession() {
     if (isLocked) return;
-    fetch(AUTH_URL + '/auth/verify', {
+    var fetchFn = nativeFetch || window.fetch;
+    if (!fetchFn) return;
+    fetchFn(AUTH_URL + '/auth/verify', {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store'
@@ -629,7 +662,7 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
       });
       socket.emit('register-desktop', '');
       socket.on('session-revoked', function() {
-        verifySession();
+        lockdown();
       });
     } catch (e) {}
   }
@@ -639,7 +672,7 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
     window.fetch = function() {
       return origFetch.apply(this, arguments).then(function(res) {
         if (res.status === 401) {
-          verifySession();
+          lockdown();
         }
         return res;
       });
@@ -656,7 +689,7 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
     XMLHttpRequest.prototype.send = function() {
       this.addEventListener('load', function() {
         if (this.status === 401) {
-          verifySession();
+          lockdown();
         }
       });
       return origSend.apply(this, arguments);
