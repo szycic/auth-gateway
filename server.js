@@ -2747,45 +2747,6 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       margin-top: 0.45rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.4;
     }
 
-    /* Target Platform Only Toggle Box (Prominent on Main Card) */
-    .only-platform-box {
-      background: rgba(2, 132, 199, 0.08);
-      border: 1px solid rgba(2, 132, 199, 0.28);
-      border-radius: 16px;
-      padding: 1rem 1.15rem;
-      margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.85rem;
-      cursor: pointer;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .only-platform-box-picker {
-      flex-direction: column;
-      align-items: stretch;
-      cursor: default;
-    }
-    .only-platform-label {
-      display: flex;
-      align-items: center;
-      gap: 0.85rem;
-      cursor: pointer;
-      width: 100%;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .only-platform-box input[type="checkbox"] {
-      width: 20px; height: 20px; accent-color: #0284c7; cursor: pointer; flex-shrink: 0;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .only-platform-text {
-      text-align: left;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .only-platform-title { display: block; font-size: 0.925rem; font-weight: 600; color: #ffffff; margin-bottom: 0.15rem; }
-    .only-platform-desc { display: block; font-size: 0.775rem; color: #94a3b8; line-height: 1.3; }
 
     .services-header-actions {
       display: flex; align-items: center; gap: 0.75rem;
@@ -2908,28 +2869,26 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
 
       <!-- Service Access Restriction Toggle (Prominent on Main Screen) -->
       ${targetService ? `
-      <label class="only-platform-box" id="platformToggleContainer">
+      <label class="trust-box">
         <input type="checkbox" id="onlyPlatformToggle" data-target-id="${escapeHtml(targetService.id)}" onchange="handleOnlyPlatformToggle(this, '${escapeHtml(targetService.id)}')">
-        <div class="only-platform-text">
-          <span class="only-platform-title">Grant access only to ${escapeHtml(targetService.name)}</span>
-          <span class="only-platform-desc">Lock this session exclusively to ${escapeHtml(targetService.name)} (uncheck other services).</span>
+        <div class="trust-text">
+          <span class="trust-title">Grant access only to ${escapeHtml(targetService.name)}</span>
+          <span class="trust-desc">Lock this session exclusively to ${escapeHtml(targetService.name)} (uncheck other services).</span>
         </div>
       </label>
       ` : `
-      <div class="only-platform-box only-platform-box-picker" id="platformToggleContainer">
-        <label class="only-platform-label">
-          <input type="checkbox" id="onlyPlatformToggle" onchange="handleGenericPlatformToggle(this)">
-          <div class="only-platform-text">
-            <span class="only-platform-title">Restrict to single platform</span>
-            <span class="only-platform-desc">Limit this device to one service instead of full access.</span>
-          </div>
-        </label>
-        <div id="platformPickerWrap" style="display: none; margin-top: 0.75rem; width: 100%;">
-          <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.35rem;">Select allowed platform:</label>
-          <select id="platformPickerSelect" class="adv-select" onchange="handlePlatformPickerChange(this)">
-            ${servicesList.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('')}
-          </select>
+      <label class="trust-box">
+        <input type="checkbox" id="onlyPlatformToggle" onchange="handleGenericPlatformToggle(this)">
+        <div class="trust-text">
+          <span class="trust-title">Restrict to single platform</span>
+          <span class="trust-desc">Limit this device to one service instead of full access.</span>
         </div>
+      </label>
+      <div id="platformPickerWrap" style="display: none; margin-top: -0.5rem; margin-bottom: 1rem; width: 100%;">
+        <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.35rem;">Select allowed platform:</label>
+        <select id="platformPickerSelect" class="adv-select" onchange="handlePlatformPickerChange(this)">
+          ${servicesList.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('')}
+        </select>
       </div>
       `}
 
