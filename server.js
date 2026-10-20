@@ -424,10 +424,12 @@ function mintApproverSession(req, res) {
   const clientIp = getClientIp(req);
   const ua = req.headers['user-agent'] || 'Unknown';
   const friendlyDevice = `Approver Phone (${parseUserAgent(ua)})`;
+  const approverToken = req.cookies[APPROVER_COOKIE_NAME] || null;
 
   const sessionObj = {
     id: sessionId,
     token: sessionToken,
+    approverToken,
     createdAt: Date.now(),
     expiresAt: Date.now() + maxAgeMs,
     isTrusted: true,
@@ -1021,6 +1023,12 @@ app.post('/auth/sessions/revoke', (req, res) => {
   const isAll = all === 'true' || all === true;
 
   if (isAll) {
+    const currentApproverToken = req.cookies[APPROVER_COOKIE_NAME];
+    for (const [appTok] of approverSessions.entries()) {
+      if (appTok !== currentApproverToken) {
+        approverSessions.delete(appTok);
+      }
+    }
     const count = activeSessions.size;
     activeSessions.clear();
     savePersistedSessions();
@@ -1035,6 +1043,9 @@ app.post('/auth/sessions/revoke', (req, res) => {
     for (const [token, session] of activeSessions.entries()) {
       if (session.id === sessionId || session.token === sessionId || token === sessionId) {
         const sid = session.id || sessionId;
+        if (session.approverToken) {
+          approverSessions.delete(session.approverToken);
+        }
         activeSessions.delete(token);
         savePersistedSessions();
         io.to('session:' + sid).emit('session-revoked', { sessionId: sid, token });
@@ -1143,7 +1154,8 @@ app.get('/auth/logout', (req, res) => {
     res.clearCookie(APPROVER_COOKIE_NAME, hostOnly);
   }
 
-  const redirectTarget = config.normalizeRedirect(req.query.redirect || req.query.returnTo, '/login');
+  const noticeParam = req.query.notice ? ('?notice=' + encodeURIComponent(req.query.notice)) : '';
+  const redirectTarget = config.normalizeRedirect(req.query.redirect || req.query.returnTo, '/login' + noticeParam);
   return res.redirect(redirectTarget);
 });
 
@@ -3142,7 +3154,11 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   <script>
     const socket = typeof io !== 'undefined' ? io() : null;
     if (socket) {
-      socket.emit('register-desktop', '${escapeHtml(sessionId)}');
+      function registerDesktop() {
+        socket.emit('register-desktop', '${escapeHtml(sessionId)}');
+      }
+      socket.on('connect', registerDesktop);
+      registerDesktop();
 
       socket.on('session-revoked', function(data) {
         if (data && (data.all || data.sessionId === '${escapeHtml(sessionId)}' || (data.token && data.token === '${escapeHtml(sessionToken)}'))) {
@@ -3156,7 +3172,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
     }
 
     function lockCurrentSession() {
-      document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: \'Plus Jakarta Sans\', sans-serif; padding: 1.5rem;">' +
+      document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: inherit; padding: 1.5rem;">' +
         '<div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 24px; padding: 2.25rem 2rem; max-width: 400px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);">' +
           '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">' +
             '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
@@ -3168,7 +3184,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
         '</div>' +
       '</div>';
       setTimeout(function() {
-        window.location.href = '/login?notice=' + encodeURIComponent('Your session has been revoked.');
+        window.location.href = '/auth/logout?notice=' + encodeURIComponent('Your session has been revoked.');
       }, 1000);
     }
 
