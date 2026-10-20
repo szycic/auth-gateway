@@ -2780,25 +2780,38 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       font-size: 0.85rem; color: #94a3b8; line-height: 1.45;
       margin-bottom: 1.25rem;
     }
-    .pair-input-wrap { margin-bottom: 1rem; }
-    .pair-code-input {
-      width: 100%;
+    .pair-boxes-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      margin-bottom: 1.25rem;
+    }
+    .pair-box {
+      width: 135px;
+      height: 56px;
       background: rgba(255, 255, 255, 0.05);
       border: 2px solid rgba(56, 189, 248, 0.35);
-      border-radius: 16px;
-      color: #ffffff;
-      padding: 0.85rem 1rem;
-      font-size: 1.45rem;
+      border-radius: 14px;
+      color: #38bdf8;
+      font-size: 1.55rem;
       font-weight: 800;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.18em;
       text-align: center;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       outline: none;
+      box-sizing: border-box;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
-    .pair-code-input:focus {
+    .pair-box:focus {
       border-color: #38bdf8;
       box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    }
+    .pair-box-sep {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #64748b;
+      user-select: none;
     }
     .pair-modal-error {
       background: rgba(239, 68, 68, 0.15);
@@ -2919,21 +2932,39 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       <p class="pair-modal-desc">Type the 8 digits shown on the desktop screen to authorize access.</p>
 
       <form id="pairCodeForm" onsubmit="handlePairCodeSubmit(event)">
-        <div class="pair-input-wrap">
+        <div class="pair-boxes-wrap">
           <input
             type="text"
-            id="pairCodeInput"
-            class="pair-code-input"
+            id="pairBox1"
+            class="pair-box"
             inputmode="numeric"
-            autocomplete="one-time-code"
+            pattern="[0-9]*"
+            maxlength="4"
+            placeholder="••••"
+            autocomplete="off"
             autocorrect="off"
             autocapitalize="off"
             spellcheck="false"
-            placeholder="•••• - ••••"
-            maxlength="14"
-            oninput="handlePairCodeInput(this)"
-            onpaste="handlePairCodePaste(event)"
-            onkeydown="handlePairCodeKeydown(event)"
+            oninput="handleBoxInput(this, 'pairBox2')"
+            onkeydown="handleBoxKeydown(this, event, null, 'pairBox2')"
+            onpaste="handleBoxPaste(event)"
+          />
+          <span class="pair-box-sep">—</span>
+          <input
+            type="text"
+            id="pairBox2"
+            class="pair-box"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            maxlength="4"
+            placeholder="••••"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            oninput="handleBoxInput(this, null)"
+            onkeydown="handleBoxKeydown(this, event, 'pairBox1', null)"
+            onpaste="handleBoxPaste(event)"
           />
         </div>
         <div class="pair-modal-error" id="pairCodeError" style="display: none;"></div>
@@ -3172,7 +3203,8 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
 
     function openPairCodeModal() {
       const modal = document.getElementById('pairCodeModal');
-      const input = document.getElementById('pairCodeInput');
+      const b1 = document.getElementById('pairBox1');
+      const b2 = document.getElementById('pairBox2');
       const errEl = document.getElementById('pairCodeError');
       const btn = document.getElementById('btnPairSubmit');
       if (errEl) errEl.style.display = 'none';
@@ -3180,13 +3212,11 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
         btn.disabled = false;
         btn.textContent = 'Authorize Device';
       }
-      if (input) {
-        input.value = '';
-        input.disabled = false;
-      }
+      if (b1) { b1.value = ''; b1.disabled = false; }
+      if (b2) { b2.value = ''; b2.disabled = false; }
       if (modal) modal.classList.add('active');
       setTimeout(() => {
-        if (input) input.focus();
+        if (b1) b1.focus();
       }, 100);
     }
 
@@ -3195,94 +3225,108 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       if (modal) modal.classList.remove('active');
     }
 
-    function handlePairCodeKeydown(e) {
+    function handleBoxInput(el, nextBoxId) {
+      el.value = el.value.replace(/\D/g, '').slice(0, 4);
+      const errEl = document.getElementById('pairCodeError');
+      if (errEl) errEl.style.display = 'none';
+
+      if (el.value.length === 4 && nextBoxId) {
+        const next = document.getElementById(nextBoxId);
+        if (next) {
+          next.focus();
+          next.select();
+        }
+      }
+
+      checkAndSubmitCode();
+    }
+
+    function handleBoxKeydown(el, e, prevBoxId, nextBoxId) {
       if (e.key === 'Escape') {
         closePairCodeModal();
         return;
       }
-      if (e.key === '-' || e.key === ' ') {
+      if (e.key === 'Backspace' && el.value.length === 0 && prevBoxId) {
+        const prev = document.getElementById(prevBoxId);
+        if (prev) {
+          prev.focus();
+          prev.value = prev.value.slice(0, -1);
+          e.preventDefault();
+        }
+      } else if ((e.key === '-' || e.key === ' ') && nextBoxId) {
         e.preventDefault();
+        const next = document.getElementById(nextBoxId);
+        if (next) next.focus();
+      } else if (e.key === 'ArrowRight' && el.selectionStart === el.value.length && nextBoxId) {
+        const next = document.getElementById(nextBoxId);
+        if (next) next.focus();
+      } else if (e.key === 'ArrowLeft' && el.selectionStart === 0 && prevBoxId) {
+        const prev = document.getElementById(prevBoxId);
+        if (prev) prev.focus();
       }
     }
 
-    function handlePairCodePaste(e) {
+    function handleBoxPaste(e) {
       e.preventDefault();
       const text = (e.clipboardData || window.clipboardData).getData('text') || '';
       const digits = text.replace(/\D/g, '').slice(0, 8);
-      const input = document.getElementById('pairCodeInput');
-      if (!input) return;
+      const b1 = document.getElementById('pairBox1');
+      const b2 = document.getElementById('pairBox2');
+      if (!b1 || !b2) return;
 
-      let formatted = '';
-      if (digits.length > 4) {
-        formatted = digits.slice(0, 4) + ' - ' + digits.slice(4);
-      } else {
-        formatted = digits;
+      b1.value = digits.slice(0, 4);
+      b2.value = digits.slice(4, 8);
+
+      if (b1.value.length === 4 && b2.value.length < 4) {
+        b2.focus();
+      } else if (b2.value.length === 4) {
+        b2.focus();
       }
-      input.value = formatted;
-      const end = formatted.length;
-      try { input.setSelectionRange(end, end); } catch (err) {}
-
-      const errEl = document.getElementById('pairCodeError');
-      if (errEl) errEl.style.display = 'none';
-
-      if (digits.length === 8) {
-        verifyPairCode(digits);
-      }
+      checkAndSubmitCode();
     }
 
-    function handlePairCodeInput(el) {
-      const rawDigits = el.value.replace(/\D/g, '').slice(0, 8);
-      let formatted = '';
-      if (rawDigits.length > 4) {
-        formatted = rawDigits.slice(0, 4) + ' - ' + rawDigits.slice(4);
-      } else {
-        formatted = rawDigits;
-      }
-
-      el.value = formatted;
-      const endPos = formatted.length;
-      try {
-        el.setSelectionRange(endPos, endPos);
-      } catch (err) {}
-      setTimeout(() => {
-        try {
-          el.setSelectionRange(endPos, endPos);
-        } catch (err) {}
-      }, 0);
-
-      const errEl = document.getElementById('pairCodeError');
-      if (errEl) errEl.style.display = 'none';
-
-      if (rawDigits.length === 8) {
-        verifyPairCode(rawDigits);
+    function checkAndSubmitCode() {
+      const b1 = document.getElementById('pairBox1');
+      const b2 = document.getElementById('pairBox2');
+      if (!b1 || !b2) return;
+      const code = (b1.value + b2.value).replace(/\D/g, '');
+      if (code.length === 8) {
+        verifyPairCode(code);
       }
     }
 
     async function handlePairCodeSubmit(e) {
       if (e) e.preventDefault();
-      const input = document.getElementById('pairCodeInput');
-      if (!input) return;
-      const digits = input.value.replace(/\D/g, '');
-      if (digits.length !== 8) {
+      const b1 = document.getElementById('pairBox1');
+      const b2 = document.getElementById('pairBox2');
+      if (!b1 || !b2) return;
+      const code = (b1.value + b2.value).replace(/\D/g, '');
+      if (code.length !== 8) {
         const errEl = document.getElementById('pairCodeError');
         if (errEl) {
           errEl.textContent = 'Please enter all 8 digits.';
           errEl.style.display = 'block';
         }
+        if (b1.value.length < 4) b1.focus();
+        else b2.focus();
         return;
       }
-      verifyPairCode(digits);
+      verifyPairCode(code);
     }
 
     async function verifyPairCode(cleanCode) {
       const btn = document.getElementById('btnPairSubmit');
-      const input = document.getElementById('pairCodeInput');
+      const b1 = document.getElementById('pairBox1');
+      const b2 = document.getElementById('pairBox2');
       const errEl = document.getElementById('pairCodeError');
       if (errEl) errEl.style.display = 'none';
       if (btn) {
         btn.disabled = true;
         btn.textContent = 'Verifying...';
       }
+      if (b1) b1.disabled = true;
+      if (b2) b2.disabled = true;
+
       try {
         const res = await fetch('/auth/code/verify', {
           method: 'POST',
@@ -3306,10 +3350,13 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
           btn.disabled = false;
           btn.textContent = 'Authorize Device';
         }
-        if (input) {
-          input.disabled = false;
-          input.focus();
-          input.select();
+        if (b1) {
+          b1.disabled = false;
+          b1.focus();
+          b1.select();
+        }
+        if (b2) {
+          b2.disabled = false;
         }
       }
     }
