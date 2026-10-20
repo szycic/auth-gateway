@@ -293,6 +293,30 @@ function isApprover(req) {
   return true;
 }
 
+// Check if a session has permission to access a specific service
+function isSessionAllowedForService(session, service) {
+  if (!session) return false;
+  if (!service) return true;
+  // If allowedServices is not set, empty, or contains '*', all services are permitted
+  if (!session.allowedServices || !Array.isArray(session.allowedServices) || session.allowedServices.length === 0) {
+    return true;
+  }
+  if (session.allowedServices.includes('*')) {
+    return true;
+  }
+  const serviceId = typeof service === 'string' ? service.toLowerCase() : (service.id || '').toLowerCase();
+  return session.allowedServices.map(s => s.toLowerCase()).includes(serviceId);
+}
+
+// Helper to determine the target service from an incoming request
+function getTargetServiceForRequest(req) {
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const hostHeader = req.headers.host;
+  const rawHost = forwardedHost || hostHeader || '';
+  const host = rawHost.toLowerCase().split(':')[0];
+  return config.getService(host);
+}
+
 // Periodic cleanup of expired sessions every 60 seconds
 setInterval(() => {
   const now = Date.now();
@@ -678,6 +702,16 @@ app.all('/auth/verify', (req, res) => {
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (isValidSession(token)) {
     const session = activeSessions.get(token);
+
+    // Check service access restrictions
+    const targetService = getTargetServiceForRequest(req);
+    if (targetService && !isSessionAllowedForService(session, targetService)) {
+      return res.status(401).set({
+        'X-Auth-Status': 'unauthorized',
+        'X-Auth-Reason': 'service_not_allowed',
+      }).send('Unauthorized: Service access not granted');
+    }
+
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',
       'X-Auth-Role': session && session.isTrusted ? 'trusted_device' : 'guest',
@@ -980,6 +1014,7 @@ app.get('/auth/approve', (req, res) => {
     serviceName: session.serviceName,
     expiresAt: session.expiresAt,
     activeSessionsList: Array.from(activeSessions.values()),
+    services: config.services,
   }));
 });
 
@@ -1040,10 +1075,49 @@ app.post('/auth/approve/action', (req, res) => {
     ? customName.trim().slice(0, 50)
     : (session.friendlyDevice || 'Desktop Browser');
 
-  // Trusted device gets permanent 10-year expiration; otherwise standard TTL
-  const tokenExpiresAt = isTrusted
-    ? Date.now() + 10 * 365 * 24 * 3600 * 1000 // 10 years permanent
-    : Date.now() + SESSION_TTL_HOURS * 3600 * 1000;
+  // Parse custom expiration time
+  let ttlHours = SESSION_TTL_HOURS; // default 72
+  const rawTtl = req.body.sessionTtl;
+  const rawCustomTtl = req.body.customTtlHours;
+
+  let customTtlSpecified = false;
+  if (rawTtl === 'custom' && rawCustomTtl) {
+    const parsed = parseFloat(rawCustomTtl);
+    if (!isNaN(parsed) && parsed > 0) {
+      ttlHours = parsed;
+      customTtlSpecified = true;
+    }
+  } else if (rawTtl && rawTtl !== 'default' && rawTtl !== '72') {
+    const parsed = parseFloat(rawTtl);
+    if (!isNaN(parsed) && parsed > 0) {
+      ttlHours = parsed;
+      customTtlSpecified = true;
+    }
+  }
+
+  // Trusted device gets permanent 10-year expiration unless custom TTL explicitly specified
+  let tokenExpiresAt;
+  if (isTrusted && !customTtlSpecified) {
+    tokenExpiresAt = Date.now() + 10 * 365 * 24 * 3600 * 1000;
+  } else {
+    tokenExpiresAt = Date.now() + Math.round(ttlHours * 3600 * 1000);
+  }
+
+  // Parse allowed services
+  let allowedServices = null;
+  if (req.body.services) {
+    let rawServices = [];
+    if (Array.isArray(req.body.services)) {
+      rawServices = req.body.services.map(s => String(s).trim()).filter(Boolean);
+    } else if (typeof req.body.services === 'string' && req.body.services.trim()) {
+      rawServices = [req.body.services.trim()];
+    }
+
+    const allConfiguredServices = (config.services || []);
+    if (rawServices.length > 0 && rawServices.length < allConfiguredServices.length) {
+      allowedServices = rawServices;
+    }
+  }
 
   activeSessions.set(sessionToken, {
     id: sessionId,
@@ -1056,6 +1130,7 @@ app.post('/auth/approve/action', (req, res) => {
     friendlyDevice: finalDeviceName,
     service: session.serviceName || null,
     type: isTrusted ? 'trusted_device' : 'desktop_guest',
+    allowedServices,
   });
 
   savePersistedSessions();
@@ -1066,11 +1141,20 @@ app.post('/auth/approve/action', (req, res) => {
     redirect: session.redirect,
   });
 
+  let servicesMsg = '';
+  if (Array.isArray(allowedServices) && allowedServices.length > 0) {
+    const svcNames = allowedServices.map(id => {
+      const found = (config.services || []).find(svc => svc.id.toLowerCase() === id.toLowerCase());
+      return found ? found.name : id;
+    });
+    servicesMsg = ` (Allowed services: ${svcNames.join(', ')})`;
+  }
+
   return res.send(renderStatusNoticeHtml({
     title: isTrusted ? 'Trusted Device Authorized!' : 'Device Approved!',
     message: isTrusted
-      ? `Permanently authorized ${finalDeviceName} (${session.desktopIp}) as a Trusted Device.`
-      : `Granted access to ${finalDeviceName} (${session.desktopIp}).`,
+      ? `Permanently authorized ${finalDeviceName} (${session.desktopIp}) as a Trusted Device.${servicesMsg}`
+      : `Granted access to ${finalDeviceName} (${session.desktopIp}).${servicesMsg}`,
     type: 'success',
     actionUrl: '/auth/sessions',
     actionLabel: 'Manage Active Sessions',
@@ -1492,6 +1576,19 @@ function getUpstreamUrlForHost(hostHeader = '') {
 }
 
 function proxyToTargetApp(req, res) {
+  const matchedService = config.getService(req.headers.host);
+  const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  const session = activeSessions.get(token);
+  if (matchedService && !isSessionAllowedForService(session, matchedService) && !isApprover(req)) {
+    return res.status(403).send(renderStatusNoticeHtml({
+      title: 'Access Restricted',
+      message: `Your active session is not authorized to access ${matchedService.name}.`,
+      actionUrl: '/',
+      actionLabel: 'Return to Dashboard',
+      type: 'error',
+    }));
+  }
+
   const upstreamBase = getUpstreamUrlForHost(req.headers.host);
   if (!upstreamBase || !upstreamBase.trim()) {
     return res.status(502).send(renderStatusNoticeHtml({
@@ -1673,6 +1770,19 @@ app.get('/login', (req, res) => {
 
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (isValidSession(token)) {
+    const session = activeSessions.get(token);
+    if (redirectTarget) {
+      const targetService = config.getService(redirectTarget);
+      if (targetService && !isSessionAllowedForService(session, targetService)) {
+        return res.status(403).send(renderStatusNoticeHtml({
+          title: 'Access Restricted',
+          message: `Your active session is not authorized to access ${targetService.name}.`,
+          actionUrl: '/',
+          actionLabel: 'Return to Dashboard',
+          type: 'error',
+        }));
+      }
+    }
     return res.redirect(redirectTarget || '/');
   }
 
@@ -2382,8 +2492,19 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
 }
 
 // 2. Approval Decision HTML (Mobile Scanned Screen)
-function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expiresAt, activeSessionsList }) {
+function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expiresAt, activeSessionsList, services }) {
   const activeCount = activeSessionsList.length;
+  const servicesList = services || config.services || [];
+
+  const servicesChecklistHtml = servicesList.map(svc => `
+    <label class="service-check-item">
+      <input type="checkbox" name="services" value="${escapeHtml(svc.id)}" checked class="service-checkbox">
+      <div class="service-check-info">
+        <span class="service-check-name">${escapeHtml(svc.name)}</span>
+        <span class="service-check-sub">${escapeHtml(svc.subtitle || svc.url)}</span>
+      </div>
+    </label>
+  `).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -2451,7 +2572,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
     .trust-box {
       background: rgba(2, 132, 199, 0.08);
       border: 1px solid rgba(2, 132, 199, 0.25);
-      border-radius: 16px; padding: 1rem 1.15rem; margin-bottom: 1.5rem;
+      border-radius: 16px; padding: 1rem 1.15rem; margin-bottom: 1rem;
       display: flex; align-items: center; gap: 0.85rem; cursor: pointer;
       user-select: none;
     }
@@ -2461,6 +2582,115 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
     .trust-text { text-align: left; }
     .trust-title { display: block; font-size: 0.925rem; font-weight: 600; color: #ffffff; margin-bottom: 0.15rem; }
     .trust-desc { display: block; font-size: 0.775rem; color: #94a3b8; line-height: 1.3; }
+
+    /* Advanced Collapsible Section */
+    .advanced-box {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .advanced-box[open] {
+      border-color: rgba(56, 189, 248, 0.35);
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .advanced-summary {
+      padding: 0.85rem 1.15rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #94a3b8;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+      list-style: none;
+    }
+    .advanced-summary::-webkit-details-marker {
+      display: none;
+    }
+    .advanced-summary:hover {
+      color: #f8fafc;
+    }
+    .advanced-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .chevron-icon {
+      transition: transform 0.2s ease;
+    }
+    .advanced-box[open] .chevron-icon {
+      transform: rotate(180deg);
+    }
+    .advanced-content {
+      padding: 0 1.15rem 1.15rem 1.15rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      margin-top: 0.25rem;
+      padding-top: 0.85rem;
+    }
+    .adv-group { text-align: left; }
+    .adv-label {
+      display: block; font-size: 0.825rem; font-weight: 600;
+      color: #cbd5e1; margin-bottom: 0.35rem;
+    }
+    .adv-label-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.25rem;
+    }
+    .adv-desc {
+      font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;
+    }
+    .adv-select, .adv-input {
+      width: 100%; padding: 0.65rem 0.85rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px; color: #ffffff;
+      font-size: 0.875rem; font-family: inherit;
+      outline: none; transition: border-color 0.2s;
+    }
+    .adv-select:focus, .adv-input:focus {
+      border-color: #38bdf8;
+    }
+    .adv-select option {
+      background: #0f172a; color: #ffffff;
+    }
+    .services-checklist {
+      display: flex; flex-direction: column; gap: 0.45rem;
+      max-height: 220px; overflow-y: auto; padding-right: 0.25rem;
+    }
+    .service-check-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px; padding: 0.55rem 0.75rem;
+      display: flex; align-items: center; gap: 0.65rem;
+      cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    }
+    .service-check-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(56, 189, 248, 0.25);
+    }
+    .service-checkbox {
+      width: 17px; height: 17px; accent-color: #0284c7; cursor: pointer; flex-shrink: 0;
+    }
+    .service-check-info {
+      display: flex; flex-direction: column; min-width: 0;
+    }
+    .service-check-name {
+      font-size: 0.85rem; font-weight: 600; color: #ffffff;
+    }
+    .service-check-sub {
+      font-size: 0.725rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .btn-toggle-all {
+      background: none; border: none; color: #38bdf8;
+      font-size: 0.75rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-toggle-all:hover {
+      text-decoration: underline;
+    }
 
     .btn-group { display: flex; gap: 0.75rem; }
     .btn {
@@ -2525,6 +2755,52 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
         </div>
       </label>
 
+      <!-- Advanced Settings: Custom Expiration & Service Permissions -->
+      <details class="advanced-box">
+        <summary class="advanced-summary">
+          <span class="advanced-title">
+            <svg style="width: 15px; height: 15px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            </svg>
+            Advanced
+          </span>
+          <svg class="chevron-icon" style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
+
+        <div class="advanced-content">
+          <!-- 1. Expiration Time -->
+          <div class="adv-group">
+            <label class="adv-label" for="sessionTtl">Expiration Time</label>
+            <select name="sessionTtl" id="sessionTtl" class="adv-select" onchange="handleTtlChange(this)">
+              <option value="1">1 hour</option>
+              <option value="8">8 hours</option>
+              <option value="24">24 hours (1 day)</option>
+              <option value="72" selected>72 hours (3 days - default)</option>
+              <option value="168">7 days (1 week)</option>
+              <option value="720">30 days (1 month)</option>
+              <option value="custom">Custom hours...</option>
+            </select>
+            <div id="customTtlWrap" style="display: none; margin-top: 0.5rem;">
+              <input type="number" name="customTtlHours" id="customTtlHours" class="adv-input" min="1" max="87600" placeholder="Enter hours (e.g. 12)">
+            </div>
+          </div>
+
+          <!-- 2. Services Access Checklist -->
+          <div class="adv-group" style="margin-top: 1rem;">
+            <div class="adv-label-row">
+              <label class="adv-label">Service Access</label>
+              <button type="button" class="btn-toggle-all" onclick="toggleAllServices()">Toggle All</button>
+            </div>
+            <div class="adv-desc">Grant access only to selected services:</div>
+            <div class="services-checklist">
+              ${servicesChecklistHtml}
+            </div>
+          </div>
+        </div>
+      </details>
+
       <div class="btn-group">
         <button type="submit" name="action" value="reject" class="btn btn-reject">Reject</button>
         <button type="submit" name="action" value="approve" class="btn btn-approve">Approve Desktop</button>
@@ -2536,6 +2812,26 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
     Currently active sessions: <b>${activeCount}</b> &bull; <a href="/auth/sessions">Manage Sessions</a>
   </div>
   ${PWA_SW_SCRIPT}
+
+  <script>
+    function handleTtlChange(sel) {
+      var wrap = document.getElementById('customTtlWrap');
+      if (!wrap) return;
+      if (sel.value === 'custom') {
+        wrap.style.display = 'block';
+        var inp = document.getElementById('customTtlHours');
+        if (inp) inp.focus();
+      } else {
+        wrap.style.display = 'none';
+      }
+    }
+
+    function toggleAllServices() {
+      var boxes = document.querySelectorAll('.service-checkbox');
+      var allChecked = Array.from(boxes).every(function(b) { return b.checked; });
+      boxes.forEach(function(b) { b.checked = !allChecked; });
+    }
+  </script>
 </body>
 </html>`;
 }
@@ -2591,6 +2887,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
           <div class="session-sub">
             <div>${escapeHtml(s.ip)} &bull; <span class="session-started" data-created="${s.createdAt || ''}">Started ${timeLabel}</span></div>
             <div class="session-expiry" data-expires="${s.expiresAt || ''}">Expires ${expiresLabel}</div>
+            ${Array.isArray(s.allowedServices) && s.allowedServices.length > 0 ? `<div class="session-services" style="font-size: 0.75rem; color: #38bdf8; margin-top: 0.15rem;">Access: ${escapeHtml(s.allowedServices.map(id => { const found = (config.services || []).find(svc => svc.id.toLowerCase() === id.toLowerCase()); return found ? found.name : id; }).join(', '))}</div>` : ''}
           </div>
         </div>
         <form method="POST" action="/auth/sessions/revoke" onsubmit="handleRevoke(event, '${s.id}')">
@@ -3529,20 +3826,29 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   const sessionId = (session && session.id) || '';
   const sessionToken = (session && session.token) || '';
 
-  const servicesHtml = services.map(svc => `
-    <div class="service-card">
+  const servicesHtml = services.map(svc => {
+    const isAllowed = isApproverUser || isSessionAllowedForService(session, svc);
+    return `
+    <div class="service-card" style="${isAllowed ? '' : 'opacity: 0.55;'}">
       <div class="service-info">
         <div class="service-name">${escapeHtml(svc.name)}</div>
         <div class="service-desc">${escapeHtml(svc.subtitle || svc.url)}</div>
       </div>
+      ${isAllowed ? `
       <a href="${escapeHtml(svc.url)}" class="btn-launch" target="_blank" rel="noopener">
         <span>Launch</span>
         <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
         </svg>
       </a>
+      ` : `
+      <span class="badge-no-access" style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; background: rgba(255, 255, 255, 0.05); padding: 0.4rem 0.7rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
+        Restricted
+      </span>
+      `}
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
