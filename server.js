@@ -1591,6 +1591,9 @@ function getUpstreamUrlForHost(hostHeader = '') {
   if (host === 'dozzle.szycic.com') {
     return 'http://dozzle:8080';
   }
+  if (host === 'pdf.szycic.com') {
+    return 'http://stirling-pdf:8080';
+  }
 
   return TARGET_APP_URL || 'http://share-app:3000';
 }
