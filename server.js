@@ -172,8 +172,21 @@ const activeSessions = new Map();
 // approverSessions: token -> { token, createdAt, expiresAt, ip, userAgent }
 const approverSessions = new Map();
 
-// pendingQrSessions: qrSessionId -> { key, desktopIp, desktopUserAgent, friendlyDevice, createdAt, expiresAt, status }
+// pendingQrSessions: qrSessionId -> { key, desktopIp, desktopUserAgent, friendlyDevice, createdAt, expiresAt, status, pairCode }
 const pendingQrSessions = new Map();
+
+// pairingCodes: 8-digit code -> qrSessionId
+const pairingCodes = new Map();
+
+function generatePairCode() {
+  for (let i = 0; i < 10; i++) {
+    const code = String(crypto.randomInt(10000000, 100000000));
+    if (!pairingCodes.has(code)) {
+      return code;
+    }
+  }
+  return String(crypto.randomInt(10000000, 100000000));
+}
 
 // Persistence Helpers
 function loadPersistedSessions() {
@@ -287,6 +300,9 @@ setInterval(() => {
 
   for (const [id, session] of pendingQrSessions.entries()) {
     if (now > session.expiresAt) {
+      if (session.pairCode) {
+        pairingCodes.delete(session.pairCode);
+      }
       pendingQrSessions.delete(id);
     }
   }
@@ -676,8 +692,12 @@ app.get('/auth/qr-init', async (req, res) => {
     const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '';
     const matchedService = config.getService(req.query.service || redirectTarget);
 
+    const pairCode = generatePairCode();
+    pairingCodes.set(pairCode, qrSessionId);
+
     pendingQrSessions.set(qrSessionId, {
       key,
+      pairCode,
       desktopIp,
       desktopUserAgent,
       friendlyDevice: parseUserAgent(desktopUserAgent),
@@ -701,10 +721,14 @@ app.get('/auth/qr-init', async (req, res) => {
       },
     });
 
+    const pairCodeFormatted = `${pairCode.slice(0, 4)} - ${pairCode.slice(4)}`;
+
     res.json({
       success: true,
       qrSessionId,
       qrCode,
+      pairCode,
+      pairCodeFormatted,
       expiresAt,
       ttlMs: QR_SESSION_TTL_MS,
       service: matchedService ? { id: matchedService.id, name: matchedService.name } : null,
@@ -713,6 +737,39 @@ app.get('/auth/qr-init', async (req, res) => {
     console.error('Error generating QR code:', err);
     res.status(500).json({ error: 'Failed to initialize QR session' });
   }
+});
+
+// Endpoint for mobile approver to verify and resolve 8-digit code
+app.post('/auth/code/verify', (req, res) => {
+  if (!isApprover(req)) {
+    return res.status(401).json({ error: 'Unauthorized approver.' });
+  }
+
+  const rawCode = req.body && req.body.code;
+  const cleanCode = typeof rawCode === 'string' ? rawCode.replace(/\D/g, '') : '';
+
+  if (cleanCode.length !== 8) {
+    return res.status(400).json({ error: 'Please enter a valid 8-digit code.' });
+  }
+
+  const qrSessionId = pairingCodes.get(cleanCode);
+  if (!qrSessionId) {
+    return res.status(404).json({ error: 'Code not found or expired. Please check the screen.' });
+  }
+
+  const session = pendingQrSessions.get(qrSessionId);
+  if (!session || Date.now() > session.expiresAt || session.status !== 'pending') {
+    pairingCodes.delete(cleanCode);
+    if (session) pendingQrSessions.delete(qrSessionId);
+    return res.status(410).json({ error: 'This authorization code has expired.' });
+  }
+
+  const redirectUrl = `/auth/qr-approve?id=${encodeURIComponent(qrSessionId)}&key=${encodeURIComponent(session.key)}`;
+  return res.json({
+    success: true,
+    redirectUrl,
+    sessionId: qrSessionId,
+  });
 });
 
 // ----------------------------------------------------
@@ -872,6 +929,7 @@ app.get('/auth/qr-approve', (req, res) => {
   }
 
   if (Date.now() > session.expiresAt || session.status !== 'pending') {
+    if (session.pairCode) pairingCodes.delete(session.pairCode);
     pendingQrSessions.delete(id);
     return res.status(410).send(renderStatusNoticeHtml({
       title: 'QR Code Expired',
@@ -936,6 +994,9 @@ app.post('/auth/qr-action', (req, res) => {
     return res.status(403).send('Invalid authorization key.');
   }
 
+  if (session.pairCode) {
+    pairingCodes.delete(session.pairCode);
+  }
   pendingQrSessions.delete(id);
 
   if (action === 'reject') {
@@ -1747,6 +1808,31 @@ app.get('/login', (req, res) => {
       color: #10b981; display: flex; align-items: center; justify-content: center;
       margin-bottom: 1rem;
     }
+    .pair-code-card {
+      margin-top: 1.15rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 0.85rem 1.1rem;
+      text-align: center;
+      transition: opacity 0.2s, border-color 0.2s;
+    }
+    .pair-code-label {
+      font-size: 0.685rem;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      margin-bottom: 0.35rem;
+    }
+    .pair-code-digits {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      color: #38bdf8;
+      user-select: all;
+    }
     .footer { margin-top: 1.75rem; font-size: 0.775rem; color: #64748b; }
   </style>
 </head>
@@ -1780,6 +1866,11 @@ app.get('/login', (req, res) => {
       </div>
     </div>
 
+    <div class="pair-code-card" id="pairCodeCard">
+      <div class="pair-code-label">Or Enter Code in Approver App</div>
+      <div class="pair-code-digits" id="pairCodeDigits">•••• - ••••</div>
+    </div>
+
     <div class="status-bar" id="statusBar">
       <div class="status-dot"></div>
       <span id="statusText">Awaiting approver scan (<span id="timerCount">120</span>s)</span>
@@ -1808,7 +1899,7 @@ app.get('/login', (req, res) => {
     function startTimer(durationMs) {
       clearInterval(timerInterval);
       secondsLeft = Math.floor(durationMs / 1000);
-      statusText.innerHTML = 'Awaiting approver scan (<span id="timerCount">' + secondsLeft + '</span>s)';
+      statusText.innerHTML = 'Awaiting approval (<span id="timerCount">' + secondsLeft + '</span>s)';
 
       timerInterval = setInterval(() => {
         secondsLeft--;
@@ -1827,6 +1918,8 @@ app.get('/login', (req, res) => {
     function onSessionExpired() {
       expiredOverlay.classList.add('active');
       statusText.textContent = 'Session timed out';
+      const pairCodeCard = document.getElementById('pairCodeCard');
+      if (pairCodeCard) pairCodeCard.style.opacity = '0.35';
     }
 
     async function initQrSession() {
@@ -1846,6 +1939,13 @@ app.get('/login', (req, res) => {
         currentSessionId = data.qrSessionId;
         qrImage.src = data.qrCode;
         qrImage.style.display = 'block';
+
+        const pairCodeDigits = document.getElementById('pairCodeDigits');
+        if (pairCodeDigits && data.pairCodeFormatted) {
+          pairCodeDigits.textContent = data.pairCodeFormatted;
+        }
+        const pairCodeCard = document.getElementById('pairCodeCard');
+        if (pairCodeCard) pairCodeCard.style.opacity = '1';
 
         socket.emit('join-session', currentSessionId);
 
@@ -2495,19 +2595,46 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     }
     .btn-logout:hover { color: #f87171; border-color: rgba(248, 113, 113, 0.4); }
 
-    /* Scan QR Button */
-    .btn-scan-main {
-      width: 100%; padding: 0.95rem 1.25rem;
-      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-      color: #ffffff; border: none; border-radius: 16px;
-      font-size: 1rem; font-weight: 700; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 0.65rem;
-      box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4);
-      margin-bottom: 1.75rem; transition: transform 0.15s, box-shadow 0.15s;
+    /* Dual Action Buttons Header */
+    .action-buttons-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1.75rem;
     }
-    .btn-scan-main:hover {
+    .btn-action-hero {
+      width: 100%;
+      padding: 0.95rem 1rem;
+      border: none;
+      border-radius: 16px;
+      font-size: 0.925rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+    }
+    .btn-scan-qr {
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4);
+    }
+    .btn-scan-qr:hover {
       transform: translateY(-2px);
       box-shadow: 0 15px 30px -5px rgba(2, 132, 199, 0.5);
+    }
+    .btn-enter-code {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: #38bdf8;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .btn-enter-code:hover {
+      transform: translateY(-2px);
+      background: rgba(56, 189, 248, 0.12);
+      border-color: #38bdf8;
     }
 
     .notice {
@@ -2630,6 +2757,82 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     .scanner-status {
       margin-top: 0.75rem; font-size: 0.85rem; color: #38bdf8; font-weight: 600;
     }
+
+    /* 8-Digit Pairing Code Modal */
+    .pair-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 9999; display: none; align-items: center; justify-content: center;
+      padding: 1.5rem;
+    }
+    .pair-modal-overlay.active { display: flex; }
+    .pair-modal-card {
+      width: 100%; max-width: 400px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px; padding: 1.75rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .pair-modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .pair-modal-title { font-size: 1.2rem; font-weight: 700; color: #ffffff; }
+    .pair-modal-desc {
+      font-size: 0.85rem; color: #94a3b8; line-height: 1.45;
+      margin-bottom: 1.25rem;
+    }
+    .pair-input-wrap { margin-bottom: 1rem; }
+    .pair-code-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(56, 189, 248, 0.35);
+      border-radius: 16px;
+      color: #ffffff;
+      padding: 0.85rem 1rem;
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-align: center;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .pair-code-input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    }
+    .pair-modal-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+      padding: 0.6rem 0.85rem;
+      border-radius: 10px;
+      font-size: 0.825rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+    .btn-pair-submit {
+      width: 100%;
+      padding: 0.85rem 1.25rem;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 14px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, background 0.15s;
+    }
+    .btn-pair-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px -5px rgba(2, 132, 199, 0.4);
+    }
+    .btn-pair-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
   </style>
 </head>
 <body>
@@ -2644,13 +2847,21 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
 
     ${notice ? `<div class="notice" id="dashboard-notice">${escapeHtml(notice)}</div>` : `<div class="notice" id="dashboard-notice" style="display: none;"></div>`}
 
-    <!-- In-App Camera QR Scanner Trigger -->
-    <button type="button" class="btn-scan-main" onclick="openScanner()">
-      <svg style="width: 24px; height: 24px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-      </svg>
-      Scan Desktop QR Code
-    </button>
+    <!-- Dual Action Header: Scan QR & Enter Code -->
+    <div class="action-buttons-grid">
+      <button type="button" class="btn-action-hero btn-scan-qr" onclick="openScanner()">
+        <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+        </svg>
+        <span>Scan QR Code</span>
+      </button>
+      <button type="button" class="btn-action-hero btn-enter-code" onclick="openPairCodeModal()">
+        <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+        </svg>
+        <span>Enter Code</span>
+      </button>
+    </div>
 
     <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.85rem; color: #ffffff;">Active Authorized Sessions</h2>
 
@@ -2693,6 +2904,43 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
 
     <p class="scanner-tip">Point your phone camera directly at the QR code on your computer screen.</p>
     <div class="scanner-status" id="scannerStatus">Starting camera...</div>
+  </div>
+
+  <!-- In-App 8-Digit Pairing Code Modal -->
+  <div class="pair-modal-overlay" id="pairCodeModal" onclick="if(event.target===this)closePairCodeModal()">
+    <div class="pair-modal-card">
+      <div class="pair-modal-header">
+        <div class="pair-modal-title">Enter 8-Digit Code</div>
+        <button type="button" class="btn-close-scanner" onclick="closePairCodeModal()" aria-label="Close">
+          <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <p class="pair-modal-desc">Type the 8 digits shown on the desktop screen to authorize access.</p>
+
+      <form id="pairCodeForm" onsubmit="handlePairCodeSubmit(event)">
+        <div class="pair-input-wrap">
+          <input
+            type="text"
+            id="pairCodeInput"
+            class="pair-code-input"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="•••• - ••••"
+            maxlength="11"
+            oninput="handlePairCodeInput(this)"
+            onkeydown="if(event.key==='Escape')closePairCodeModal()"
+          />
+        </div>
+        <div class="pair-modal-error" id="pairCodeError" style="display: none;"></div>
+
+        <button type="submit" class="btn-pair-submit" id="btnPairSubmit">
+          Authorize Device
+        </button>
+      </form>
+    </div>
   </div>
 
   <script>
@@ -2918,6 +3166,102 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       window.addEventListener('DOMContentLoaded', () => {
         setTimeout(openScanner, 250);
       });
+    }
+
+    function openPairCodeModal() {
+      const modal = document.getElementById('pairCodeModal');
+      const input = document.getElementById('pairCodeInput');
+      const errEl = document.getElementById('pairCodeError');
+      const btn = document.getElementById('btnPairSubmit');
+      if (errEl) errEl.style.display = 'none';
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Authorize Device';
+      }
+      if (input) {
+        input.value = '';
+        input.disabled = false;
+      }
+      if (modal) modal.classList.add('active');
+      setTimeout(() => {
+        if (input) input.focus();
+      }, 100);
+    }
+
+    function closePairCodeModal() {
+      const modal = document.getElementById('pairCodeModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function handlePairCodeInput(el) {
+      let digits = el.value.replace(/\D/g, '').slice(0, 8);
+      if (digits.length > 4) {
+        el.value = digits.slice(0, 4) + ' - ' + digits.slice(4);
+      } else {
+        el.value = digits;
+      }
+      const errEl = document.getElementById('pairCodeError');
+      if (errEl) errEl.style.display = 'none';
+
+      if (digits.length === 8) {
+        verifyPairCode(digits);
+      }
+    }
+
+    async function handlePairCodeSubmit(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById('pairCodeInput');
+      if (!input) return;
+      const digits = input.value.replace(/\D/g, '');
+      if (digits.length !== 8) {
+        const errEl = document.getElementById('pairCodeError');
+        if (errEl) {
+          errEl.textContent = 'Please enter all 8 digits.';
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+      verifyPairCode(digits);
+    }
+
+    async function verifyPairCode(cleanCode) {
+      const btn = document.getElementById('btnPairSubmit');
+      const input = document.getElementById('pairCodeInput');
+      const errEl = document.getElementById('pairCodeError');
+      if (errEl) errEl.style.display = 'none';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+      }
+      try {
+        const res = await fetch('/auth/code/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ code: cleanCode })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Code verification failed.');
+        }
+        if (data.redirectUrl) {
+          window.location.href = data.redirectUrl;
+        }
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = err.message || 'Invalid or expired code.';
+          errEl.style.display = 'block';
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Authorize Device';
+        }
+        if (input) {
+          input.disabled = false;
+          input.focus();
+          input.select();
+        }
+      }
     }
   </script>
   ${PWA_SW_SCRIPT}
