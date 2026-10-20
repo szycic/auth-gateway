@@ -1005,6 +1005,11 @@ app.get('/auth/approve', (req, res) => {
     }));
   }
 
+  // Resolve target platform if the user initiated login from a specific service
+  const targetService = session.serviceId
+    ? config.getService(session.serviceId)
+    : (session.redirect ? config.getService(session.redirect) : (session.serviceName ? config.getService(session.serviceName) : null));
+
   // Render the Approval Decision Screen on Mobile
   res.send(renderApprovalDecisionHtml({
     id,
@@ -1012,6 +1017,7 @@ app.get('/auth/approve', (req, res) => {
     desktopIp: session.desktopIp,
     friendlyDevice: session.friendlyDevice,
     serviceName: session.serviceName,
+    targetService,
     expiresAt: session.expiresAt,
     activeSessionsList: Array.from(activeSessions.values()),
     services: config.services,
@@ -1095,9 +1101,9 @@ app.post('/auth/approve/action', (req, res) => {
     }
   }
 
-  // Trusted device gets permanent 10-year expiration unless custom TTL explicitly specified
+  // Trusted device always gets permanent 10-year expiration (cannot change expiration while trusted)
   let tokenExpiresAt;
-  if (isTrusted && !customTtlSpecified) {
+  if (isTrusted) {
     tokenExpiresAt = Date.now() + 10 * 365 * 24 * 3600 * 1000;
   } else {
     tokenExpiresAt = Date.now() + Math.round(ttlHours * 3600 * 1000);
@@ -2547,19 +2553,26 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
 }
 
 // 2. Approval Decision HTML (Mobile Scanned Screen)
-function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expiresAt, activeSessionsList, services }) {
+function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, targetService, expiresAt, activeSessionsList, services }) {
   const activeCount = activeSessionsList.length;
   const servicesList = services || config.services || [];
+  const targetServiceId = targetService ? targetService.id : null;
 
-  const servicesChecklistHtml = servicesList.map(svc => `
-    <label class="service-check-item">
-      <input type="checkbox" name="services" value="${escapeHtml(svc.id)}" checked class="service-checkbox">
+  const servicesChecklistHtml = servicesList.map(svc => {
+    const isTarget = targetServiceId && svc.id.toLowerCase() === targetServiceId.toLowerCase();
+    return `
+    <label class="service-check-item ${isTarget ? 'service-check-target' : ''}">
+      <input type="checkbox" name="services" value="${escapeHtml(svc.id)}" checked class="service-checkbox" data-service-id="${escapeHtml(svc.id)}" onchange="handleServiceCheckboxChange()">
       <div class="service-check-info">
-        <span class="service-check-name">${escapeHtml(svc.name)}</span>
+        <div class="service-check-name-row">
+          <span class="service-check-name">${escapeHtml(svc.name)}</span>
+          ${isTarget ? `<span class="badge-target-svc">Current</span>` : ''}
+        </div>
         <span class="service-check-sub">${escapeHtml(svc.subtitle || svc.url)}</span>
       </div>
     </label>
-  `).join('');
+  `;
+  }).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -2632,7 +2645,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       user-select: none;
     }
     .trust-box input[type="checkbox"] {
-      width: 20px; height: 20px; accent-color: #0284c7; cursor: pointer;
+      width: 20px; height: 20px; accent-color: #0284c7; cursor: pointer; flex-shrink: 0;
     }
     .trust-text { text-align: left; }
     .trust-title { display: block; font-size: 0.925rem; font-weight: 600; color: #ffffff; margin-bottom: 0.15rem; }
@@ -2686,7 +2699,15 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       margin-top: 0.25rem;
       padding-top: 0.85rem;
     }
-    .adv-group { text-align: left; }
+    .adv-group { text-align: left; transition: opacity 0.2s; }
+    .adv-group-disabled { opacity: 0.6; }
+    .adv-group-disabled .adv-select,
+    .adv-group-disabled .adv-input {
+      cursor: not-allowed;
+      background: rgba(255, 255, 255, 0.02);
+      border-color: rgba(255, 255, 255, 0.06);
+      color: #94a3b8;
+    }
     .adv-label {
       display: block; font-size: 0.825rem; font-weight: 600;
       color: #cbd5e1; margin-bottom: 0.35rem;
@@ -2704,7 +2725,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 10px; color: #ffffff;
       font-size: 0.875rem; font-family: inherit;
-      outline: none; transition: border-color 0.2s;
+      outline: none; transition: border-color 0.2s, background 0.2s;
     }
     .adv-select:focus, .adv-input:focus {
       border-color: #38bdf8;
@@ -2712,6 +2733,63 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
     .adv-select option {
       background: #0f172a; color: #ffffff;
     }
+    .ttl-trust-badge {
+      font-size: 0.725rem; font-weight: 700; color: #38bdf8;
+      background: rgba(56, 189, 248, 0.12); padding: 0.15rem 0.5rem;
+      border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .ttl-trust-notice {
+      margin-top: 0.45rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.4;
+    }
+
+    /* Target Platform Only Toggle Box */
+    .only-platform-box {
+      background: rgba(56, 189, 248, 0.07);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 12px;
+      padding: 0.75rem 0.95rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .only-platform-box:hover {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .only-platform-box input[type="checkbox"] {
+      width: 18px; height: 18px; accent-color: #38bdf8; cursor: pointer; flex-shrink: 0;
+    }
+    .only-platform-text { text-align: left; }
+    .only-platform-title { display: block; font-size: 0.85rem; font-weight: 600; color: #38bdf8; margin-bottom: 0.1rem; }
+    .only-platform-desc { display: block; font-size: 0.725rem; color: #94a3b8; line-height: 1.3; }
+
+    .services-header-actions {
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .btn-toggle-service {
+      background: none; border: none; color: #38bdf8;
+      font-size: 0.75rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-toggle-service:hover {
+      text-decoration: underline;
+    }
+    .service-check-name-row {
+      display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;
+    }
+    .badge-target-svc {
+      font-size: 0.65rem; font-weight: 700; color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.1rem 0.4rem; border-radius: 4px; line-height: 1.2;
+    }
+    .service-check-target {
+      border-color: rgba(56, 189, 248, 0.3);
+      background: rgba(56, 189, 248, 0.04);
+    }
+
     .services-checklist {
       display: flex; flex-direction: column; gap: 0.45rem;
       max-height: 220px; overflow-y: auto; padding-right: 0.25rem;
@@ -2767,7 +2845,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       <h1>Authorize Desktop Access?</h1>
     </div>
 
-    <form method="POST" action="/auth/approve/action">
+    <form method="POST" action="/auth/approve/action" onsubmit="return validateApprovalForm(event)">
       <input type="hidden" name="id" value="${id}">
       <input type="hidden" name="key" value="${key}">
 
@@ -2780,6 +2858,12 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
           <span class="info-label">IP Address</span>
           <span class="info-val">${escapeHtml(desktopIp)}</span>
         </div>
+        ${targetService ? `
+        <div class="info-row">
+          <span class="info-label">Target Platform</span>
+          <span class="info-val" style="color: #38bdf8; font-weight: 700;">${escapeHtml(targetService.name)}</span>
+        </div>
+        ` : ''}
         <div class="info-row">
           <span class="info-label">Access Level</span>
           <span class="info-val" style="color: #38bdf8;">Standard Access</span>
@@ -2803,7 +2887,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       </div>
 
       <label class="trust-box">
-        <input type="checkbox" name="trusted" value="true">
+        <input type="checkbox" name="trusted" id="trustedCheckbox" value="true" onchange="handleTrustChange(this)">
         <div class="trust-text">
           <span class="trust-title">Trust this device</span>
           <span class="trust-desc">Keep signed in permanently until manually revoked.</span>
@@ -2826,8 +2910,11 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
 
         <div class="advanced-content">
           <!-- 1. Expiration Time -->
-          <div class="adv-group">
-            <label class="adv-label" for="sessionTtl">Expiration Time</label>
+          <div class="adv-group" id="expirationGroup">
+            <div class="adv-label-row">
+              <label class="adv-label" for="sessionTtl">Expiration Time</label>
+              <span id="ttlTrustBadge" class="ttl-trust-badge" style="display: none;">Permanent (Trusted)</span>
+            </div>
             <select name="sessionTtl" id="sessionTtl" class="adv-select" onchange="handleTtlChange(this)">
               <option value="1">1 hour</option>
               <option value="8">8 hours</option>
@@ -2840,15 +2927,32 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
             <div id="customTtlWrap" style="display: none; margin-top: 0.5rem;">
               <input type="number" name="customTtlHours" id="customTtlHours" class="adv-input" min="1" max="87600" placeholder="Enter hours (e.g. 12)">
             </div>
+            <div id="ttlTrustNotice" class="ttl-trust-notice" style="display: none;">
+              Trusted devices never expire automatically. Expiration time cannot be changed while trusted.
+            </div>
           </div>
 
           <!-- 2. Services Access Checklist -->
           <div class="adv-group" style="margin-top: 1rem;">
             <div class="adv-label-row">
               <label class="adv-label">Service Access</label>
-              <button type="button" class="btn-toggle-all" onclick="toggleAllServices()">Toggle All</button>
+              <div class="services-header-actions">
+                ${targetService ? `<button type="button" class="btn-toggle-service" onclick="selectOnlyTargetService('${escapeHtml(targetService.id)}')">Only ${escapeHtml(targetService.name)}</button>` : ''}
+                <button type="button" class="btn-toggle-all" onclick="toggleAllServices()">Toggle All</button>
+              </div>
             </div>
-            <div class="adv-desc">Grant access only to selected services:</div>
+
+            ${targetService ? `
+            <label class="only-platform-box">
+              <input type="checkbox" id="onlyPlatformToggle" data-target-id="${escapeHtml(targetService.id)}" onchange="handleOnlyPlatformToggle(this, '${escapeHtml(targetService.id)}')">
+              <div class="only-platform-text">
+                <span class="only-platform-title">Grant access only to ${escapeHtml(targetService.name)}</span>
+                <span class="only-platform-desc">Lock this session exclusively to ${escapeHtml(targetService.name)}.</span>
+              </div>
+            </label>
+            ` : ''}
+
+            <div class="adv-desc">Or customize individual service permissions:</div>
             <div class="services-checklist">
               ${servicesChecklistHtml}
             </div>
@@ -2869,6 +2973,35 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
   ${PWA_SW_SCRIPT}
 
   <script>
+    function handleTrustChange(checkbox) {
+      var isTrusted = checkbox.checked;
+      var sel = document.getElementById('sessionTtl');
+      var customInp = document.getElementById('customTtlHours');
+      var badge = document.getElementById('ttlTrustBadge');
+      var notice = document.getElementById('ttlTrustNotice');
+      var expGroup = document.getElementById('expirationGroup');
+
+      if (sel) {
+        sel.disabled = isTrusted;
+      }
+      if (customInp) {
+        customInp.disabled = isTrusted;
+      }
+      if (badge) {
+        badge.style.display = isTrusted ? 'inline-block' : 'none';
+      }
+      if (notice) {
+        notice.style.display = isTrusted ? 'block' : 'none';
+      }
+      if (expGroup) {
+        if (isTrusted) {
+          expGroup.classList.add('adv-group-disabled');
+        } else {
+          expGroup.classList.remove('adv-group-disabled');
+        }
+      }
+    }
+
     function handleTtlChange(sel) {
       var wrap = document.getElementById('customTtlWrap');
       if (!wrap) return;
@@ -2881,10 +3014,76 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       }
     }
 
+    function handleOnlyPlatformToggle(toggle, targetId) {
+      var boxes = document.querySelectorAll('.service-checkbox');
+      if (toggle.checked) {
+        boxes.forEach(function(b) {
+          b.checked = (b.value.toLowerCase() === targetId.toLowerCase());
+        });
+      } else {
+        boxes.forEach(function(b) {
+          b.checked = true;
+        });
+      }
+    }
+
+    function selectOnlyTargetService(targetId) {
+      var toggle = document.getElementById('onlyPlatformToggle');
+      if (toggle) {
+        toggle.checked = true;
+        handleOnlyPlatformToggle(toggle, targetId);
+      } else {
+        var boxes = document.querySelectorAll('.service-checkbox');
+        boxes.forEach(function(b) {
+          b.checked = (b.value.toLowerCase() === targetId.toLowerCase());
+        });
+      }
+    }
+
+    function handleServiceCheckboxChange() {
+      updatePlatformToggleState();
+    }
+
+    function updatePlatformToggleState() {
+      var toggle = document.getElementById('onlyPlatformToggle');
+      if (!toggle) return;
+      var targetId = toggle.getAttribute('data-target-id');
+      if (!targetId) return;
+
+      var boxes = document.querySelectorAll('.service-checkbox');
+      var targetFound = false;
+      var anyOtherChecked = false;
+
+      boxes.forEach(function(b) {
+        if (b.value.toLowerCase() === targetId.toLowerCase()) {
+          if (b.checked) targetFound = true;
+        } else {
+          if (b.checked) anyOtherChecked = true;
+        }
+      });
+
+      toggle.checked = targetFound && !anyOtherChecked;
+    }
+
     function toggleAllServices() {
       var boxes = document.querySelectorAll('.service-checkbox');
       var allChecked = Array.from(boxes).every(function(b) { return b.checked; });
       boxes.forEach(function(b) { b.checked = !allChecked; });
+      updatePlatformToggleState();
+    }
+
+    function validateApprovalForm(event) {
+      var submitter = event.submitter || document.activeElement;
+      if (submitter && submitter.value === 'reject') {
+        return true;
+      }
+      var checkedBoxes = document.querySelectorAll('.service-checkbox:checked');
+      if (checkedBoxes.length === 0) {
+        alert('Please select at least one service to grant access.');
+        event.preventDefault();
+        return false;
+      }
+      return true;
     }
   </script>
 </body>
@@ -3306,7 +3505,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       <canvas id="scannerCanvas" style="display: none;"></canvas>
     </div>
 
-    <p class="scanner-tip">Point your phone camera directly at the QR code on your computer screen.</p>
+    <p class="scanner-tip">Point your phone camera directly at the QR code on the computer screen.</p>
     <div class="scanner-status" id="scannerStatus">Starting camera...</div>
   </div>
 
@@ -3322,7 +3521,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
         </button>
       </div>
 
-      <p class="pair-modal-desc">Type the 8 digits shown on the desktop screen to authorize access.</p>
+      <p class="pair-modal-desc">Type the 8 digits shown on the computer screen to authorize access.</p>
 
       <form id="pairCodeForm" onsubmit="handlePairCodeSubmit(event)">
         <div class="pair-boxes-wrap">
