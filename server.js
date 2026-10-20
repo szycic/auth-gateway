@@ -2641,13 +2641,28 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
     }
 
-    /* Trusted Device Toggle Container */
+    /* Toggle Containers (Trust Device & Restrict Platform) */
     .trust-box {
-      background: rgba(2, 132, 199, 0.08);
-      border: 1px solid rgba(2, 132, 199, 0.25);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 16px; padding: 1rem 1.15rem; margin-bottom: 1rem;
       display: flex; align-items: center; gap: 0.85rem; cursor: pointer;
       user-select: none;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .trust-box:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+    .trust-box:has(input[type="checkbox"]:checked),
+    .trust-box.is-checked {
+      background: rgba(2, 132, 199, 0.12);
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .trust-box:has(input[type="checkbox"]:checked):hover,
+    .trust-box.is-checked:hover {
+      background: rgba(2, 132, 199, 0.18);
+      border-color: rgba(56, 189, 248, 0.55);
     }
     .trust-box input[type="checkbox"] {
       width: 20px; height: 20px; accent-color: #0284c7; cursor: pointer; flex-shrink: 0;
@@ -2968,7 +2983,20 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
   ${PWA_SW_SCRIPT}
 
   <script>
+    function syncToggleBoxStyle(checkbox) {
+      if (!checkbox) return;
+      var box = checkbox.closest('.trust-box');
+      if (box) {
+        if (checkbox.checked) {
+          box.classList.add('is-checked');
+        } else {
+          box.classList.remove('is-checked');
+        }
+      }
+    }
+
     function handleTrustChange(checkbox) {
+      syncToggleBoxStyle(checkbox);
       var isTrusted = checkbox.checked;
       var sel = document.getElementById('sessionTtl');
       var customInp = document.getElementById('customTtlHours');
@@ -3010,6 +3038,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
     }
 
     function handleOnlyPlatformToggle(toggle, targetId) {
+      syncToggleBoxStyle(toggle);
       var boxes = document.querySelectorAll('.service-checkbox');
       if (toggle.checked) {
         boxes.forEach(function(b) {
@@ -3023,6 +3052,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
     }
 
     function handleGenericPlatformToggle(toggle) {
+      syncToggleBoxStyle(toggle);
       var wrap = document.getElementById('platformPickerWrap');
       var sel = document.getElementById('platformPickerSelect');
       var boxes = document.querySelectorAll('.service-checkbox');
@@ -3055,6 +3085,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       var toggle = document.getElementById('onlyPlatformToggle');
       if (toggle) {
         toggle.checked = true;
+        syncToggleBoxStyle(toggle);
         handleOnlyPlatformToggle(toggle, targetId);
       } else {
         var boxes = document.querySelectorAll('.service-checkbox');
@@ -3101,6 +3132,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
           if (wrap) wrap.style.display = 'none';
         }
       }
+      syncToggleBoxStyle(toggle);
     }
 
     function toggleAllServices() {
@@ -3123,6 +3155,11 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       }
       return true;
     }
+
+    // Initialize toggle box states on load
+    document.querySelectorAll('.trust-box input[type="checkbox"]').forEach(function(inp) {
+      syncToggleBoxStyle(inp);
+    });
   </script>
 </body>
 </html>`;
