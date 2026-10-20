@@ -693,10 +693,10 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
     window.fetch = function() {
       var args = Array.prototype.slice.call(arguments);
       if (typeof args[0] === 'string' && args[0].indexOf('/fonts//') !== -1) {
-        args[0] = args[0].replace(/\/fonts\/\/+/g, '/fonts/');
+        args[0] = args[0].split('/fonts//').join('/fonts/');
       } else if (args[0] && typeof args[0].url === 'string' && args[0].url.indexOf('/fonts//') !== -1) {
         try {
-          args[0] = new Request(args[0].url.replace(/\/fonts\/\/+/g, '/fonts/'), args[0]);
+          args[0] = new Request(args[0].url.split('/fonts//').join('/fonts/'), args[0]);
         } catch (e) {}
       }
       return origFetch.apply(this, args).then(function(res) {
@@ -713,7 +713,7 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
     var origSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(method, url) {
       if (typeof url === 'string' && url.indexOf('/fonts//') !== -1) {
-        url = url.replace(/\/fonts\/\/+/g, '/fonts/');
+        url = url.split('/fonts//').join('/fonts/');
       }
       this._url = url;
       return origOpen.apply(this, arguments);
