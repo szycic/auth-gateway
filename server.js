@@ -1464,6 +1464,9 @@ function getUpstreamUrlForHost(hostHeader = '') {
   if (host === 'garden.szycic.com') {
     return 'http://garden:8080';
   }
+  if (host === 'uptime.szycic.com') {
+    return 'http://kuma:3001';
+  }
 
   return TARGET_APP_URL || 'http://share-app:3000';
 }
