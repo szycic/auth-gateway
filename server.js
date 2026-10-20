@@ -2590,7 +2590,10 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after {
+      box-sizing: border-box; margin: 0; padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
     body {
       font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
       background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%);
@@ -2759,11 +2762,17 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       gap: 0.85rem;
       cursor: pointer;
       user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent !important;
+      outline: none;
       transition: background 0.15s, border-color 0.15s;
     }
-    .only-platform-box:hover {
-      background: rgba(2, 132, 199, 0.14);
-      border-color: rgba(56, 189, 248, 0.45);
+    @media (hover: hover) {
+      .only-platform-box:not(.only-platform-box-picker):hover {
+        background: rgba(2, 132, 199, 0.14);
+        border-color: rgba(56, 189, 248, 0.45);
+      }
     }
     .only-platform-box-picker {
       flex-direction: column;
@@ -2776,11 +2785,25 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, target
       gap: 0.85rem;
       cursor: pointer;
       width: 100%;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent !important;
+      outline: none;
     }
     .only-platform-box input[type="checkbox"] {
       width: 20px; height: 20px; accent-color: #0284c7; cursor: pointer; flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent !important;
+      outline: none;
     }
-    .only-platform-text { text-align: left; }
+    .only-platform-text {
+      text-align: left;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent !important;
+      outline: none;
+    }
     .only-platform-title { display: block; font-size: 0.925rem; font-weight: 600; color: #ffffff; margin-bottom: 0.15rem; }
     .only-platform-desc { display: block; font-size: 0.775rem; color: #94a3b8; line-height: 1.3; }
 
