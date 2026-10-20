@@ -146,11 +146,7 @@ const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes lockout
 const failedLoginAttempts = new Map(); // ip -> { count, lockedUntil, firstFailedAt }
 
 function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded && typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.socket.remoteAddress || req.ip || '127.0.0.1';
+  return req.ip || req.socket.remoteAddress || '127.0.0.1';
 }
 
 // Cleanup stale rate limit records every 30 minutes
@@ -177,6 +173,19 @@ const pendingLoginSessions = new Map();
 
 // pairingCodes: 8-digit code -> loginSessionId
 const pairingCodes = new Map();
+
+// exchangeCodes: single-use exchange code -> { token, expiresAt }
+const exchangeCodes = new Map();
+
+// Cleanup expired exchange codes every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, item] of exchangeCodes.entries()) {
+    if (item.expiresAt < now) {
+      exchangeCodes.delete(code);
+    }
+  }
+}, 5 * 60 * 1000).unref();
 
 function generatePairCode() {
   for (let i = 0; i < 10; i++) {
@@ -296,25 +305,52 @@ function isApprover(req) {
 // Check if a session has permission to access a specific service
 function isSessionAllowedForService(session, service) {
   if (!session) return false;
-  if (!service) return true;
   // If allowedServices is not set, empty, or contains '*', all services are permitted
-  if (!session.allowedServices || !Array.isArray(session.allowedServices) || session.allowedServices.length === 0) {
+  const hasRestrictedServices = Array.isArray(session.allowedServices) && session.allowedServices.length > 0 && !session.allowedServices.includes('*');
+  if (!hasRestrictedServices) {
     return true;
   }
-  if (session.allowedServices.includes('*')) {
-    return true;
-  }
+  // If session is restricted, service must be provided and explicitly allowed
+  if (!service) return false;
   const serviceId = typeof service === 'string' ? service.toLowerCase() : (service.id || '').toLowerCase();
   return session.allowedServices.map(s => s.toLowerCase()).includes(serviceId);
 }
 
 // Helper to determine the target service from an incoming request
 function getTargetServiceForRequest(req) {
-  const forwardedHost = req.headers['x-forwarded-host'];
-  const hostHeader = req.headers.host;
-  const rawHost = forwardedHost || hostHeader || '';
-  const host = rawHost.toLowerCase().split(':')[0];
-  return config.getService(host);
+  if (req.query && req.query.service) {
+    const svc = config.getService(req.query.service);
+    if (svc) return svc;
+  }
+
+  let rawHost = req.headers['x-service-host'] || req.headers['x-forwarded-host'] || req.headers.host || '';
+  if (typeof rawHost === 'string' && rawHost.includes(',')) {
+    const parts = rawHost.split(',').map(s => s.trim()).filter(Boolean);
+    rawHost = parts[parts.length - 1] || '';
+  }
+  const host = rawHost.toLowerCase().split(':')[0].trim();
+  const matched = config.getService(host);
+  if (matched) return matched;
+
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const originHost = new URL(origin).hostname.toLowerCase();
+      const svc = config.getService(originHost);
+      if (svc) return svc;
+    } catch {}
+  }
+
+  const referer = req.headers.referer;
+  if (referer) {
+    try {
+      const refererHost = new URL(referer).hostname.toLowerCase();
+      const svc = config.getService(refererHost);
+      if (svc) return svc;
+    } catch {}
+  }
+
+  return null;
 }
 
 // Periodic cleanup of expired sessions every 60 seconds
@@ -416,23 +452,40 @@ app.get('/sw.js', (req, res, next) => {
   });
 });
 
+// Helper: Validate CORS origins against BASE_URL and configured cookieDomain
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  try {
+    const u = new URL(origin);
+    const host = u.hostname.toLowerCase();
+    let baseHost = 'auth.szycic.com';
+    try {
+      baseHost = new URL(BASE_URL).hostname.toLowerCase();
+    } catch (e) {}
+
+    const cookieDomain = (config.session.cookieDomain || '').replace(/^\./, '').toLowerCase();
+
+    if (
+      origin === BASE_URL ||
+      host === baseHost ||
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      (cookieDomain && (host === cookieDomain || host.endsWith('.' + cookieDomain)))
+    ) {
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      try {
-        const u = new URL(origin);
-        if (
-          origin === BASE_URL ||
-          u.hostname === 'szycic.com' ||
-          u.hostname.endsWith('.szycic.com') ||
-          u.hostname === 'localhost'
-        ) {
-          return callback(null, true);
-        }
-      } catch (e) {}
-      return callback(null, true);
+      if (isAllowedOrigin(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('CORS origin not allowed: ' + origin));
     },
     methods: ['GET', 'POST'],
     credentials: true,
@@ -595,7 +648,8 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
 
   function verifySession() {
     if (isLocked) return;
-    fetch(AUTH_URL + '/auth/verify', {
+    var verifyUrl = AUTH_URL + '/auth/verify?service=' + encodeURIComponent(window.location.hostname);
+    fetch(verifyUrl, {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store'
@@ -637,7 +691,15 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
   if (window.fetch) {
     var origFetch = window.fetch;
     window.fetch = function() {
-      return origFetch.apply(this, arguments).then(function(res) {
+      var args = Array.prototype.slice.call(arguments);
+      if (typeof args[0] === 'string' && args[0].indexOf('/fonts//') !== -1) {
+        args[0] = args[0].replace(/\/fonts\/\/+/g, '/fonts/');
+      } else if (args[0] && typeof args[0].url === 'string' && args[0].url.indexOf('/fonts//') !== -1) {
+        try {
+          args[0] = new Request(args[0].url.replace(/\/fonts\/\/+/g, '/fonts/'), args[0]);
+        } catch (e) {}
+      }
+      return origFetch.apply(this, args).then(function(res) {
         if (res.status === 401) {
           verifySession();
         }
@@ -650,6 +712,9 @@ const AUTH_WATCHDOG_SCRIPT_CONTENT = `(function() {
     var origOpen = XMLHttpRequest.prototype.open;
     var origSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(method, url) {
+      if (typeof url === 'string' && url.indexOf('/fonts//') !== -1) {
+        url = url.replace(/\/fonts\/\/+/g, '/fonts/');
+      }
       this._url = url;
       return origOpen.apply(this, arguments);
     };
@@ -690,10 +755,14 @@ app.get('/auth/assets/auth-watchdog.js', (req, res) => {
 app.all('/auth/verify', (req, res) => {
   const origin = req.headers.origin;
   if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    if (isAllowedOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    } else {
+      return res.status(403).send('Forbidden: CORS origin not allowed');
+    }
   }
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -703,13 +772,25 @@ app.all('/auth/verify', (req, res) => {
   if (isValidSession(token)) {
     const session = activeSessions.get(token);
 
-    // Check service access restrictions
+    // Check service access restrictions (fail-closed if restricted session)
     const targetService = getTargetServiceForRequest(req);
-    if (targetService && !isSessionAllowedForService(session, targetService)) {
-      return res.status(401).set({
-        'X-Auth-Status': 'unauthorized',
-        'X-Auth-Reason': 'service_not_allowed',
-      }).send('Unauthorized: Service access not granted');
+    const authHost = new URL(BASE_URL).hostname.toLowerCase();
+    const reqHost = ((req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0]).toLowerCase().trim();
+
+    if (targetService) {
+      if (!isSessionAllowedForService(session, targetService)) {
+        return res.status(401).set({
+          'X-Auth-Status': 'unauthorized',
+          'X-Auth-Reason': 'service_not_allowed',
+        }).send('Unauthorized: Service access not granted');
+      }
+    } else if (reqHost !== authHost) {
+      if (!isSessionAllowedForService(session, null)) {
+        return res.status(401).set({
+          'X-Auth-Status': 'unauthorized',
+          'X-Auth-Reason': 'service_not_allowed',
+        }).send('Unauthorized: Service access not granted');
+      }
     }
 
     return res.status(200).set({
@@ -1146,8 +1227,16 @@ app.post('/auth/approve/action', (req, res) => {
 
   savePersistedSessions();
 
+  // Create short-lived, single-use exchange code (60s TTL) for secure token redemption
+  const exchangeCode = crypto.randomBytes(32).toString('base64url');
+  exchangeCodes.set(exchangeCode, {
+    token: sessionToken,
+    expiresAt: Date.now() + 60 * 1000,
+  });
+
   // Emit real-time approved event to desktop room
   io.to(id).emit('approved', {
+    code: exchangeCode,
     token: sessionToken,
     redirect: session.redirect,
   });
@@ -1287,15 +1376,27 @@ app.post('/auth/approver/self-authorize', (req, res) => {
 // 9. Desktop Token Exchange Endpoint
 // ----------------------------------------------------
 app.get('/auth/exchange', (req, res) => {
-  const { token, redirect } = req.query;
+  const { code, token: rawToken, redirect } = req.query;
+  let sessionToken = null;
 
-  if (token && typeof token === 'string' && isValidSession(token)) {
-    const session = activeSessions.get(token);
+  if (code && typeof code === 'string') {
+    const item = exchangeCodes.get(code);
+    exchangeCodes.delete(code); // single-use consumption
+    if (item && item.expiresAt > Date.now()) {
+      sessionToken = item.token;
+    }
+  } else if (rawToken && typeof rawToken === 'string') {
+    // Backwards-compatible direct token exchange
+    sessionToken = rawToken;
+  }
+
+  if (sessionToken && isValidSession(sessionToken)) {
+    const session = activeSessions.get(sessionToken);
     const maxAgeMs = session && session.isTrusted
       ? 10 * 365 * 24 * 3600 * 1000 // 10 years permanent
       : SESSION_TTL_HOURS * 3600 * 1000;
 
-    res.cookie(AUTH_COOKIE_NAME, token, getCookieOptions(req, maxAgeMs));
+    res.cookie(AUTH_COOKIE_NAME, sessionToken, getCookieOptions(req, maxAgeMs));
     const target = config.normalizeRedirect(redirect, '/');
     return res.redirect(target);
   }
@@ -1424,136 +1525,8 @@ app.all('/auth/*', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 13. Public Routes Proxy with Navigation Enforcement (Configurable App Bypass)
+// 13. Upstream Mapping Helpers
 // ----------------------------------------------------
-if (config.publicBypass && config.publicBypass.enabled && Array.isArray(config.publicBypass.paths) && config.publicBypass.paths.length > 0) {
-  const bypassPattern = config.publicBypass.pattern || '^\\/(s|share|upload)\\/[^\\/]+';
-  const PUBLIC_NAV_SCRIPT = `<script>
-(function() {
-  var regex = new RegExp(${JSON.stringify(bypassPattern)});
-  function isPublic(path) {
-    return regex.test(path);
-  }
-  document.addEventListener('click', function(e) {
-    var a = e.target.closest('a');
-    if (a && a.href && a.origin === location.origin) {
-      if (!isPublic(a.pathname)) {
-        e.preventDefault();
-        e.stopPropagation();
-        window.location.href = a.href;
-      }
-    }
-  }, true);
-  if (window.next && window.next.router) {
-    window.next.router.events.on('routeChangeStart', function(url) {
-      if (!isPublic(url)) {
-        window.location.href = url;
-      }
-    });
-  }
-  window.addEventListener('popstate', function() {
-    if (!isPublic(location.pathname)) {
-      window.location.reload();
-    }
-  });
-})();
-</script>`;
-
-  function proxyPublicBypassRoute(req, res) {
-    if (!TARGET_APP_URL || !TARGET_APP_URL.trim()) {
-      return res.status(404).send(renderStatusNoticeHtml({
-        title: 'Page Not Found',
-        message: 'The requested resource does not exist.',
-        actionUrl: '/',
-        actionLabel: 'Return Home',
-        type: 'error',
-      }));
-    }
-
-    let targetUrl;
-    try {
-      targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
-    } catch (err) {
-      console.error('[public bypass url error]', err.message);
-      return res.status(400).send(renderStatusNoticeHtml({
-        title: 'Invalid Request',
-        message: 'The requested URL is invalid.',
-        actionUrl: '/',
-        actionLabel: 'Return Home',
-        type: 'error',
-      }));
-    }
-
-    let downstreamHost;
-    try {
-      downstreamHost = req.headers.host || (new URL(BASE_URL)).host;
-    } catch {
-      downstreamHost = req.headers.host || 'auth.szycic.com';
-    }
-
-    const proxyReq = http.request(
-      targetUrl,
-      {
-        method: req.method,
-        headers: {
-          ...req.headers,
-          host: downstreamHost,
-          'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
-          'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
-          'accept-encoding': 'identity',
-        },
-      },
-      (proxyRes) => {
-        const contentType = proxyRes.headers['content-type'] || '';
-        if (contentType.includes('text/html')) {
-          let body = '';
-          proxyRes.setEncoding('utf8');
-          proxyRes.on('data', (chunk) => { body += chunk; });
-          proxyRes.on('end', () => {
-            if (body.includes('</body>')) {
-              body = body.replace('</body>', `${PUBLIC_NAV_SCRIPT}</body>`);
-            } else {
-              body += PUBLIC_NAV_SCRIPT;
-            }
-            const headers = { ...proxyRes.headers };
-            delete headers['transfer-encoding'];
-            delete headers['content-length'];
-            headers['content-length'] = Buffer.byteLength(body);
-            if (headers['content-security-policy']) {
-              headers['content-security-policy'] = relaxCspHeader(headers['content-security-policy'], BASE_URL);
-            }
-            if (headers['content-security-policy-report-only']) {
-              headers['content-security-policy-report-only'] = relaxCspHeader(headers['content-security-policy-report-only'], BASE_URL);
-            }
-            res.writeHead(proxyRes.statusCode, headers);
-            res.end(body);
-          });
-        } else {
-          res.writeHead(proxyRes.statusCode, proxyRes.headers);
-          proxyRes.pipe(res);
-        }
-      }
-    );
-
-    proxyReq.on('error', (err) => {
-      console.error('[public bypass proxy error]', err.message);
-      res.status(502).send(renderStatusNoticeHtml({
-        title: 'Service Unavailable',
-        message: 'The downstream service is currently unreachable.',
-        actionUrl: BASE_URL,
-        actionLabel: 'Return Home',
-        type: 'error',
-      }));
-    });
-
-    req.pipe(proxyReq);
-  }
-
-  app.all(config.publicBypass.paths, (req, res) => {
-    proxyPublicBypassRoute(req, res);
-  });
-}
-
 function getUpstreamUrlForHost(hostHeader = '') {
   const host = (hostHeader || '').split(':')[0].toLowerCase();
 
@@ -1642,10 +1615,13 @@ function proxyToTargetApp(req, res) {
   const matchedService = config.getService(req.headers.host);
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   const session = activeSessions.get(token);
-  if (matchedService && !isSessionAllowedForService(session, matchedService) && !isApprover(req)) {
+
+  if (!isApprover(req) && (!matchedService || !isSessionAllowedForService(session, matchedService))) {
     return res.status(403).send(renderStatusNoticeHtml({
       title: 'Access Restricted',
-      message: `Your active session is not authorized to access ${matchedService.name}.`,
+      message: matchedService
+        ? `Your active session is not authorized to access ${matchedService.name}.`
+        : 'Your active session is not authorized to access this service.',
       actionUrl: BASE_URL,
       actionLabel: 'Return to Dashboard',
       type: 'error',
@@ -1697,18 +1673,19 @@ function proxyToTargetApp(req, res) {
     },
     (proxyRes) => {
       const contentType = proxyRes.headers['content-type'] || '';
-      const isHtml = contentType.includes('text/html');
+      const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300;
 
       if (isHtml && req.method === 'GET') {
         let body = '';
         proxyRes.setEncoding('utf8');
         proxyRes.on('data', (chunk) => { body += chunk; });
         proxyRes.on('end', () => {
-          const watchdogTag = `<script src="${BASE_URL}/auth/assets/auth-watchdog.js"></script>`;
+          const injectionScript = `<script src="${BASE_URL}/auth/assets/auth-watchdog.js"></script>`;
+
           if (body.includes('</body>')) {
-            body = body.replace('</body>', `${watchdogTag}</body>`);
+            body = body.replace('</body>', `${injectionScript}</body>`);
           } else {
-            body += watchdogTag;
+            body += injectionScript;
           }
           const headers = { ...proxyRes.headers };
           delete headers['transfer-encoding'];
@@ -2174,7 +2151,9 @@ app.get('/login', (req, res) => {
 
       setTimeout(() => {
         const dest = (data && data.redirect) ? data.redirect : redirectTarget;
-        if (data && data.token) {
+        if (data && data.code) {
+          window.location.href = '/auth/exchange?code=' + encodeURIComponent(data.code) + (dest ? '&redirect=' + encodeURIComponent(dest) : '');
+        } else if (data && data.token) {
           window.location.href = '/auth/exchange?token=' + encodeURIComponent(data.token) + (dest ? '&redirect=' + encodeURIComponent(dest) : '');
         } else {
           window.location.href = dest || '/';

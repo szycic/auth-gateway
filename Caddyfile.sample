@@ -1,9 +1,9 @@
 {
-	email dev@szycic.com
+	email dev@example.com
 }
 
 # Centralized Authentication Portal
-auth.szycic.com {
+auth.example.com {
 	reverse_proxy auth-gateway:3000
 
 	header {
@@ -12,8 +12,8 @@ auth.szycic.com {
 	}
 }
 
-# Pingvin Share Service (Protected via auth.szycic.com)
-share.szycic.com {
+# Pingvin Share Service (Protected via auth.example.com)
+share.example.com {
 	# 1. Public Static Assets (bypasses forward auth)
 	handle /_next/static/* {
 		reverse_proxy share-app:3000
@@ -31,7 +31,7 @@ share.szycic.com {
 		reverse_proxy share-app:3000
 	}
 
-	# 2. Public Share Download and Reverse Share Routes
+	# 2. Public Share Download and Reverse Share Routes (bypasses forward auth)
 	handle /s/* {
 		reverse_proxy share-app:3000
 	}
@@ -40,7 +40,9 @@ share.szycic.com {
 		reverse_proxy share-app:3000
 	}
 
-	handle /upload/* {
+	# Public Reverse Share links (/upload/:id is public, but root /upload requires auth)
+	@reverseShare path_regexp reverseShare ^/upload/[^/]+
+	handle @reverseShare {
 		reverse_proxy share-app:3000
 	}
 
@@ -58,7 +60,7 @@ share.szycic.com {
 	}
 
 	# Public backend APIs for share downloads, reverse shares, and app configuration
-	handle /api/shares* {
+	handle /api/shares/* {
 		reverse_proxy share-app:3000
 	}
 
@@ -88,17 +90,17 @@ share.szycic.com {
 		@nextData expression {http.error.status_code} == 401 && (path('/_next/data/*') || header({'x-nextjs-data': '*'}))
 		handle @nextData {
 			header Content-Type "application/json"
-			respond `{"pageProps":{"__N_REDIRECT":"https://auth.szycic.com/login?redirect=https://share.szycic.com","__N_REDIRECT_STATUS":307}}` 200
+			respond `{"statusCode":401,"message":"Authentication required"}` 401
 		}
 
 		@api expression {http.error.status_code} == 401 && path('/api/*')
 		handle @api {
 			header Content-Type "application/json"
-			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.szycic.com/login?redirect=https://share.szycic.com"}` 401
+			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://share.example.com"}` 401
 		}
 
 		handle {
-			redir * https://auth.szycic.com/login?redirect={scheme}://{host}{uri} 302
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
 
