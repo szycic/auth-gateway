@@ -472,7 +472,6 @@ app.get('/auth/health', (req, res) => {
     activeSessions: activeSessions.size,
     approverSessions: approverSessions.size,
     pendingLoginSessions: pendingLoginSessions.size,
-    pendingQrSessions: pendingLoginSessions.size,
     services: config.services.map(s => ({ id: s.id, name: s.name, url: s.url })),
     uptime: process.uptime(),
   });
@@ -679,9 +678,9 @@ app.all('/auth/verify', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 4. QR Code Initialization Endpoint (Desktop)
+// 4. Login Session Initialization Endpoint (Desktop)
 // ----------------------------------------------------
-app.get('/auth/qr-init', async (req, res) => {
+app.get('/auth/init', async (req, res) => {
   try {
     const loginSessionId = crypto.randomUUID();
     const key = crypto.randomBytes(32).toString('hex');
@@ -727,7 +726,6 @@ app.get('/auth/qr-init', async (req, res) => {
     res.json({
       success: true,
       loginSessionId,
-      qrSessionId: loginSessionId,
       qrCode,
       pairCode,
       pairCodeFormatted,
@@ -902,7 +900,7 @@ app.get('/auth/approver/logout', (req, res) => {
 // ----------------------------------------------------
 // 6. Device Approval Screen (Mobile Target)
 // ----------------------------------------------------
-app.get(['/auth/approve', '/auth/qr-approve'], (req, res) => {
+app.get('/auth/approve', (req, res) => {
   const { id, key } = req.query;
 
   if (!id || !key || typeof id !== 'string' || typeof key !== 'string') {
@@ -966,9 +964,9 @@ app.get(['/auth/approve', '/auth/qr-approve'], (req, res) => {
 });
 
 // ----------------------------------------------------
-// 7. QR Action Handler (Approve / Reject)
+// 7. Approval Action Handler (Approve / Reject)
 // ----------------------------------------------------
-app.post('/auth/qr-action', (req, res) => {
+app.post('/auth/approve/action', (req, res) => {
   if (!isApprover(req)) {
     return res.status(401).send('Unauthorized approver.');
   }
@@ -1929,12 +1927,12 @@ app.get('/login', (req, res) => {
         if (redirectTarget) params.append('redirect', redirectTarget);
         if (serviceId) params.append('service', serviceId);
 
-        const url = '/auth/qr-init' + (params.toString() ? '?' + params.toString() : '');
+        const url = '/auth/init' + (params.toString() ? '?' + params.toString() : '');
         const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error('Failed to fetch QR');
+        if (!res.ok) throw new Error('Failed to fetch session init');
         const data = await res.json();
 
-        currentSessionId = data.loginSessionId || data.qrSessionId;
+        currentSessionId = data.loginSessionId;
         qrImage.src = data.qrCode;
         qrImage.style.display = 'block';
 
@@ -2461,7 +2459,7 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
       <h1>Authorize Desktop Access?</h1>
     </div>
 
-    <form method="POST" action="/auth/qr-action">
+    <form method="POST" action="/auth/approve/action">
       <input type="hidden" name="id" value="${id}">
       <input type="hidden" name="key" value="${key}">
 
@@ -3182,7 +3180,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     }
 
     function handleDecodedQr(url) {
-      if (url.includes('/auth/approve') || url.includes('/auth/qr-approve')) {
+      if (url.includes('/auth/approve')) {
         scannerStatus.innerHTML = '<span style="color: #10b981; font-weight: 700;">QR Detected! Redirecting to authorization...</span>';
         if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
         setTimeout(() => {
