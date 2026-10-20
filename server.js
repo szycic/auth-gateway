@@ -172,10 +172,10 @@ const activeSessions = new Map();
 // approverSessions: token -> { token, createdAt, expiresAt, ip, userAgent }
 const approverSessions = new Map();
 
-// pendingQrSessions: qrSessionId -> { key, desktopIp, desktopUserAgent, friendlyDevice, createdAt, expiresAt, status, pairCode }
+// pendingQrSessions: loginSessionId -> { key, desktopIp, desktopUserAgent, friendlyDevice, createdAt, expiresAt, status, pairCode }
 const pendingQrSessions = new Map();
 
-// pairingCodes: 8-digit code -> qrSessionId
+// pairingCodes: 8-digit code -> loginSessionId
 const pairingCodes = new Map();
 
 function generatePairCode() {
@@ -396,9 +396,9 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
-  socket.on('join-session', (qrSessionId) => {
-    if (typeof qrSessionId === 'string' && qrSessionId.trim().length > 0) {
-      socket.join(qrSessionId.trim());
+  socket.on('join-session', (loginSessionId) => {
+    if (typeof loginSessionId === 'string' && loginSessionId.trim().length > 0) {
+      socket.join(loginSessionId.trim());
     }
   });
 
@@ -682,7 +682,7 @@ app.all('/auth/verify', (req, res) => {
 // ----------------------------------------------------
 app.get('/auth/qr-init', async (req, res) => {
   try {
-    const qrSessionId = crypto.randomUUID();
+    const loginSessionId = crypto.randomUUID();
     const key = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + QR_SESSION_TTL_MS;
     const desktopIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown';
@@ -693,9 +693,9 @@ app.get('/auth/qr-init', async (req, res) => {
     const matchedService = config.getService(req.query.service || redirectTarget);
 
     const pairCode = generatePairCode();
-    pairingCodes.set(pairCode, qrSessionId);
+    pairingCodes.set(pairCode, loginSessionId);
 
-    pendingQrSessions.set(qrSessionId, {
+    pendingQrSessions.set(loginSessionId, {
       key,
       pairCode,
       desktopIp,
@@ -709,7 +709,7 @@ app.get('/auth/qr-init', async (req, res) => {
       status: 'pending',
     });
 
-    const approveUrl = `${BASE_URL}/auth/qr-approve?id=${encodeURIComponent(qrSessionId)}&key=${encodeURIComponent(key)}`;
+    const approveUrl = `${BASE_URL}/auth/approve?id=${encodeURIComponent(loginSessionId)}&key=${encodeURIComponent(key)}`;
 
     const qrCode = await QRCode.toDataURL(approveUrl, {
       width: 320,
@@ -725,7 +725,8 @@ app.get('/auth/qr-init', async (req, res) => {
 
     res.json({
       success: true,
-      qrSessionId,
+      loginSessionId,
+      qrSessionId: loginSessionId,
       qrCode,
       pairCode,
       pairCodeFormatted,
@@ -752,23 +753,23 @@ app.post('/auth/code/verify', (req, res) => {
     return res.status(400).json({ error: 'Please enter a valid 8-digit code.' });
   }
 
-  const qrSessionId = pairingCodes.get(cleanCode);
-  if (!qrSessionId) {
+  const loginSessionId = pairingCodes.get(cleanCode);
+  if (!loginSessionId) {
     return res.status(404).json({ error: 'Code not found or expired. Please check the screen.' });
   }
 
-  const session = pendingQrSessions.get(qrSessionId);
+  const session = pendingQrSessions.get(loginSessionId);
   if (!session || Date.now() > session.expiresAt || session.status !== 'pending') {
     pairingCodes.delete(cleanCode);
-    if (session) pendingQrSessions.delete(qrSessionId);
+    if (session) pendingQrSessions.delete(loginSessionId);
     return res.status(410).json({ error: 'This authorization code has expired.' });
   }
 
-  const redirectUrl = `/auth/qr-approve?id=${encodeURIComponent(qrSessionId)}&key=${encodeURIComponent(session.key)}`;
+  const redirectUrl = `/auth/approve?id=${encodeURIComponent(loginSessionId)}&key=${encodeURIComponent(session.key)}`;
   return res.json({
     success: true,
     redirectUrl,
-    sessionId: qrSessionId,
+    sessionId: loginSessionId,
   });
 });
 
@@ -898,9 +899,9 @@ app.get('/auth/approver/logout', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 6. QR Approval Screen (Mobile Scanner Target)
+// 6. Device Approval Screen (Mobile Target)
 // ----------------------------------------------------
-app.get('/auth/qr-approve', (req, res) => {
+app.get(['/auth/approve', '/auth/qr-approve'], (req, res) => {
   const { id, key } = req.query;
 
   if (!id || !key || typeof id !== 'string' || typeof key !== 'string') {
@@ -913,7 +914,7 @@ app.get('/auth/qr-approve', (req, res) => {
 
   // If mobile is NOT authenticated as Approver, require login first!
   if (!isApprover(req)) {
-    const returnUrl = `/auth/qr-approve?id=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`;
+    const returnUrl = `/auth/approve?id=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`;
     return res.redirect(`/auth/approver/login?returnTo=${encodeURIComponent(returnUrl)}`);
   }
 
@@ -921,7 +922,7 @@ app.get('/auth/qr-approve', (req, res) => {
   if (!session) {
     return res.status(404).send(renderStatusNoticeHtml({
       title: 'Session Not Found',
-      message: 'This QR code session does not exist or has already been used.',
+      message: 'This authorization session does not exist or has already been used.',
       type: 'error',
       actionUrl: '/auth/sessions',
       actionLabel: 'View Active Sessions',
@@ -932,8 +933,8 @@ app.get('/auth/qr-approve', (req, res) => {
     if (session.pairCode) pairingCodes.delete(session.pairCode);
     pendingQrSessions.delete(id);
     return res.status(410).send(renderStatusNoticeHtml({
-      title: 'QR Code Expired',
-      message: 'This authorization request has expired. Please refresh the QR code on the desktop screen.',
+      title: 'Session Expired',
+      message: 'This authorization request has expired. Please refresh the session on the desktop screen.',
       type: 'error',
       actionUrl: '/auth/sessions',
       actionLabel: 'View Active Sessions',
@@ -1861,19 +1862,19 @@ app.get('/login', (req, res) => {
         <svg style="width: 36px; height: 36px; color: #f59e0b; margin-bottom: 0.5rem;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p style="font-size: 0.875rem; color: #e2e8f0; margin-bottom: 0.75rem;">QR Code Expired</p>
-        <button class="btn-refresh" onclick="initQrSession()">Refresh QR</button>
+        <p style="font-size: 0.875rem; color: #e2e8f0; margin-bottom: 0.75rem;">Session Expired</p>
+        <button class="btn-refresh" onclick="initQrSession()">Refresh Session</button>
       </div>
     </div>
 
     <div class="pair-code-card" id="pairCodeCard">
-      <div class="pair-code-label">Or Enter Code in Approver App</div>
+      <div class="pair-code-label">Or Enter Code</div>
       <div class="pair-code-digits" id="pairCodeDigits">•••• - ••••</div>
     </div>
 
     <div class="status-bar" id="statusBar">
       <div class="status-dot"></div>
-      <span id="statusText">Awaiting approver scan (<span id="timerCount">120</span>s)</span>
+      <span id="statusText">Awaiting approval (<span id="timerCount">120</span>s)</span>
     </div>
 
     <div class="footer">
@@ -1936,7 +1937,7 @@ app.get('/login', (req, res) => {
         if (!res.ok) throw new Error('Failed to fetch QR');
         const data = await res.json();
 
-        currentSessionId = data.qrSessionId;
+        currentSessionId = data.loginSessionId || data.qrSessionId;
         qrImage.src = data.qrCode;
         qrImage.style.display = 'block';
 
@@ -3149,7 +3150,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     }
 
     function handleDecodedQr(url) {
-      if (url.includes('/auth/qr-approve')) {
+      if (url.includes('/auth/approve') || url.includes('/auth/qr-approve')) {
         scannerStatus.innerHTML = '<span style="color: #10b981; font-weight: 700;">QR Detected! Redirecting to authorization...</span>';
         if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
         setTimeout(() => {
