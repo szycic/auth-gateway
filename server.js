@@ -1811,27 +1811,23 @@ app.get('/login', (req, res) => {
       margin-bottom: 1rem;
     }
     .pair-code-card {
-      margin-top: 1.15rem;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      padding: 0.85rem 1.1rem;
+      margin: 1.85rem 0 1.5rem;
       text-align: center;
-      transition: opacity 0.2s, border-color 0.2s;
+      transition: opacity 0.2s;
     }
     .pair-code-label {
-      font-size: 0.685rem;
+      font-size: 0.725rem;
       font-weight: 700;
       color: #94a3b8;
-      letter-spacing: 0.09em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      margin-bottom: 0.35rem;
+      margin-bottom: 0.45rem;
     }
     .pair-code-digits {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 1.45rem;
+      font-size: 1.55rem;
       font-weight: 800;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.14em;
       color: #38bdf8;
       user-select: all;
     }
@@ -1869,7 +1865,7 @@ app.get('/login', (req, res) => {
     </div>
 
     <div class="pair-code-card" id="pairCodeCard">
-      <div class="pair-code-label">Or Enter Code</div>
+      <div class="pair-code-label">Or enter the code below</div>
       <div class="pair-code-digits" id="pairCodeDigits">•••• - ••••</div>
     </div>
 
