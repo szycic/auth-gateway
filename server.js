@@ -172,8 +172,8 @@ const activeSessions = new Map();
 // approverSessions: token -> { token, createdAt, expiresAt, ip, userAgent }
 const approverSessions = new Map();
 
-// pendingQrSessions: loginSessionId -> { key, desktopIp, desktopUserAgent, friendlyDevice, createdAt, expiresAt, status, pairCode }
-const pendingQrSessions = new Map();
+// pendingLoginSessions: loginSessionId -> { key, desktopIp, desktopUserAgent, friendlyDevice, createdAt, expiresAt, status, pairCode }
+const pendingLoginSessions = new Map();
 
 // pairingCodes: 8-digit code -> loginSessionId
 const pairingCodes = new Map();
@@ -298,12 +298,12 @@ setInterval(() => {
   const now = Date.now();
   let changed = false;
 
-  for (const [id, session] of pendingQrSessions.entries()) {
+  for (const [id, session] of pendingLoginSessions.entries()) {
     if (now > session.expiresAt) {
       if (session.pairCode) {
         pairingCodes.delete(session.pairCode);
       }
-      pendingQrSessions.delete(id);
+      pendingLoginSessions.delete(id);
     }
   }
 
@@ -471,7 +471,8 @@ app.get('/auth/health', (req, res) => {
     status: 'ok',
     activeSessions: activeSessions.size,
     approverSessions: approverSessions.size,
-    pendingQrSessions: pendingQrSessions.size,
+    pendingLoginSessions: pendingLoginSessions.size,
+    pendingQrSessions: pendingLoginSessions.size,
     services: config.services.map(s => ({ id: s.id, name: s.name, url: s.url })),
     uptime: process.uptime(),
   });
@@ -695,7 +696,7 @@ app.get('/auth/qr-init', async (req, res) => {
     const pairCode = generatePairCode();
     pairingCodes.set(pairCode, loginSessionId);
 
-    pendingQrSessions.set(loginSessionId, {
+    pendingLoginSessions.set(loginSessionId, {
       key,
       pairCode,
       desktopIp,
@@ -758,10 +759,10 @@ app.post('/auth/code/verify', (req, res) => {
     return res.status(404).json({ error: 'Code not found or expired. Please check the screen.' });
   }
 
-  const session = pendingQrSessions.get(loginSessionId);
+  const session = pendingLoginSessions.get(loginSessionId);
   if (!session || Date.now() > session.expiresAt || session.status !== 'pending') {
     pairingCodes.delete(cleanCode);
-    if (session) pendingQrSessions.delete(loginSessionId);
+    if (session) pendingLoginSessions.delete(loginSessionId);
     return res.status(410).json({ error: 'This authorization code has expired.' });
   }
 
@@ -918,7 +919,7 @@ app.get(['/auth/approve', '/auth/qr-approve'], (req, res) => {
     return res.redirect(`/auth/approver/login?returnTo=${encodeURIComponent(returnUrl)}`);
   }
 
-  const session = pendingQrSessions.get(id);
+  const session = pendingLoginSessions.get(id);
   if (!session) {
     return res.status(404).send(renderStatusNoticeHtml({
       title: 'Session Not Found',
@@ -931,7 +932,7 @@ app.get(['/auth/approve', '/auth/qr-approve'], (req, res) => {
 
   if (Date.now() > session.expiresAt || session.status !== 'pending') {
     if (session.pairCode) pairingCodes.delete(session.pairCode);
-    pendingQrSessions.delete(id);
+    pendingLoginSessions.delete(id);
     return res.status(410).send(renderStatusNoticeHtml({
       title: 'Session Expired',
       message: 'This authorization request has expired. Please refresh the session on the desktop screen.',
@@ -977,7 +978,7 @@ app.post('/auth/qr-action', (req, res) => {
     return res.status(400).send('Invalid request parameters.');
   }
 
-  const session = pendingQrSessions.get(id);
+  const session = pendingLoginSessions.get(id);
   if (!session) {
     return res.status(404).send(renderStatusNoticeHtml({
       title: 'Session Expired',
@@ -998,7 +999,7 @@ app.post('/auth/qr-action', (req, res) => {
   if (session.pairCode) {
     pairingCodes.delete(session.pairCode);
   }
-  pendingQrSessions.delete(id);
+  pendingLoginSessions.delete(id);
 
   if (action === 'reject') {
     io.to(id).emit('rejected', { message: 'Authorization was rejected by the approver.' });
