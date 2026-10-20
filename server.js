@@ -2542,8 +2542,24 @@ function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, expire
 
 function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
   const sessionsRows = activeSessionsList.map((s) => {
-    const elapsedMinutes = Math.floor((Date.now() - s.createdAt) / 60000);
-    const timeLabel = elapsedMinutes < 1 ? 'Just now' : `${elapsedMinutes}m ago`;
+    const elapsedMinutes = Math.floor(Math.max(0, Date.now() - (s.createdAt || Date.now())) / 60000);
+    let timeLabel = 'just now';
+    if (elapsedMinutes >= 60 * 24) {
+      timeLabel = `${Math.floor(elapsedMinutes / (60 * 24))}d ago`;
+    } else if (elapsedMinutes >= 60) {
+      timeLabel = `${Math.floor(elapsedMinutes / 60)}h ago`;
+    } else if (elapsedMinutes >= 1) {
+      timeLabel = `${elapsedMinutes}m ago`;
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    let expiresLabel = 'Never';
+    if (s.expiresAt) {
+      const expDate = new Date(s.expiresAt);
+      if (!isNaN(expDate.getTime())) {
+        expiresLabel = `${expDate.getFullYear()}-${pad(expDate.getMonth() + 1)}-${pad(expDate.getDate())} ${pad(expDate.getHours())}:${pad(expDate.getMinutes())}`;
+      }
+    }
     const deviceName = s.friendlyDevice || 'Desktop Browser';
 
     return `
@@ -2572,7 +2588,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
             <button type="submit" class="btn-rename-save">Save</button>
             <button type="button" class="btn-rename-cancel" onclick="closeRename('${s.id}')">Cancel</button>
           </form>
-          <div class="session-sub">${escapeHtml(s.ip)} &bull; Started ${timeLabel}</div>
+          <div class="session-sub">${escapeHtml(s.ip)} &bull; <span class="session-started" data-created="${s.createdAt || ''}">Started ${timeLabel}</span> &bull; <span class="session-expiry" data-expires="${s.expiresAt || ''}">Expires ${expiresLabel}</span></div>
         </div>
         <form method="POST" action="/auth/sessions/revoke" onsubmit="handleRevoke(event, '${s.id}')">
           <input type="hidden" name="sessionId" value="${s.id}">
@@ -2671,7 +2687,8 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     }
     .session-header { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.25rem; flex-wrap: wrap; }
     .session-name { font-weight: 600; font-size: 0.95rem; color: #ffffff; }
-    .session-sub { font-size: 0.8rem; color: #94a3b8; }
+    .session-sub { font-size: 0.8rem; color: #94a3b8; line-height: 1.45; }
+    .session-expiry { color: #cbd5e1; }
 
     .btn-rename-trigger {
       background: none; border: none; color: #94a3b8;
@@ -3018,6 +3035,49 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
       form.style.display = 'none';
       if (header) header.style.display = 'flex';
     }
+
+    function padZero(n) {
+      return String(n).padStart(2, '0');
+    }
+
+    function updateSessionTimestamps() {
+      // 1. Format expiration dates in approver's local browser timezone
+      document.querySelectorAll('.session-expiry[data-expires]').forEach(function(el) {
+        const raw = el.getAttribute('data-expires');
+        if (!raw) return;
+        const ts = Number(raw);
+        if (!ts || isNaN(ts)) return;
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return;
+        const formatted = d.getFullYear() + '-' +
+          padZero(d.getMonth() + 1) + '-' +
+          padZero(d.getDate()) + ' ' +
+          padZero(d.getHours()) + ':' +
+          padZero(d.getMinutes());
+        el.textContent = 'Expires ' + formatted;
+      });
+
+      // 2. Format elapsed start time (from 60m into h, from 24h into d)
+      document.querySelectorAll('.session-started[data-created]').forEach(function(el) {
+        const raw = el.getAttribute('data-created');
+        if (!raw) return;
+        const ts = Number(raw);
+        if (!ts || isNaN(ts)) return;
+        const elapsedMinutes = Math.floor(Math.max(0, Date.now() - ts) / 60000);
+        let label = 'just now';
+        if (elapsedMinutes >= 60 * 24) {
+          label = Math.floor(elapsedMinutes / (60 * 24)) + 'd ago';
+        } else if (elapsedMinutes >= 60) {
+          label = Math.floor(elapsedMinutes / 60) + 'h ago';
+        } else if (elapsedMinutes >= 1) {
+          label = elapsedMinutes + 'm ago';
+        }
+        el.textContent = 'Started ' + label;
+      });
+    }
+
+    updateSessionTimestamps();
+    setInterval(updateSessionTimestamps, 60000);
 
     const socket = typeof io !== 'undefined' ? io() : null;
     if (socket) {
