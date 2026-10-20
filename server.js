@@ -2557,7 +2557,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     if (s.expiresAt) {
       const expDate = new Date(s.expiresAt);
       if (!isNaN(expDate.getTime())) {
-        expiresLabel = `${expDate.getFullYear()}-${pad(expDate.getMonth() + 1)}-${pad(expDate.getDate())} ${pad(expDate.getHours())}:${pad(expDate.getMinutes())}`;
+        expiresLabel = `${pad(expDate.getDate())}.${pad(expDate.getMonth() + 1)}.${expDate.getFullYear()} ${pad(expDate.getHours())}:${pad(expDate.getMinutes())}`;
       }
     }
     const deviceName = s.friendlyDevice || 'Desktop Browser';
@@ -2588,7 +2588,10 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
             <button type="submit" class="btn-rename-save">Save</button>
             <button type="button" class="btn-rename-cancel" onclick="closeRename('${s.id}')">Cancel</button>
           </form>
-          <div class="session-sub">${escapeHtml(s.ip)} &bull; <span class="session-started" data-created="${s.createdAt || ''}">Started ${timeLabel}</span> &bull; <span class="session-expiry" data-expires="${s.expiresAt || ''}">Expires ${expiresLabel}</span></div>
+          <div class="session-sub">
+            <div>${escapeHtml(s.ip)} &bull; <span class="session-started" data-created="${s.createdAt || ''}">Started ${timeLabel}</span></div>
+            <div class="session-expiry" data-expires="${s.expiresAt || ''}">Expires ${expiresLabel}</div>
+          </div>
         </div>
         <form method="POST" action="/auth/sessions/revoke" onsubmit="handleRevoke(event, '${s.id}')">
           <input type="hidden" name="sessionId" value="${s.id}">
@@ -2688,7 +2691,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     .session-header { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.25rem; flex-wrap: wrap; }
     .session-name { font-weight: 600; font-size: 0.95rem; color: #ffffff; }
     .session-sub { font-size: 0.8rem; color: #94a3b8; line-height: 1.45; }
-    .session-expiry { color: #cbd5e1; }
+    .session-expiry { color: #cbd5e1; margin-top: 0.15rem; }
 
     .btn-rename-trigger {
       background: none; border: none; color: #94a3b8;
@@ -3041,7 +3044,7 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
     }
 
     function updateSessionTimestamps() {
-      // 1. Format expiration dates in approver's local browser timezone
+      // 1. Format expiration dates in approver's local browser timezone (DD.MM.YYYY HH:mm)
       document.querySelectorAll('.session-expiry[data-expires]').forEach(function(el) {
         const raw = el.getAttribute('data-expires');
         if (!raw) return;
@@ -3049,9 +3052,9 @@ function renderSessionsDashboardHtml({ activeSessionsList = [], notice = '' }) {
         if (!ts || isNaN(ts)) return;
         const d = new Date(ts);
         if (isNaN(d.getTime())) return;
-        const formatted = d.getFullYear() + '-' +
-          padZero(d.getMonth() + 1) + '-' +
-          padZero(d.getDate()) + ' ' +
+        const formatted = padZero(d.getDate()) + '.' +
+          padZero(d.getMonth() + 1) + '.' +
+          d.getFullYear() + ' ' +
           padZero(d.getHours()) + ':' +
           padZero(d.getMinutes());
         el.textContent = 'Expires ' + formatted;
