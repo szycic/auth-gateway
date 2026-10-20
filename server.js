@@ -1827,78 +1827,6 @@ app.get('/login', (req, res) => {
       margin-bottom: 1rem;
     }
     .footer { margin-top: 1.75rem; font-size: 0.775rem; color: #64748b; }
-    .auth-divider {
-      display: flex;
-      align-items: center;
-      text-align: center;
-      margin: 1.5rem 0 1rem;
-      color: #64748b;
-      font-size: 0.8rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .auth-divider::before, .auth-divider::after {
-      content: '';
-      flex: 1;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .auth-divider span {
-      padding: 0 0.75rem;
-    }
-    .login-error-badge {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      color: #f87171;
-      border-radius: 10px;
-      padding: 0.6rem 0.85rem;
-      font-size: 0.85rem;
-      font-weight: 600;
-      margin-bottom: 0.85rem;
-      text-align: left;
-    }
-    .pw-form {
-      margin-bottom: 0.5rem;
-    }
-    .pw-field-row {
-      display: flex;
-      gap: 0.5rem;
-    }
-    .pw-field-row input {
-      flex: 1;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 12px;
-      padding: 0.75rem 1rem;
-      font-size: 0.95rem;
-      color: #ffffff;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .pw-field-row input:focus {
-      border-color: #38bdf8;
-      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
-    }
-    .btn-pw-submit {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-      color: #ffffff;
-      border: none;
-      border-radius: 12px;
-      padding: 0.75rem 1.15rem;
-      font-size: 0.9rem;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
-      transition: transform 0.15s, box-shadow 0.15s;
-      white-space: nowrap;
-    }
-    .btn-pw-submit:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(2, 132, 199, 0.4);
-    }
   </style>
 </head>
 <body>
@@ -1935,32 +1863,6 @@ app.get('/login', (req, res) => {
       <div class="status-dot"></div>
       <span id="statusText">Awaiting approver scan (<span id="timerCount">120</span>s)</span>
     </div>
-
-    <div class="auth-divider">
-      <span>or sign in with password</span>
-    </div>
-
-    ${req.query.error ? `<div class="login-error-badge">${escapeHtml(req.query.error)}</div>` : ''}
-
-    <form method="POST" action="/login" class="pw-form">
-      <input type="hidden" name="redirect" value="${escapeHtml(redirectTarget)}">
-      <div class="pw-field-row">
-        <input
-          type="password"
-          name="password"
-          id="loginPassword"
-          placeholder="Master Approver Password"
-          required
-          autocomplete="current-password"
-        >
-        <button type="submit" class="btn-pw-submit" title="Sign In with Password">
-          <span>Sign In</span>
-          <svg style="width: 16px; height: 16px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-          </svg>
-        </button>
-      </div>
-    </form>
 
     <div class="footer">
       ${config.app.footerText}
