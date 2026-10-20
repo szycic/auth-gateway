@@ -807,12 +807,26 @@ app.get('/auth/approver/logout', (req, res) => {
   const token = req.cookies[APPROVER_COOKIE_NAME];
   if (token) {
     approverSessions.delete(token);
-    savePersistedSessions();
   }
+  const sessionToken = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  if (sessionToken) {
+    activeSessions.delete(sessionToken);
+  }
+  savePersistedSessions();
+
   const opts = getCookieOptions(req);
   delete opts.maxAge;
   res.clearCookie(APPROVER_COOKIE_NAME, opts);
-  return res.redirect('/auth/approver/login');
+  res.clearCookie(AUTH_COOKIE_NAME, opts);
+  res.clearCookie('share_auth_token', opts);
+  if (opts.domain) {
+    const hostOnly = { ...opts };
+    delete hostOnly.domain;
+    res.clearCookie(APPROVER_COOKIE_NAME, hostOnly);
+    res.clearCookie(AUTH_COOKIE_NAME, hostOnly);
+    res.clearCookie('share_auth_token', hostOnly);
+  }
+  return res.redirect('/login');
 });
 
 // ----------------------------------------------------
@@ -1189,24 +1203,30 @@ app.get('/auth/exchange', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 10. Logout Endpoint (Desktop)
+// 10. Logout Endpoint (Desktop & Approver)
 // ----------------------------------------------------
 app.get('/auth/logout', (req, res) => {
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (token) {
     activeSessions.delete(token);
-    savePersistedSessions();
   }
+  const approverToken = req.cookies[APPROVER_COOKIE_NAME];
+  if (approverToken) {
+    approverSessions.delete(approverToken);
+  }
+  savePersistedSessions();
 
   const cookieOptions = getCookieOptions(req);
   delete cookieOptions.maxAge;
   res.clearCookie(AUTH_COOKIE_NAME, cookieOptions);
   res.clearCookie('share_auth_token', cookieOptions);
+  res.clearCookie(APPROVER_COOKIE_NAME, cookieOptions);
   if (cookieOptions.domain) {
     const hostOnly = { ...cookieOptions };
     delete hostOnly.domain;
     res.clearCookie(AUTH_COOKIE_NAME, hostOnly);
     res.clearCookie('share_auth_token', hostOnly);
+    res.clearCookie(APPROVER_COOKIE_NAME, hostOnly);
   }
 
   const redirectTarget = config.normalizeRedirect(req.query.redirect || req.query.returnTo, '/login');
