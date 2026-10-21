@@ -305,6 +305,7 @@ function isApprover(req) {
 // Check if a session has permission to access a specific service
 function isSessionAllowedForService(session, service) {
   if (service && service.enabled === false) return false;
+  if (service && service.authRequired === false) return true;
   if (!session) return false;
   // If allowedServices is not set, empty, or contains '*', all services are permitted
   const hasRestrictedServices = Array.isArray(session.allowedServices) && session.allowedServices.length > 0 && !session.allowedServices.includes('*');
@@ -590,7 +591,13 @@ app.get('/auth/health', (req, res) => {
     activeSessions: activeSessions.size,
     approverSessions: approverSessions.size,
     pendingLoginSessions: pendingLoginSessions.size,
-    services: config.services.map(s => ({ id: s.id, name: s.name, url: s.url, enabled: s.enabled !== false })),
+    services: config.services.map(s => ({
+      id: s.id,
+      name: s.name,
+      url: s.url,
+      enabled: s.enabled !== false,
+      authRequired: s.authRequired !== false,
+    })),
     uptime: process.uptime(),
   });
 });
@@ -800,6 +807,15 @@ app.all('/auth/verify', (req, res) => {
       'X-Auth-Status': 'service_disabled',
       'X-Auth-Reason': 'service_disabled',
     }).send('Service Disabled');
+  }
+
+  // Public service bypass: If authentication is disabled for this service, allow all traffic
+  if (targetService && targetService.authRequired === false) {
+    return res.status(200).set({
+      'X-Auth-Status': 'public',
+      'X-Auth-Role': 'public',
+      'X-Auth-User': 'anonymous',
+    }).send('OK: Service is public');
   }
 
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
@@ -1238,7 +1254,7 @@ app.post('/auth/approve/action', (req, res) => {
       rawServices = [req.body.services.trim()];
     }
 
-    const allConfiguredServices = (config.services || []).filter(s => s.enabled !== false);
+    const allConfiguredServices = (config.services || []).filter(s => s.enabled !== false && s.authRequired !== false);
     if (rawServices.length > 0 && rawServices.length < allConfiguredServices.length) {
       allowedServices = rawServices;
     }
@@ -1579,10 +1595,11 @@ function proxyToTargetApp(req, res) {
     }));
   }
 
+  const isAuthRequired = matchedService ? matchedService.authRequired !== false : true;
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   const session = activeSessions.get(token);
 
-  if (!isApprover(req) && (!matchedService || !isSessionAllowedForService(session, matchedService))) {
+  if (isAuthRequired && !isApprover(req) && (!matchedService || !isSessionAllowedForService(session, matchedService))) {
     return res.status(403).send(renderStatusNoticeHtml({
       title: 'Access Restricted',
       message: matchedService
@@ -1627,7 +1644,7 @@ function proxyToTargetApp(req, res) {
   };
 
   const isHtmlExpected = (req.headers.accept || '').includes('text/html');
-  if (isHtmlExpected && req.method === 'GET') {
+  if (isAuthRequired && isHtmlExpected && req.method === 'GET') {
     delete proxyHeaders['accept-encoding'];
   }
 
@@ -1641,7 +1658,7 @@ function proxyToTargetApp(req, res) {
       const contentType = proxyRes.headers['content-type'] || '';
       const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300;
 
-      if (isHtml && req.method === 'GET') {
+      if (isAuthRequired && isHtml && req.method === 'GET') {
         let body = '';
         proxyRes.setEncoding('utf8');
         proxyRes.on('data', (chunk) => { body += chunk; });
@@ -1788,6 +1805,10 @@ app.get('/login', (req, res) => {
       actionLabel: 'Return to Dashboard',
       type: 'error',
     }));
+  }
+
+  if (matchedService && matchedService.authRequired === false) {
+    return res.redirect(redirectTarget || matchedService.url || '/');
   }
 
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
@@ -2518,8 +2539,8 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
 // 2. Approval Decision HTML (Mobile Scanned Screen)
 function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, targetService, expiresAt, activeSessionsList, services }) {
   const activeCount = activeSessionsList.length;
-  const servicesList = (services || config.services || []).filter(svc => svc.enabled !== false);
-  const targetServiceId = targetService ? targetService.id : null;
+  const servicesList = (services || config.services || []).filter(svc => svc.enabled !== false && svc.authRequired !== false);
+  const targetServiceId = targetService && targetService.authRequired !== false ? targetService.id : null;
 
   const servicesChecklistHtml = servicesList.map(svc => {
     const isTarget = targetServiceId && svc.id.toLowerCase() === targetServiceId.toLowerCase();
@@ -4114,11 +4135,12 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   const sessionToken = (session && session.token) || '';
 
   const servicesHtml = services.filter(svc => svc.enabled !== false).map(svc => {
-    const isAllowed = isApproverUser || isSessionAllowedForService(session, svc);
+    const isPublic = svc.authRequired === false;
+    const isAllowed = isPublic || isApproverUser || isSessionAllowedForService(session, svc);
     return `
     <div class="service-card" style="${isAllowed ? '' : 'opacity: 0.55;'}">
       <div class="service-info">
-        <div class="service-name">${escapeHtml(svc.name)}</div>
+        <div class="service-name">${escapeHtml(svc.name)}${isPublic ? ' <span style="font-size: 0.7rem; font-weight: 600; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 0.15rem 0.45rem; border-radius: 6px; margin-left: 0.35rem; border: 1px solid rgba(56, 189, 248, 0.2);">Public</span>' : ''}</div>
         <div class="service-desc">${escapeHtml(svc.subtitle || svc.url)}</div>
       </div>
       ${isAllowed ? `
