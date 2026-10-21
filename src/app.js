@@ -2,6 +2,7 @@ const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const config = require('./config');
+const sessionService = require('./services/sessionService');
 const routes = require('./routes');
 
 const app = express();
@@ -12,6 +13,7 @@ app.set('trust proxy', 1);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.locals.config = config;
+app.locals.isSessionAllowedForService = sessionService.isSessionAllowedForService;
 
 app.use(cookieParser());
 app.use(express.json());
