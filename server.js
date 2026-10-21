@@ -407,28 +407,7 @@ function isAuthDomain(req) {
 }
 
 // Serve static PWA assets (manifest, sw.js, icons) ONLY for Auth Gateway host or /auth/ paths
-const servePwaStatic = express.static(path.join(__dirname, 'public'), {
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('sw.js')) {
-      res.setHeader('Service-Worker-Allowed', '/');
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    } else if (filePath.endsWith('manifest.webmanifest') || filePath.endsWith('manifest.json')) {
-      res.setHeader('Content-Type', 'application/manifest+json');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-    } else if (filePath.endsWith('.png') || filePath.endsWith('.svg')) {
-      res.setHeader('Cache-Control', 'public, max-age=604800');
-    }
-  },
-});
-
-app.use((req, res, next) => {
-  if (isAuthDomain(req) || req.path.startsWith('/auth/')) {
-    return servePwaStatic(req, res, next);
-  }
-  next();
-});
-
-// Dynamic PWA manifest & worker routes (only on Auth Gateway domain)
+// Dynamic PWA manifest route (only on Auth Gateway domain)
 app.get(['/manifest.json', '/manifest.webmanifest'], (req, res, next) => {
   if (!isAuthDomain(req)) return next();
   const manifest = {
@@ -462,6 +441,25 @@ app.get(['/manifest.json', '/manifest.webmanifest'], (req, res, next) => {
   res.setHeader('Content-Type', 'application/manifest+json');
   res.setHeader('Cache-Control', 'public, max-age=86400');
   return res.json(manifest);
+});
+
+// Serve static PWA assets (sw.js, icons) ONLY for Auth Gateway host or /auth/ paths
+const servePwaStatic = express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('sw.js')) {
+      res.setHeader('Service-Worker-Allowed', '/');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (filePath.endsWith('.png') || filePath.endsWith('.svg')) {
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+    }
+  },
+});
+
+app.use((req, res, next) => {
+  if (isAuthDomain(req) || req.path.startsWith('/auth/')) {
+    return servePwaStatic(req, res, next);
+  }
+  next();
 });
 app.get('/sw.js', (req, res, next) => {
   if (!isAuthDomain(req)) return next();
