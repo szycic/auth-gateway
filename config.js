@@ -22,16 +22,7 @@ const DEFAULT_CONFIG = {
     qrSessionTtlMs: 120000,
     approverTtlDays: 30,
   },
-  services: [
-    {
-      id: 'share',
-      name: 'Pingvin Share',
-      subtitle: 'Secure file sharing & storage portal',
-      url: 'https://share.example.com',
-      upstream: 'http://share-app:3000',
-      allowedRedirects: ['https://share.example.com*'],
-    },
-  ],
+  services: [],
   downstream: {
     targetUrl: process.env.TARGET_APP_URL || '',
   },
@@ -39,14 +30,12 @@ const DEFAULT_CONFIG = {
 
 let loadedConfigPath = null;
 
-function loadConfigFile() {
+function loadConfigFile(isReload = false) {
   const possiblePaths = [
     process.env.CONFIG_PATH,
     path.join(__dirname, 'config', 'config.json'),
     path.join(DATA_DIR, 'config.json'),
     path.join(__dirname, 'config.json'),
-    path.join(DATA_DIR, 'config.sample.json'),
-    path.join(__dirname, 'config.sample.json'),
   ].filter(Boolean);
 
   for (const configPath of possiblePaths) {
@@ -58,47 +47,34 @@ function loadConfigFile() {
         return JSON.parse(raw);
       } catch (err) {
         console.error(`[auth-gateway] Error reading config file at ${configPath}:`, err.message);
+        if (!isReload) {
+          console.error('[auth-gateway] CRITICAL: Failed to parse config.json! Shutting down...');
+          process.exit(1);
+        }
+        return null;
       }
     }
   }
 
-  return {};
+  console.error('[auth-gateway] CRITICAL: config.json was not found in any expected search path:');
+  for (const p of possiblePaths) {
+    console.error(`  - ${p}`);
+  }
+  console.error('[auth-gateway] A valid config.json file is required to start. Shutting down...');
+  process.exit(1);
 }
 
 const fileConfig = loadConfigFile();
 
-function resolveDisableService(svc) {
-  if (svc.disableService !== undefined) return Boolean(svc.disableService);
-  if (svc.disabled !== undefined) return Boolean(svc.disabled);
-  if (svc.enabled !== undefined) return svc.enabled === false;
-  return false;
-}
-
-function resolveDisableAuth(svc) {
-  if (svc.disableAuth !== undefined) return Boolean(svc.disableAuth);
-  if (svc.auth !== undefined) return svc.auth === false;
-  if (svc.authRequired !== undefined) return svc.authRequired === false;
-  if (svc.requireAuth !== undefined) return svc.requireAuth === false;
-  return false;
-}
-
 function normalizeService(svc) {
-  const disableService = resolveDisableService(svc);
-  const disableAuth = resolveDisableAuth(svc);
   return {
     ...svc,
-    disableService,
-    disableAuth,
-    disabled: disableService,
-    enabled: !disableService,
-    auth: !disableAuth,
-    authRequired: !disableAuth,
+    disableService: Boolean(svc.disableService),
+    disableAuth: Boolean(svc.disableAuth),
   };
 }
 
-const mergedServices = (Array.isArray(fileConfig.services) && fileConfig.services.length > 0
-  ? fileConfig.services
-  : DEFAULT_CONFIG.services).map(normalizeService);
+const mergedServices = (Array.isArray(fileConfig.services) ? fileConfig.services : []).map(normalizeService);
 
 const config = {
   app: {
@@ -180,25 +156,10 @@ const config = {
     return Boolean(svc && svc.disableService);
   },
 
-  isServiceEnabled(idOrUrl) {
-    const svc = this.getService(idOrUrl);
-    return Boolean(svc && !svc.disableService);
-  },
-
   isAuthDisabled(idOrUrl) {
     const svc = this.getService(idOrUrl);
     if (!svc) return false;
     return svc.disableAuth === true;
-  },
-
-  isAuth(idOrUrl) {
-    const svc = this.getService(idOrUrl);
-    if (!svc) return true;
-    return !svc.disableAuth;
-  },
-
-  isAuthRequired(idOrUrl) {
-    return this.isAuth(idOrUrl);
   },
 
   isAllowedRedirect(redirectUrl) {
@@ -252,10 +213,12 @@ const config = {
 
   reload() {
     try {
-      const fileConfig = loadConfigFile();
-      const newMergedServices = (Array.isArray(fileConfig.services) && fileConfig.services.length > 0
-        ? fileConfig.services
-        : DEFAULT_CONFIG.services).map(normalizeService);
+      const fileConfig = loadConfigFile(true);
+      if (!fileConfig) {
+        console.error('[auth-gateway] Configuration reload aborted due to read/parse failure.');
+        return false;
+      }
+      const newMergedServices = (Array.isArray(fileConfig.services) ? fileConfig.services : []).map(normalizeService);
 
       this.app = {
         ...DEFAULT_CONFIG.app,

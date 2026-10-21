@@ -597,8 +597,6 @@ app.get('/auth/health', (req, res) => {
       url: s.url,
       disableService: Boolean(s.disableService),
       disableAuth: Boolean(s.disableAuth),
-      disabled: Boolean(s.disableService),
-      auth: !s.disableAuth,
     })),
     uptime: process.uptime(),
   });
