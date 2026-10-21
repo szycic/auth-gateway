@@ -1488,20 +1488,7 @@ app.post('/auth/device/rename', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 12. Catch-all for Unmatched /auth/* Endpoints (Fail-Closed 404)
-// ----------------------------------------------------
-app.all('/auth/*', (req, res) => {
-  return res.status(404).send(renderStatusNoticeHtml({
-    title: 'Page Not Found',
-    message: 'The requested authorization endpoint does not exist.',
-    actionUrl: '/',
-    actionLabel: 'Return Home',
-    type: 'error',
-  }));
-});
-
-// ----------------------------------------------------
-// 13. Upstream Mapping Helpers
+// 12. Upstream Mapping Helpers
 // ----------------------------------------------------
 function getUpstreamUrlForHost(hostHeader = '') {
   const host = (hostHeader || '').split(':')[0].toLowerCase();
