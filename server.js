@@ -304,8 +304,8 @@ function isApprover(req) {
 
 // Check if a session has permission to access a specific service
 function isSessionAllowedForService(session, service) {
-  if (service && (service.disabled || service.enabled === false)) return false;
-  if (service && (service.auth === false || service.authRequired === false)) return true;
+  if (service && service.disableService) return false;
+  if (service && service.disableAuth) return true;
   if (!session) return false;
   // If allowedServices is not set, empty, or contains '*', all services are permitted
   const hasRestrictedServices = Array.isArray(session.allowedServices) && session.allowedServices.length > 0 && !session.allowedServices.includes('*');
@@ -595,10 +595,10 @@ app.get('/auth/health', (req, res) => {
       id: s.id,
       name: s.name,
       url: s.url,
-      disabled: Boolean(s.disabled),
-      auth: s.auth !== false,
-      enabled: !s.disabled,
-      authRequired: s.auth !== false,
+      disableService: Boolean(s.disableService),
+      disableAuth: Boolean(s.disableAuth),
+      disabled: Boolean(s.disableService),
+      auth: !s.disableAuth,
     })),
     uptime: process.uptime(),
   });
@@ -804,7 +804,7 @@ app.all('/auth/verify', (req, res) => {
   }
 
   const targetService = getTargetServiceForRequest(req);
-  if (targetService && (targetService.disabled || targetService.enabled === false)) {
+  if (targetService && targetService.disableService) {
     return res.status(503).set({
       'X-Auth-Status': 'service_disabled',
       'X-Auth-Reason': 'service_disabled',
@@ -812,7 +812,7 @@ app.all('/auth/verify', (req, res) => {
   }
 
   // Public service bypass: If authentication is disabled for this service, allow all traffic
-  if (targetService && (targetService.auth === false || targetService.authRequired === false)) {
+  if (targetService && targetService.disableAuth) {
     return res.status(200).set({
       'X-Auth-Status': 'public',
       'X-Auth-Role': 'public',
@@ -1256,7 +1256,7 @@ app.post('/auth/approve/action', (req, res) => {
       rawServices = [req.body.services.trim()];
     }
 
-    const allConfiguredServices = (config.services || []).filter(s => !s.disabled && s.auth !== false);
+    const allConfiguredServices = (config.services || []).filter(s => !s.disableService && !s.disableAuth);
     if (rawServices.length > 0 && rawServices.length < allConfiguredServices.length) {
       allowedServices = rawServices;
     }
@@ -1525,7 +1525,7 @@ function getUpstreamUrlForHost(hostHeader = '') {
   });
 
   if (matchedService && matchedService.upstream) {
-    if (matchedService.disabled || matchedService.enabled === false) return '';
+    if (matchedService.disableService) return '';
     return matchedService.upstream;
   }
 
@@ -1537,7 +1537,7 @@ function getUpstreamUrlForHost(hostHeader = '') {
   });
 
   if (byId && byId.upstream) {
-    if (byId.disabled || byId.enabled === false) return '';
+    if (byId.disableService) return '';
     return byId.upstream;
   }
 
@@ -1587,7 +1587,7 @@ function relaxCspHeader(val, authBaseUrl) {
 
 function proxyToTargetApp(req, res) {
   const matchedService = config.getService(req.headers.host);
-  if (matchedService && (matchedService.disabled || matchedService.enabled === false)) {
+  if (matchedService && matchedService.disableService) {
     return res.status(503).send(renderStatusNoticeHtml({
       title: `${matchedService.name} is Temporarily Disabled`,
       message: 'This service is currently disabled on demand or undergoing maintenance.',
@@ -1597,7 +1597,7 @@ function proxyToTargetApp(req, res) {
     }));
   }
 
-  const isAuthRequired = matchedService ? (matchedService.auth !== false && matchedService.authRequired !== false) : true;
+  const isAuthRequired = matchedService ? !matchedService.disableAuth : true;
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   const session = activeSessions.get(token);
 
@@ -1799,7 +1799,7 @@ app.get('/login', (req, res) => {
   const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '';
   const matchedService = config.getService(req.query.service || redirectTarget);
 
-  if (matchedService && (matchedService.disabled || matchedService.enabled === false)) {
+  if (matchedService && matchedService.disableService) {
     return res.status(503).send(renderStatusNoticeHtml({
       title: `${matchedService.name} is Temporarily Disabled`,
       message: 'This service is currently disabled on demand or undergoing maintenance.',
@@ -1809,7 +1809,7 @@ app.get('/login', (req, res) => {
     }));
   }
 
-  if (matchedService && (matchedService.auth === false || matchedService.authRequired === false)) {
+  if (matchedService && matchedService.disableAuth) {
     return res.redirect(redirectTarget || matchedService.url || '/');
   }
 
@@ -2541,8 +2541,8 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
 // 2. Approval Decision HTML (Mobile Scanned Screen)
 function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, targetService, expiresAt, activeSessionsList, services }) {
   const activeCount = activeSessionsList.length;
-  const servicesList = (services || config.services || []).filter(svc => !svc.disabled && svc.auth !== false);
-  const targetServiceId = targetService && targetService.auth !== false ? targetService.id : null;
+  const servicesList = (services || config.services || []).filter(svc => !svc.disableService && !svc.disableAuth);
+  const targetServiceId = targetService && !targetService.disableAuth ? targetService.id : null;
 
   const servicesChecklistHtml = servicesList.map(svc => {
     const isTarget = targetServiceId && svc.id.toLowerCase() === targetServiceId.toLowerCase();
@@ -4136,8 +4136,8 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   const sessionId = (session && session.id) || '';
   const sessionToken = (session && session.token) || '';
 
-  const servicesHtml = services.filter(svc => !svc.disabled).map(svc => {
-    const isPublic = svc.auth === false;
+  const servicesHtml = services.filter(svc => !svc.disableService).map(svc => {
+    const isPublic = Boolean(svc.disableAuth);
     const isAllowed = isPublic || isApproverUser || isSessionAllowedForService(session, svc);
     return `
     <div class="service-card" style="${isAllowed ? '' : 'opacity: 0.55;'}">
