@@ -19,7 +19,7 @@
     <p class="subtitle" id="pageSubtitle"><%= isFromOpenHandle ? 'Protected Service Notice' : config.app.subtitle %></p>
 
     <% if (matchedService) { %>
-      <div class="service-target-badge" id="serviceBadge">
+      <div class="service-target-badge" id="serviceBadge" <%- isFromOpenHandle ? 'style="display: none;"' : '' %>>
         <div class="service-target-main">
           Signing in to <span class="service-target-name"><%= matchedService.name %></span>
         </div>
@@ -215,10 +215,14 @@
     function revealQrLogin() {
       const monit = document.getElementById('openHandleMonit');
       const qrSection = document.getElementById('qrAuthSection');
+      const serviceBadge = document.getElementById('serviceBadge');
       const pageSubtitle = document.getElementById('pageSubtitle');
       if (monit) monit.style.display = 'none';
       if (qrSection) {
         qrSection.style.display = 'block';
+      }
+      if (serviceBadge) {
+        serviceBadge.style.display = 'block';
       }
       if (pageSubtitle) {
         pageSubtitle.textContent = defaultSubtitle;
@@ -244,9 +248,11 @@
       if (isFromOpenHandle && window.location.hash === '#auth') {
         const monit = document.getElementById('openHandleMonit');
         const qrSection = document.getElementById('qrAuthSection');
+        const serviceBadge = document.getElementById('serviceBadge');
         const pageSubtitle = document.getElementById('pageSubtitle');
         if (monit) monit.style.display = 'none';
         if (qrSection) qrSection.style.display = 'block';
+        if (serviceBadge) serviceBadge.style.display = 'block';
         if (pageSubtitle) pageSubtitle.textContent = defaultSubtitle;
       }
       initQrSession();
