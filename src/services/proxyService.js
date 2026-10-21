@@ -95,7 +95,7 @@ function relaxCspHeader(val, authBaseUrl) {
  * @param {import('express').Response} res
  */
 function proxyToTargetApp(req, res) {
-  const matchedService = config.getService(req.headers.host);
+  const matchedService = sessionService.getTargetServiceForRequest(req) || config.getService(req.headers.host);
   if (matchedService && matchedService.disableService) {
     return res.status(503).render('statusNotice', {
       title: `${matchedService.name} is Temporarily Disabled`,
@@ -122,7 +122,10 @@ function proxyToTargetApp(req, res) {
     });
   }
 
-  const upstreamBase = getUpstreamUrlForHost(req.headers.host);
+  const upstreamHost = (matchedService && matchedService.url)
+    ? new URL(matchedService.url).hostname
+    : (req.headers['x-forwarded-host'] || req.headers.host || '');
+  const upstreamBase = getUpstreamUrlForHost(upstreamHost);
   if (!upstreamBase || !upstreamBase.trim()) {
     return res.status(502).render('statusNotice', {
       title: 'Service Unavailable',

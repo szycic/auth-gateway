@@ -10,8 +10,8 @@ const router = express.Router();
 
 router.get('/login', (req, res) => {
   const rawRedirect = req.query.redirect || req.query.returnTo || '';
+  const matchedService = config.getService(req.query.service || rawRedirect);
   const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '';
-  const matchedService = config.getService(req.query.service || redirectTarget);
 
   if (matchedService && matchedService.disableService) {
     return res.status(503).render('statusNotice', {
