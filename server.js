@@ -1488,69 +1488,16 @@ app.post('/auth/device/rename', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 12. Fallback Reverse Proxy for Downstream App (/auth/*)
+// 12. Catch-all for Unmatched /auth/* Endpoints (Fail-Closed 404)
 // ----------------------------------------------------
 app.all('/auth/*', (req, res) => {
-  if (!TARGET_APP_URL || !TARGET_APP_URL.trim()) {
-    return res.status(404).send(renderStatusNoticeHtml({
-      title: 'Page Not Found',
-      message: 'The requested authorization endpoint does not exist.',
-      actionUrl: '/',
-      actionLabel: 'Return Home',
-      type: 'error',
-    }));
-  }
-
-  let targetUrl;
-  try {
-    targetUrl = new URL(req.originalUrl, TARGET_APP_URL);
-  } catch (err) {
-    console.error('[proxy url error]', err.message);
-    return res.status(400).send(renderStatusNoticeHtml({
-      title: 'Invalid Request',
-      message: 'The requested URL is invalid.',
-      actionUrl: '/',
-      actionLabel: 'Return Home',
-      type: 'error',
-    }));
-  }
-
-  let downstreamHost;
-  try {
-    downstreamHost = req.headers.host || (new URL(BASE_URL)).host;
-  } catch {
-    downstreamHost = req.headers.host || 'localhost';
-  }
-
-  const proxyReq = http.request(
-    targetUrl,
-    {
-      method: req.method,
-      headers: {
-        ...req.headers,
-        host: downstreamHost,
-        'x-forwarded-for': req.ip || req.headers['x-forwarded-for'],
-        'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
-      },
-    },
-    (proxyRes) => {
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      proxyRes.pipe(res);
-    }
-  );
-
-  proxyReq.on('error', (err) => {
-    console.error('[proxy error]', err.message);
-    res.status(502).send(renderStatusNoticeHtml({
-      title: 'Service Unavailable',
-      message: 'The downstream service is currently unreachable.',
-      actionUrl: BASE_URL,
-      actionLabel: 'Return Home',
-      type: 'error',
-    }));
-  });
-
-  req.pipe(proxyReq);
+  return res.status(404).send(renderStatusNoticeHtml({
+    title: 'Page Not Found',
+    message: 'The requested authorization endpoint does not exist.',
+    actionUrl: '/',
+    actionLabel: 'Return Home',
+    type: 'error',
+  }));
 });
 
 // ----------------------------------------------------
