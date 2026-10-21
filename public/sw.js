@@ -1,11 +1,12 @@
-const CACHE_NAME = 'auth-gateway-v4';
+const CACHE_NAME = 'auth-gateway-v5';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
-  '/icon.svg',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-maskable.png',
-  '/apple-touch-icon.png',
+  '/css/base.css',
+  '/assets/icon.svg',
+  '/assets/icon-192.png',
+  '/assets/icon-512.png',
+  '/assets/icon-maskable.png',
+  '/assets/apple-touch-icon.png',
   '/auth/assets/jsqr.js',
 ];
 
