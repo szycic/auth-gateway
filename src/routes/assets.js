@@ -137,7 +137,7 @@ function getAuthWatchdogScript() {
 
     setTimeout(function() {
       var redirectTarget = window.location.href;
-      window.location.href = AUTH_URL + '/login?redirect=' + encodeURIComponent(redirectTarget) + '&notice=' + encodeURIComponent('Your session has been revoked.');
+      window.location.href = AUTH_URL + '/login?redirect=' + encodeURIComponent(redirectTarget);
     }, 1000);
   }
 
