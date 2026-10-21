@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const config = require('../config');
+const { auditLog } = require('../utils/auditLogger');
 
 const PASSWORD_FILE = path.join(config.DATA_DIR, 'password.json');
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -66,6 +67,7 @@ function setOnPasswordChanged(callback) {
 function syncPasswordChanges() {
   const latestHash = getApproverPasswordHash();
   if (latestHash !== currentPasswordHash) {
+    auditLog('PASSWORD_CHANGED', { source: 'sync' });
     console.log('[auth-gateway] Detected approver password change.');
     currentPasswordHash = latestHash;
     if (typeof onPasswordChangedCallback === 'function') {
@@ -110,6 +112,7 @@ function recordFailedLogin(clientIp) {
   if (record.count >= MAX_LOGIN_ATTEMPTS) {
     record.lockedUntil = now + LOGIN_LOCKOUT_MS;
     failedLoginAttempts.set(clientIp, record);
+    auditLog('LOCKOUT_TRIGGERED', { ip: clientIp, durationMins: LOGIN_LOCKOUT_MS / 60000 });
     return { locked: true, remainingAttempts: 0 };
   }
   failedLoginAttempts.set(clientIp, record);

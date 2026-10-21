@@ -4,6 +4,7 @@ const config = require('../config');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const socketService = require('../services/socketService');
+const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
@@ -119,6 +120,12 @@ router.post('/approve/action', (req, res) => {
   sessionService.pendingLoginSessions.delete(id);
 
   if (action === 'reject') {
+    auditLog('SESSION_REJECTED', {
+      id,
+      desktopIp: session.desktopIp,
+      device: session.friendlyDevice,
+      approverIp: authService.getClientIp(req),
+    });
     socketService.notifySessionRejected(id, { message: 'Authorization was rejected by the approver.' });
 
     return res.render('statusNotice', {
@@ -196,6 +203,17 @@ router.post('/approve/action', (req, res) => {
   });
 
   sessionService.savePersistedSessions();
+
+  auditLog('SESSION_APPROVED', {
+    sessionId,
+    loginSessionId: id,
+    device: finalDeviceName,
+    desktopIp: session.desktopIp,
+    trusted: isTrusted,
+    ttlHours: isTrusted ? 'permanent' : ttlHours,
+    services: allowedServices ? allowedServices.join(',') : 'all',
+    approverIp: authService.getClientIp(req),
+  });
 
   // Create single-use exchange code
   const exchangeCode = authService.createExchangeCode(sessionToken, 60 * 1000);

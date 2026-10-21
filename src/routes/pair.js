@@ -1,6 +1,7 @@
 const express = require('express');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
@@ -27,6 +28,13 @@ router.post('/code/verify', (req, res) => {
     if (session) sessionService.pendingLoginSessions.delete(loginSessionId);
     return res.status(410).json({ error: 'This authorization code has expired.' });
   }
+
+  auditLog('PAIR_CODE_VERIFIED', {
+    sessionId: loginSessionId,
+    device: session.friendlyDevice,
+    desktopIp: session.desktopIp,
+    approverIp: authService.getClientIp(req),
+  });
 
   const redirectUrl = `/auth/approve?id=${encodeURIComponent(loginSessionId)}&key=${encodeURIComponent(session.key)}`;
   return res.json({

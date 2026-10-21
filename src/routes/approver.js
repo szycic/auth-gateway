@@ -4,6 +4,7 @@ const config = require('../config');
 const { getCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
@@ -57,6 +58,11 @@ router.post('/approver/login', (req, res) => {
   const isValid = authService.verifyPassword(password, currentHash);
   if (!isValid) {
     const attempt = authService.recordFailedLogin(clientIp);
+    auditLog('APPROVER_LOGIN_FAILED', {
+      ip: clientIp,
+      locked: attempt.locked,
+      remainingAttempts: attempt.remainingAttempts,
+    });
     if (attempt.locked) {
       return res.status(429).render('approverLogin', {
         returnTo: redirectTarget,
@@ -72,6 +78,10 @@ router.post('/approver/login', (req, res) => {
   }
 
   authService.clearFailedLogins(clientIp);
+  auditLog('APPROVER_LOGIN_SUCCESS', {
+    ip: clientIp,
+    userAgent: req.headers['user-agent'] || 'Unknown',
+  });
 
   // Issue Approver session token (30 days)
   const approverToken = crypto.randomBytes(48).toString('base64url');
@@ -92,6 +102,8 @@ router.post('/approver/login', (req, res) => {
 });
 
 router.get('/approver/logout', (req, res) => {
+  const clientIp = authService.getClientIp(req);
+  auditLog('APPROVER_LOGOUT', { ip: clientIp });
   const token = req.cookies[config.APPROVER_COOKIE_NAME];
   if (token) {
     sessionService.approverSessions.delete(token);
