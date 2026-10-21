@@ -1,8 +1,19 @@
 {
 	email dev@example.com
+
+	log {
+		output file /data/caddy/access.log {
+			roll_size 10mb
+			roll_keep 5
+			roll_keep_for 7d
+		}
+		format json
+		include http.log.access
+	}
 }
 
 (security_headers) {
+	log
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options nosniff
@@ -419,6 +430,46 @@ dozzle.example.com {
 		handle @api {
 			header Content-Type "application/json"
 			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://dozzle.example.com"}` 401
+		}
+
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	import security_headers
+}
+
+# GoAccess Service (Protected via auth.example.com)
+access.example.com {
+	# 1. Forward Auth Protected Routes
+	forward_auth auth-gateway:3000 {
+		uri /auth/verify
+		copy_headers X-Auth-Status X-Auth-Role
+		@unauthorized status 401
+		handle_response @unauthorized {
+			error 401
+		}
+	}
+
+	# 2. WebSocket endpoint for GoAccess real-time metrics
+	handle /ws {
+		reverse_proxy goaccess:7890
+	}
+
+	# 3. Web UI routes serving generated report
+	handle {
+		root * /data/caddy
+		try_files {path} /index.html
+		file_server
+	}
+
+	# 4. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		@api expression {http.error.status_code} == 401 && (path('/api/*') || path('/ws*'))
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://access.example.com"}` 401
 		}
 
 		handle {

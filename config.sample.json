@@ -81,6 +81,14 @@
       "url": "https://dozzle.example.com",
       "upstream": "http://dozzle:8080",
       "allowedRedirects": ["https://dozzle.example.com*"]
+    },
+    {
+      "id": "access",
+      "name": "GoAccess",
+      "subtitle": "Real-time web log analyzer and traffic metrics",
+      "url": "https://access.example.com",
+      "upstream": "http://goaccess:7890",
+      "allowedRedirects": ["https://access.example.com*"]
     }
   ]
 }
