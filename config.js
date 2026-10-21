@@ -5,19 +5,19 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 
 const DEFAULT_CONFIG = {
   app: {
-    name: 'Szycic Auth',
+    name: 'Auth Gateway',
     subtitle: 'Scan the QR code with your authenticated mobile device to approve access.',
-    footerText: 'auth.szycic.com',
+    footerText: 'auth.example.com',
   },
   server: {
     port: 3000,
     host: '0.0.0.0',
-    baseUrl: 'https://auth.szycic.com',
+    baseUrl: 'https://auth.example.com',
   },
   session: {
-    cookieDomain: '.szycic.com',
-    authCookieName: 'szycic_auth_token',
-    approverCookieName: 'szycic_approver_session',
+    cookieDomain: '.example.com',
+    authCookieName: 'gateway_auth_token',
+    approverCookieName: 'gateway_approver_session',
     sessionTtlHours: 72,
     qrSessionTtlMs: 120000,
     approverTtlDays: 30,
@@ -27,8 +27,9 @@ const DEFAULT_CONFIG = {
       id: 'share',
       name: 'Pingvin Share',
       subtitle: 'Secure file sharing & storage portal',
-      url: 'https://share.szycic.com',
-      allowedRedirects: ['https://share.szycic.com*'],
+      url: 'https://share.example.com',
+      upstream: 'http://share-app:3000',
+      allowedRedirects: ['https://share.example.com*'],
     },
   ],
   downstream: {

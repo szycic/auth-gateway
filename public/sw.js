@@ -1,4 +1,4 @@
-const CACHE_NAME = 'szycic-auth-v3';
+const CACHE_NAME = 'auth-gateway-v4';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/icon.svg',

@@ -399,11 +399,11 @@ app.use(express.urlencoded({ extended: true }));
 // Helper to check if request is targeting the central Auth Gateway host
 function isAuthDomain(req) {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
-  let authHost = 'auth.szycic.com';
+  let authHost = '';
   try {
     authHost = new URL(BASE_URL).hostname.toLowerCase();
   } catch (e) {}
-  return !host || host === authHost || host === 'localhost' || host === '127.0.0.1';
+  return !host || (authHost && host === authHost) || host === 'localhost' || host === '127.0.0.1';
 }
 
 // Serve static PWA assets (manifest, sw.js, icons) ONLY for Auth Gateway host or /auth/ paths
@@ -428,18 +428,40 @@ app.use((req, res, next) => {
   next();
 });
 
-// Route aliases for PWA manifest & worker (only on Auth Gateway domain)
-app.get('/manifest.json', (req, res, next) => {
+// Dynamic PWA manifest & worker routes (only on Auth Gateway domain)
+app.get(['/manifest.json', '/manifest.webmanifest'], (req, res, next) => {
   if (!isAuthDomain(req)) return next();
-  res.sendFile(path.join(__dirname, 'public/manifest.webmanifest'), {
-    headers: { 'Content-Type': 'application/manifest+json' },
-  });
-});
-app.get('/manifest.webmanifest', (req, res, next) => {
-  if (!isAuthDomain(req)) return next();
-  res.sendFile(path.join(__dirname, 'public/manifest.webmanifest'), {
-    headers: { 'Content-Type': 'application/manifest+json' },
-  });
+  const manifest = {
+    id: '/',
+    name: config.app.name || 'Auth Gateway',
+    short_name: config.app.name || 'Auth Gateway',
+    description: config.app.subtitle || 'Mobile Authenticator and Device Approval Gateway',
+    start_url: '/auth/sessions?source=pwa',
+    scope: '/',
+    display: 'standalone',
+    orientation: 'portrait-primary',
+    background_color: '#090d16',
+    theme_color: '#090d16',
+    categories: ['utilities', 'security'],
+    icons: [
+      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+      { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icon-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+    shortcuts: [
+      {
+        name: 'Scan Desktop QR',
+        short_name: 'Scan QR',
+        description: 'Quickly scan a desktop login QR code',
+        url: '/auth/sessions?action=scan&source=pwa',
+        icons: [{ src: '/icon-192.png', sizes: '192x192' }],
+      },
+    ],
+  };
+  res.setHeader('Content-Type', 'application/manifest+json');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  return res.json(manifest);
 });
 app.get('/sw.js', (req, res, next) => {
   if (!isAuthDomain(req)) return next();
@@ -458,7 +480,7 @@ function isAllowedOrigin(origin) {
   try {
     const u = new URL(origin);
     const host = u.hostname.toLowerCase();
-    let baseHost = 'auth.szycic.com';
+    let baseHost = '';
     try {
       baseHost = new URL(BASE_URL).hostname.toLowerCase();
     } catch (e) {}
@@ -467,7 +489,7 @@ function isAllowedOrigin(origin) {
 
     if (
       origin === BASE_URL ||
-      host === baseHost ||
+      (baseHost && host === baseHost) ||
       host === 'localhost' ||
       host === '127.0.0.1' ||
       (cookieDomain && (host === cookieDomain || host.endsWith('.' + cookieDomain)))
@@ -1486,7 +1508,7 @@ app.all('/auth/*', (req, res) => {
   try {
     downstreamHost = req.headers.host || (new URL(BASE_URL)).host;
   } catch {
-    downstreamHost = req.headers.host || 'auth.szycic.com';
+    downstreamHost = req.headers.host || 'localhost';
   }
 
   const proxyReq = http.request(
@@ -1525,19 +1547,14 @@ app.all('/auth/*', (req, res) => {
 // ----------------------------------------------------
 function getUpstreamUrlForHost(hostHeader = '') {
   const host = (hostHeader || '').split(':')[0].toLowerCase();
-
-  if (host === 'tools.szycic.com' && process.env.TOOLS_APP_URL) {
-    return process.env.TOOLS_APP_URL;
-  }
-  if (host === 'garden.szycic.com' && process.env.GARDEN_APP_URL) {
-    return process.env.GARDEN_APP_URL;
-  }
-  if (host === 'share.szycic.com' && process.env.TARGET_APP_URL) {
-    return process.env.TARGET_APP_URL;
+  if (!host) {
+    return TARGET_APP_URL || (config.downstream && config.downstream.targetUrl) || '';
   }
 
+  // 1. Direct match by configured service URL hostname
   const matchedService = (config.services || []).find((s) => {
     try {
+      if (!s.url) return false;
       return new URL(s.url).hostname.toLowerCase() === host;
     } catch (e) {
       return false;
@@ -1548,40 +1565,27 @@ function getUpstreamUrlForHost(hostHeader = '') {
     return matchedService.upstream;
   }
 
-  if (host === 'pdf.szycic.com') {
-    return 'http://stirling-pdf:8080';
-  }
-  if (host === 'garden.szycic.com') {
-    return 'http://garden:8080';
-  }
-  if (host === 'tools.szycic.com') {
-    return 'http://it-tools:80';
-  }
-  if (host === 'chef.szycic.com') {
-    return 'http://cyberchef:8080';
-  }
-  if (host === 'uptime.szycic.com') {
-    return 'http://kuma:3001';
-  }
-  if (host === 'glances.szycic.com') {
-    return 'http://glances:61208';
-  }
-  if (host === 'dozzle.szycic.com') {
-    return 'http://dozzle:8080';
-  }
-  if (host === 'access.szycic.com') {
-    return 'http://goaccess:443';
+  // 2. Match by service ID prefix (e.g. "<id>.<domain>" or "<id>")
+  const byId = (config.services || []).find((s) => {
+    if (!s.id) return false;
+    const id = s.id.toLowerCase();
+    return host === id || host.startsWith(id + '.');
+  });
+
+  if (byId && byId.upstream) {
+    return byId.upstream;
   }
 
-  return TARGET_APP_URL || 'http://share-app:3000';
+  // 3. Fallback to generic downstream target URL from config or environment
+  return TARGET_APP_URL || (config.downstream && config.downstream.targetUrl) || (config.services && config.services[0] ? config.services[0].upstream : '') || '';
 }
 
 // Helper to relax Content-Security-Policy headers so injected auth-watchdog.js can load and connect to WebSocket/verify API
 function relaxCspForWatchdog(csp, authBaseUrl = BASE_URL) {
   if (!csp || typeof csp !== 'string') return csp;
-  let authOrigin = 'https://auth.szycic.com';
+  let authOrigin = BASE_URL;
   try {
-    authOrigin = new URL(authBaseUrl).origin;
+    authOrigin = new URL(authBaseUrl || BASE_URL).origin;
   } catch (e) {}
   const wsOrigin = authOrigin.replace(/^http/, 'ws');
 
@@ -1657,7 +1661,7 @@ function proxyToTargetApp(req, res) {
     }));
   }
 
-  const downstreamHost = req.headers.host || 'share.szycic.com';
+  const downstreamHost = req.headers.host || (matchedService && matchedService.url ? new URL(matchedService.url).host : 'localhost');
   const proxyHeaders = {
     ...req.headers,
     host: downstreamHost,
@@ -1740,10 +1744,10 @@ function proxyToTargetApp(req, res) {
   }
 }
 
-// Route requests intended for downstream target apps (e.g. share.szycic.com, tools.szycic.com, garden.szycic.com)
+// Route requests intended for downstream target apps
 app.use((req, res, next) => {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
-  let authHost = 'auth.szycic.com';
+  let authHost = '';
   try {
     authHost = new URL(BASE_URL).hostname.toLowerCase();
   } catch (e) {}
@@ -1769,7 +1773,7 @@ function getPwaHeadTags() {
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.name || 'Szycic Auth')}">
+  <meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.name || 'Auth Gateway')}">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
@@ -4079,7 +4083,7 @@ function renderStatusNoticeHtml({ title, message, type = 'success', actionUrl, a
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)} - ${escapeHtml(config.app.name || 'Szycic Auth')}</title>
+  <title>${escapeHtml(title)} - ${escapeHtml(config.app.name || 'Auth Gateway')}</title>
   ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4171,7 +4175,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Szycic Auth Portal</title>
+  <title>${escapeHtml(config.app.name || 'Auth Gateway')} - Portal</title>
   ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
