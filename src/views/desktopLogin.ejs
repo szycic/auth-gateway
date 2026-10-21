@@ -37,11 +37,11 @@
           Authentication Required
         </div>
         <p class="monit-desc">
-          This part of <strong class="monit-service-name"><%= matchedService ? matchedService.name : 'the service' %></strong> is behind authentication and requires authorization to access.
+          This part of <strong class="monit-service-name"><%= matchedService ? matchedService.name : 'the service' %></strong> requires additional authentication to access.
         </p>
         <div class="monit-actions">
           <button type="button" class="btn-authorize" id="btnAuthorize" onclick="revealQrLogin()">
-            Authorize Access
+            Authenticate
           </button>
           <a href="<%= fromUrl %>" class="btn-go-back" id="btnGoBack" onclick="handleGoBack(event, '<%= fromUrl %>')">
             ← Go Back
