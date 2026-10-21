@@ -38,6 +38,8 @@ const DEFAULT_CONFIG = {
   },
 };
 
+let loadedConfigPath = null;
+
 function loadConfigFile() {
   const possiblePaths = [
     process.env.CONFIG_PATH,
@@ -52,6 +54,7 @@ function loadConfigFile() {
       try {
         const raw = fs.readFileSync(configPath, 'utf8');
         console.log(`[auth-gateway] Loaded configuration from ${configPath}`);
+        loadedConfigPath = configPath;
         return JSON.parse(raw);
       } catch (err) {
         console.error(`[auth-gateway] Error reading config file at ${configPath}:`, err.message);
@@ -195,6 +198,50 @@ const config = {
   normalizeRedirect(redirectUrl, fallback = '/') {
     return this.isAllowedRedirect(redirectUrl) ? redirectUrl : fallback;
   },
+
+  reload() {
+    try {
+      const fileConfig = loadConfigFile();
+      const newMergedServices = (Array.isArray(fileConfig.services) && fileConfig.services.length > 0
+        ? fileConfig.services
+        : DEFAULT_CONFIG.services).map(svc => ({
+          ...svc,
+          enabled: svc.enabled !== false,
+        }));
+
+      this.app = {
+        ...DEFAULT_CONFIG.app,
+        ...(fileConfig.app || {}),
+        name: process.env.APP_NAME || (fileConfig.app && fileConfig.app.name) || DEFAULT_CONFIG.app.name,
+        subtitle: process.env.APP_SUBTITLE || (fileConfig.app && fileConfig.app.subtitle) || DEFAULT_CONFIG.app.subtitle,
+        footerText: process.env.APP_FOOTER_TEXT || (fileConfig.app && fileConfig.app.footerText) || DEFAULT_CONFIG.app.footerText,
+      };
+      this.services = newMergedServices;
+      this.downstream = {
+        ...DEFAULT_CONFIG.downstream,
+        ...(fileConfig.downstream || {}),
+        targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
+      };
+      console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getEnabledServices().length} enabled).`);
+      return true;
+    } catch (err) {
+      console.error('[auth-gateway] Error reloading configuration:', err.message);
+      return false;
+    }
+  },
 };
+
+if (loadedConfigPath) {
+  try {
+    fs.watchFile(loadedConfigPath, { interval: 1500 }, (curr, prev) => {
+      if (curr.mtimeMs !== prev.mtimeMs) {
+        console.log(`[auth-gateway] Configuration file modified on disk (${loadedConfigPath}). Auto-reloading...`);
+        config.reload();
+      }
+    });
+  } catch (err) {
+    console.error('[auth-gateway] Error initializing config file watcher:', err.message);
+  }
+}
 
 module.exports = config;

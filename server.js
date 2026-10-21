@@ -595,6 +595,27 @@ app.get('/auth/health', (req, res) => {
   });
 });
 
+// Endpoint to reload configuration on demand (restricted to approver)
+app.post('/auth/reload', (req, res) => {
+  if (!isApprover(req)) {
+    return res.status(401).json({ status: 'error', message: 'Unauthorized approver.' });
+  }
+  const ok = config.reload();
+  if (ok) {
+    return res.status(200).json({
+      status: 'ok',
+      message: 'Configuration reloaded successfully.',
+      services: config.services.map(s => ({ id: s.id, name: s.name, enabled: s.enabled })),
+    });
+  }
+  return res.status(500).json({ status: 'error', message: 'Failed to reload configuration.' });
+});
+
+process.on('SIGHUP', () => {
+  console.log('[auth-gateway] Received SIGHUP signal, reloading configuration...');
+  config.reload();
+});
+
 // ----------------------------------------------------
 // 2. Serve Assets (jsQR for in-app scanner & auth-watchdog.js)
 // ----------------------------------------------------
