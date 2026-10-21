@@ -16,11 +16,17 @@
 	request_header -X-Auth-User
 }
 
+# ==============================================================================
 # Centralized Authentication Portal
+# ==============================================================================
 auth.example.com {
 	import security_headers
 	reverse_proxy auth-gateway:3000
 }
+
+# ==============================================================================
+# User & Developer Applications
+# ==============================================================================
 
 # Pingvin Share Service (Protected via auth.example.com)
 share.example.com {
@@ -117,9 +123,64 @@ share.example.com {
 	import security_headers
 }
 
-# IT Tools Service (Protected via auth.example.com)
-tools.example.com {
-	# 1. Forward Auth Protected Routes
+# Stirling PDF Service (Protected via auth.example.com)
+pdf.example.com {
+	# 1. Public Mobile Scanner & Sign routes (bypasses forward auth for everyone)
+	handle /mobile-scanner* {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /mobile-sign* {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /api/v1/mobile-scanner/* {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	# 2. Public Static Assets (bypasses forward auth)
+	handle /assets/* {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /modern-logo/* {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /locales/* {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /fonts/* {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /favicon.ico {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /manifest.json {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	handle /site.webmanifest {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	# 3. Protected REST APIs & file processing routes (forward_auth checked, direct to stirling-pdf:8080)
+	handle /api/* {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy stirling-pdf:8080
+	}
+
+	# 4. Protected Web UI routes with auth-watchdog injection
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -132,8 +193,14 @@ tools.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 2. Intelligent handling of 401 Unauthorized errors
+	# 5. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://pdf.example.com"}` 401
+		}
+
 		handle {
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
@@ -174,6 +241,60 @@ garden.example.com {
 	import security_headers
 }
 
+# IT Tools Service (Protected via auth.example.com)
+tools.example.com {
+	# 1. Forward Auth Protected Routes
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 2. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	import security_headers
+}
+
+# CyberChef Service (Protected via auth.example.com)
+chef.example.com {
+	# 1. Forward Auth Protected Routes
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 2. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	import security_headers
+}
+
+# ==============================================================================
+# System Monitoring & Observability
+# ==============================================================================
+
 # Uptime Kuma Service (Protected via auth.example.com)
 uptime.example.com {
 	# 1. Public Push Monitor Webhooks (bypasses forward auth)
@@ -208,45 +329,6 @@ uptime.example.com {
 	}
 
 	# 4. Intelligent handling of 401 Unauthorized errors
-	handle_errors {
-		@unauthorized expression {http.error.status_code} == 401
-		handle @unauthorized {
-			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
-		}
-	}
-
-	import security_headers
-}
-
-# Dozzle Service (Protected via auth.example.com)
-dozzle.example.com {
-	# 1. Real-time streaming APIs & WebSockets (checked via forward_auth, then direct to dozzle:8080)
-	handle /api/* {
-		forward_auth auth-gateway:3000 {
-			uri /auth/verify
-			copy_headers X-Auth-Status X-Auth-Role
-			@unauthorized status 401
-			handle_response @unauthorized {
-				error 401
-			}
-		}
-		reverse_proxy dozzle:8080
-	}
-
-	# 2. Web UI routes with auth-watchdog injection
-	handle {
-		forward_auth auth-gateway:3000 {
-			uri /auth/verify
-			copy_headers X-Auth-Status X-Auth-Role
-			@unauthorized status 401
-			handle_response @unauthorized {
-				error 401
-			}
-		}
-		reverse_proxy auth-gateway:3000
-	}
-
-	# 3. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
@@ -301,9 +383,24 @@ glances.example.com {
 	import security_headers
 }
 
-# CyberChef Service (Protected via auth.example.com)
-chef.example.com {
-	# 1. Forward Auth Protected Routes
+# Dozzle Service (Protected via auth.example.com)
+dozzle.example.com {
+	# 1. Real-time streaming APIs & WebSockets (checked via forward_auth, then direct to dozzle:8080)
+	handle /api/* {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy dozzle:8080 {
+			flush_interval -1
+		}
+	}
+
+	# 2. Web UI routes with auth-watchdog injection
 	handle {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
@@ -316,8 +413,14 @@ chef.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 2. Intelligent handling of 401 Unauthorized errors
+	# 3. Intelligent handling of 401 Unauthorized errors
 	handle_errors {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://dozzle.example.com"}` 401
+		}
+
 		handle {
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
@@ -326,7 +429,9 @@ chef.example.com {
 	import security_headers
 }
 
-# Unused/forwarded subdomains without services
+# ==============================================================================
+# Unused / Forwarded Subdomains
+# ==============================================================================
 vm.example.com {
 	respond "Not Found" 404
 }
