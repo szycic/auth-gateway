@@ -18,7 +18,7 @@ services:
 volumes:
   gateway-data:
     external: true
-    name: share-app_gateway-data
+    name: gateway-data
 
 networks:
   proxy-net:
