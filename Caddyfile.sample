@@ -446,6 +446,8 @@ access.example.com {
 	forward_auth auth-gateway:3000 {
 		uri /auth/verify
 		copy_headers X-Auth-Status X-Auth-Role
+		header_up -Upgrade
+		header_up -Connection
 		@unauthorized status 401
 		handle_response @unauthorized {
 			error 401
@@ -454,7 +456,7 @@ access.example.com {
 
 	# 2. WebSocket endpoint for GoAccess real-time metrics
 	handle /ws {
-		reverse_proxy goaccess:7890
+		reverse_proxy goaccess:443
 	}
 
 	# 3. Web UI routes serving generated report
@@ -472,7 +474,8 @@ access.example.com {
 			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://access.example.com"}` 401
 		}
 
-		handle {
+		@unauthorized expression {http.error.status_code} == 401
+		handle @unauthorized {
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}

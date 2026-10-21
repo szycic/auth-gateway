@@ -87,7 +87,7 @@
       "name": "GoAccess",
       "subtitle": "Real-time web log analyzer and traffic metrics",
       "url": "https://access.example.com",
-      "upstream": "http://goaccess:7890",
+      "upstream": "http://goaccess:443",
       "allowedRedirects": ["https://access.example.com*"]
     }
   ]
