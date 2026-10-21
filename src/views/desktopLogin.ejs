@@ -2,13 +2,7 @@
 <html lang="en">
 <head>
   <%- include('partials/head', { extraCss: '/css/login.css' }) %>
-  <%
-    const appDisplayName = matchedService ? matchedService.name : config.app.name;
-    const appDisplaySubtitle = matchedService
-      ? (matchedService.subtitle || `Scan the QR code with your mobile device to sign in to ${matchedService.name}.`)
-      : config.app.subtitle;
-  %>
-  <title>Sign in to <%= appDisplayName %></title>
+  <title><%= matchedService ? `${matchedService.name} - ${config.app.name}` : `Sign in to ${config.app.name}` %></title>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -21,8 +15,23 @@
       </svg>
     </div>
 
-    <h1><%= appDisplayName %></h1>
-    <p class="subtitle"><%= appDisplaySubtitle %></p>
+    <h1><%= config.app.name %></h1>
+    <p class="subtitle"><%= config.app.subtitle %></p>
+
+    <% if (matchedService) { %>
+      <div class="service-target-badge">
+        <div class="service-target-header">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          <span class="service-target-label">Signing in to</span>
+        </div>
+        <div class="service-target-name"><%= matchedService.name %></div>
+        <% if (matchedService.subtitle) { %>
+          <div class="service-target-sub"><%= matchedService.subtitle %></div>
+        <% } %>
+      </div>
+    <% } %>
 
     <div class="qr-frame" id="qrContainer">
       <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
