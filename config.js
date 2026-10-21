@@ -30,8 +30,8 @@ const DEFAULT_CONFIG = {
       url: 'https://share.example.com',
       upstream: 'http://share-app:3000',
       allowedRedirects: ['https://share.example.com*'],
-      disabled: false,
       auth: true,
+      disabled: false,
     },
   ],
   downstream: {
