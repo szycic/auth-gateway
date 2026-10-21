@@ -41,9 +41,11 @@ router.get('/approve', (req, res) => {
     return res.status(410).render('statusNotice', {
       title: 'Session Expired',
       message: 'This authorization request has expired. Please refresh the session on the desktop screen.',
-      type: 'error',
+      type: 'warning',
       actionUrl: '/auth/sessions',
-      actionLabel: 'View Active Sessions',
+      actionLabel: 'Active Sessions',
+      secondaryUrl: '/auth/sessions?action=scan',
+      secondaryLabel: 'Scan QR Again',
     });
   }
 
@@ -96,9 +98,11 @@ router.post('/approve/action', (req, res) => {
     return res.status(404).render('statusNotice', {
       title: 'Session Expired',
       message: 'This authorization session is no longer active.',
-      type: 'error',
+      type: 'warning',
       actionUrl: '/auth/sessions',
       actionLabel: 'Active Sessions',
+      secondaryUrl: '/auth/sessions?action=scan',
+      secondaryLabel: 'Scan QR Again',
     });
   }
 
@@ -119,10 +123,12 @@ router.post('/approve/action', (req, res) => {
 
     return res.render('statusNotice', {
       title: 'Request Rejected',
-      message: `Access denied for desktop (${session.friendlyDevice}).`,
+      message: `Access denied for desktop (${session.friendlyDevice || 'Device'}).`,
       type: 'error',
       actionUrl: '/auth/sessions',
       actionLabel: 'Back to Sessions',
+      secondaryUrl: '/',
+      secondaryLabel: 'Return to Portal',
     });
   }
 
@@ -217,6 +223,8 @@ router.post('/approve/action', (req, res) => {
     type: 'success',
     actionUrl: '/auth/sessions',
     actionLabel: 'Manage Active Sessions',
+    secondaryUrl: '/',
+    secondaryLabel: 'Open Portal',
   });
 });
 

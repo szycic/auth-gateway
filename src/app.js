@@ -14,6 +14,7 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.locals.config = config;
 app.locals.isSessionAllowedForService = sessionService.isSessionAllowedForService;
+app.locals.assetVersion = Date.now().toString(36);
 
 app.use(cookieParser());
 app.use(express.json());
