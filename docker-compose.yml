@@ -7,12 +7,11 @@ services:
     restart: unless-stopped
     volumes:
       - gateway-data:/usr/src/app/data
-      - .:/usr/src/app/config:ro
+      - ./config.json:/usr/src/app/config.json:ro
     environment:
       - PORT=3000
       - DATA_DIR=/usr/src/app/data
-      - CONFIG_PATH=/usr/src/app/config/config.json
-      - TARGET_APP_URL=http://share-app:3000
+      - CONFIG_PATH=/usr/src/app/config.json
     networks:
       - proxy-net
 
