@@ -27,12 +27,12 @@
       "allowedRedirects": ["https://share.example.com*"]
     },
     {
-      "id": "tools",
-      "name": "IT Tools",
-      "subtitle": "Handy collection of developer utilities",
-      "url": "https://tools.example.com",
-      "upstream": "http://it-tools:80",
-      "allowedRedirects": ["https://tools.example.com*"]
+      "id": "pdf",
+      "name": "Stirling PDF",
+      "subtitle": "Locally hosted PDF manipulation & conversion suite",
+      "url": "https://pdf.example.com",
+      "upstream": "http://stirling-pdf:8080",
+      "allowedRedirects": ["https://pdf.example.com*"]
     },
     {
       "id": "garden",
@@ -43,20 +43,28 @@
       "allowedRedirects": ["https://garden.example.com*"]
     },
     {
+      "id": "tools",
+      "name": "IT Tools",
+      "subtitle": "Handy collection of developer utilities",
+      "url": "https://tools.example.com",
+      "upstream": "http://it-tools:80",
+      "allowedRedirects": ["https://tools.example.com*"]
+    },
+    {
+      "id": "chef",
+      "name": "CyberChef",
+      "subtitle": "The Cyber Swiss Army Knife for data analysis & conversion",
+      "url": "https://chef.example.com",
+      "upstream": "http://cyberchef:8080",
+      "allowedRedirects": ["https://chef.example.com*"]
+    },
+    {
       "id": "uptime",
       "name": "Uptime Kuma",
       "subtitle": "Service monitoring & uptime status",
       "url": "https://uptime.example.com",
       "upstream": "http://kuma:3001",
       "allowedRedirects": ["https://uptime.example.com*"]
-    },
-    {
-      "id": "dozzle",
-      "name": "Dozzle",
-      "subtitle": "Real-time Docker container log viewer",
-      "url": "https://dozzle.example.com",
-      "upstream": "http://dozzle:8080",
-      "allowedRedirects": ["https://dozzle.example.com*"]
     },
     {
       "id": "glances",
@@ -67,20 +75,12 @@
       "allowedRedirects": ["https://glances.example.com*"]
     },
     {
-      "id": "pdf",
-      "name": "Stirling PDF",
-      "subtitle": "Locally hosted PDF manipulation & conversion suite",
-      "url": "https://pdf.example.com",
-      "upstream": "http://stirling-pdf:8080",
-      "allowedRedirects": ["https://pdf.example.com*"]
-    },
-    {
-      "id": "chef",
-      "name": "CyberChef",
-      "subtitle": "The Cyber Swiss Army Knife for data analysis & conversion",
-      "url": "https://chef.example.com",
-      "upstream": "http://cyberchef:8080",
-      "allowedRedirects": ["https://chef.example.com*"]
+      "id": "dozzle",
+      "name": "Dozzle",
+      "subtitle": "Real-time Docker container log viewer",
+      "url": "https://dozzle.example.com",
+      "upstream": "http://dozzle:8080",
+      "allowedRedirects": ["https://dozzle.example.com*"]
     }
   ]
 }

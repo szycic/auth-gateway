@@ -1548,23 +1548,26 @@ function getUpstreamUrlForHost(hostHeader = '') {
     return matchedService.upstream;
   }
 
-  if (host === 'tools.szycic.com') {
-    return 'http://it-tools:80';
+  if (host === 'pdf.szycic.com') {
+    return 'http://stirling-pdf:8080';
   }
   if (host === 'garden.szycic.com') {
     return 'http://garden:8080';
   }
-  if (host === 'uptime.szycic.com') {
-    return 'http://kuma:3001';
-  }
-  if (host === 'dozzle.szycic.com') {
-    return 'http://dozzle:8080';
-  }
-  if (host === 'pdf.szycic.com') {
-    return 'http://stirling-pdf:8080';
+  if (host === 'tools.szycic.com') {
+    return 'http://it-tools:80';
   }
   if (host === 'chef.szycic.com') {
     return 'http://cyberchef:8080';
+  }
+  if (host === 'uptime.szycic.com') {
+    return 'http://kuma:3001';
+  }
+  if (host === 'glances.szycic.com') {
+    return 'http://glances:61208';
+  }
+  if (host === 'dozzle.szycic.com') {
+    return 'http://dozzle:8080';
   }
 
   return TARGET_APP_URL || 'http://share-app:3000';
