@@ -81,7 +81,7 @@
       <% } %>
     </div>
 
-    <div class="actions-row" style="justify-content: <%= isApproverUser ? 'space-between' : 'flex-end' %>;">
+    <div class="actions-row <%= isApproverUser ? 'actions-row-approver' : '' %>">
       <% if (isApproverUser) { %>
         <a href="/auth/sessions" class="btn-action" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Manage Sessions</a>
       <% } %>

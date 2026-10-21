@@ -8,10 +8,8 @@
   <div class="ambient-glow"></div>
   <div class="card card-sm">
     <% const isSuccess = type === 'success'; %>
-    <% const color = isSuccess ? '#10b981' : '#ef4444'; %>
-    <% const bg = isSuccess ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'; %>
-    <div style="width: 64px; height: 64px; border-radius: 50%; background: <%= bg %>; border: 2px solid <%= color %>; color: <%= color %>; display: inline-flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem auto;">
-      <svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div class="status-icon <%= isSuccess ? 'status-icon-success' : 'status-icon-error' %>">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <% if (isSuccess) { %>
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
         <% } else { %>
