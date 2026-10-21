@@ -16,7 +16,7 @@
     </div>
 
     <h1><%= config.app.name %></h1>
-    <p class="subtitle" id="pageSubtitle"><%= isFromOpenHandle ? 'Protected Service Notice' : config.app.subtitle %></p>
+    <p class="subtitle" id="pageSubtitle" <%- isFromOpenHandle ? 'style="display: none;"' : '' %>><%= config.app.subtitle %></p>
 
     <% if (matchedService) { %>
       <div class="service-target-badge" id="serviceBadge" <%- isFromOpenHandle ? 'style="display: none;"' : '' %>>
@@ -220,6 +220,7 @@
         serviceBadge.style.display = 'block';
       }
       if (pageSubtitle) {
+        pageSubtitle.style.display = 'block';
         pageSubtitle.textContent = defaultSubtitle;
       }
       try {
@@ -248,7 +249,10 @@
         if (monit) monit.style.display = 'none';
         if (qrSection) qrSection.style.display = 'block';
         if (serviceBadge) serviceBadge.style.display = 'block';
-        if (pageSubtitle) pageSubtitle.textContent = defaultSubtitle;
+        if (pageSubtitle) {
+          pageSubtitle.style.display = 'block';
+          pageSubtitle.textContent = defaultSubtitle;
+        }
       }
       initQrSession();
     }
