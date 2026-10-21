@@ -30,8 +30,8 @@ const DEFAULT_CONFIG = {
       url: 'https://share.example.com',
       upstream: 'http://share-app:3000',
       allowedRedirects: ['https://share.example.com*'],
-      enabled: true,
-      authRequired: true,
+      disabled: false,
+      auth: true,
     },
   ],
   downstream: {
@@ -68,20 +68,34 @@ function loadConfigFile() {
 
 const fileConfig = loadConfigFile();
 
-function resolveAuthRequired(svc) {
+function resolveDisabled(svc) {
+  if (svc.disabled !== undefined) return Boolean(svc.disabled);
+  if (svc.enabled !== undefined) return svc.enabled === false;
+  return false;
+}
+
+function resolveAuth(svc) {
+  if (svc.auth !== undefined) return svc.auth !== false;
   if (svc.authRequired !== undefined) return svc.authRequired !== false;
   if (svc.requireAuth !== undefined) return svc.requireAuth !== false;
-  if (svc.auth !== undefined) return svc.auth !== false;
   return true;
+}
+
+function normalizeService(svc) {
+  const disabled = resolveDisabled(svc);
+  const auth = resolveAuth(svc);
+  return {
+    ...svc,
+    disabled,
+    enabled: !disabled,
+    auth,
+    authRequired: auth,
+  };
 }
 
 const mergedServices = (Array.isArray(fileConfig.services) && fileConfig.services.length > 0
   ? fileConfig.services
-  : DEFAULT_CONFIG.services).map(svc => ({
-    ...svc,
-    enabled: svc.enabled !== false,
-    authRequired: resolveAuthRequired(svc),
-  }));
+  : DEFAULT_CONFIG.services).map(normalizeService);
 
 const config = {
   app: {
@@ -130,12 +144,12 @@ const config = {
   QR_SESSION_TTL_MS: parseInt(process.env.QR_SESSION_TTL_MS || (fileConfig.session && fileConfig.session.qrSessionTtlMs) || DEFAULT_CONFIG.session.qrSessionTtlMs, 10),
   APPROVER_TTL_DAYS: parseInt(process.env.APPROVER_TTL_DAYS || (fileConfig.session && fileConfig.session.approverTtlDays) || DEFAULT_CONFIG.session.approverTtlDays, 10),
 
-  getService(idOrUrl, onlyEnabled = false) {
+  getService(idOrUrl, onlyActive = false) {
     if (!idOrUrl || typeof idOrUrl !== 'string') return null;
     const term = idOrUrl.trim().toLowerCase();
 
     const matches = s => {
-      if (onlyEnabled && s.enabled === false) return false;
+      if (onlyActive && s.disabled) return false;
       if (s.id && s.id.toLowerCase() === term) return true;
       if (s.name && s.name.toLowerCase() === term) return true;
       try {
@@ -150,19 +164,32 @@ const config = {
     return this.services.find(matches) || null;
   },
 
+  getActiveServices() {
+    return this.services.filter(s => !s.disabled);
+  },
+
   getEnabledServices() {
-    return this.services.filter(s => s.enabled !== false);
+    return this.getActiveServices();
+  },
+
+  isServiceDisabled(idOrUrl) {
+    const svc = this.getService(idOrUrl);
+    return Boolean(svc && svc.disabled);
   },
 
   isServiceEnabled(idOrUrl) {
     const svc = this.getService(idOrUrl);
-    return Boolean(svc && svc.enabled !== false);
+    return Boolean(svc && !svc.disabled);
+  },
+
+  isAuth(idOrUrl) {
+    const svc = this.getService(idOrUrl);
+    if (!svc) return true;
+    return svc.auth !== false;
   },
 
   isAuthRequired(idOrUrl) {
-    const svc = this.getService(idOrUrl);
-    if (!svc) return true;
-    return svc.authRequired !== false;
+    return this.isAuth(idOrUrl);
   },
 
   isAllowedRedirect(redirectUrl) {
@@ -184,7 +211,7 @@ const config = {
 
       // Reject if the target matches an explicitly disabled service
       const matchedService = this.getService(parsed.hostname);
-      if (matchedService && matchedService.enabled === false) {
+      if (matchedService && matchedService.disabled) {
         return false;
       }
 
@@ -194,9 +221,9 @@ const config = {
         return true;
       }
 
-      // Check configured services by parsed hostname (only if enabled)
+      // Check configured services by parsed hostname (only if active)
       for (const svc of this.services) {
-        if (svc && svc.enabled !== false && svc.url) {
+        if (svc && !svc.disabled && svc.url) {
           try {
             const targetHostname = new URL(svc.url).hostname.toLowerCase();
             if (parsed.hostname.toLowerCase() === targetHostname) return true;
@@ -219,11 +246,7 @@ const config = {
       const fileConfig = loadConfigFile();
       const newMergedServices = (Array.isArray(fileConfig.services) && fileConfig.services.length > 0
         ? fileConfig.services
-        : DEFAULT_CONFIG.services).map(svc => ({
-          ...svc,
-          enabled: svc.enabled !== false,
-          authRequired: resolveAuthRequired(svc),
-        }));
+        : DEFAULT_CONFIG.services).map(normalizeService);
 
       this.app = {
         ...DEFAULT_CONFIG.app,
@@ -238,7 +261,7 @@ const config = {
         ...(fileConfig.downstream || {}),
         targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
       };
-      console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getEnabledServices().length} enabled, ${this.services.filter(s => s.authRequired !== false).length} require auth).`);
+      console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getActiveServices().length} active, ${this.services.filter(s => s.auth !== false).length} require auth).`);
       return true;
     } catch (err) {
       console.error('[auth-gateway] Error reloading configuration:', err.message);
