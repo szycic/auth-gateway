@@ -7,7 +7,7 @@
 </head>
 <body>
   <div class="ambient-glow"></div>
-  <div class="card">
+  <div class="card card-portal">
     <div class="header">
       <div class="logo-container">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -19,7 +19,7 @@
     </div>
 
     <% if (notice) { %>
-      <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #a7f3d0; padding: 0.65rem 0.9rem; border-radius: 12px; font-size: 0.85rem; margin-bottom: 1.25rem;"><%= notice %></div>
+      <div class="success-box"><%= notice %></div>
     <% } %>
 
     <%
@@ -56,15 +56,15 @@
              const isAllowed = isApproverUser || (typeof isSessionAllowedForService === 'function' ? isSessionAllowedForService(session, s) : (!isRestrictedSession || (allowedServiceIds && allowedServiceIds.includes((s.id || '').toLowerCase()))));
              const targetUrl = s.url || '#';
         %>
-          <div class="service-item <%= !isAllowed ? 'service-item-disabled' : '' %>">
+          <div class="service-card <%= !isAllowed ? 'service-card-disabled' : '' %>">
             <div class="service-info">
               <div class="service-name-row">
                 <span class="service-name"><%= s.name %></span>
                 <% if (s.disableAuth) { %>
-                  <span class="badge-public" style="font-size: 0.7rem; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.3);">Public</span>
+                  <span class="badge-public">Public</span>
                 <% } %>
               </div>
-              <div class="service-subtitle"><%= s.subtitle || s.url %></div>
+              <div class="service-desc"><%= s.subtitle || s.url %></div>
             </div>
             <% if (isAllowed) { %>
               <a href="<%= targetUrl %>" class="btn-launch" title="Open <%= s.name %>" target="_blank" rel="noopener noreferrer">

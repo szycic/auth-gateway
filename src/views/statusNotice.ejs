@@ -4,12 +4,13 @@
   <%- include('partials/head', { extraCss: null }) %>
   <title><%= title %> - <%= config.app.name %></title>
 </head>
-<body style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem;">
-  <div class="card" style="width: 100%; max-width: 400px; text-align: center;">
+<body>
+  <div class="ambient-glow"></div>
+  <div class="card card-sm">
     <% const isSuccess = type === 'success'; %>
     <% const color = isSuccess ? '#10b981' : '#ef4444'; %>
     <% const bg = isSuccess ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'; %>
-    <div style="width: 64px; height: 64px; border-radius: 50%; background: <%= bg %>; border: 2px solid <%= color %>; color: <%= color %>; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">
+    <div style="width: 64px; height: 64px; border-radius: 50%; background: <%= bg %>; border: 2px solid <%= color %>; color: <%= color %>; display: inline-flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem auto;">
       <svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <% if (isSuccess) { %>
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
@@ -18,8 +19,8 @@
         <% } %>
       </svg>
     </div>
-    <h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;"><%= title %></h1>
-    <p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;"><%= message %></p>
+    <h1><%= title %></h1>
+    <p class="desc"><%= message %></p>
     <% if (actionUrl) { %>
       <a href="<%= actionUrl %>" class="btn"><%= actionLabel || 'Continue' %></a>
     <% } %>

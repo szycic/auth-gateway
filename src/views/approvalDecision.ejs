@@ -5,12 +5,13 @@
   <title>Authorize Desktop - <%= config.app.name %></title>
 </head>
 <body>
+  <div class="ambient-glow"></div>
   <%
-    const activeCount = (activeSessionsList || []).length;
-    const servicesList = (services || config.services || []).filter(svc => !svc.disableService && !svc.disableAuth);
-    const targetServiceId = targetService && !targetService.disableAuth ? targetService.id : null;
+    const activeCount = (typeof activeSessionsList !== 'undefined' && activeSessionsList ? activeSessionsList : []).length;
+    const servicesList = ((typeof services !== 'undefined' && services) || (config && config.services) || []).filter(svc => !svc.disableService && !svc.disableAuth);
+    const targetServiceId = (typeof targetService !== 'undefined' && targetService && !targetService.disableAuth) ? targetService.id : null;
   %>
-  <div class="card">
+  <div class="card card-md">
     <div class="header">
       <h1>Authorize Desktop Access?</h1>
     </div>
