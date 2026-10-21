@@ -5,6 +5,7 @@ const { parseUserAgent } = require('../utils/deviceDetector');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const socketService = require('../services/socketService');
+const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
@@ -43,6 +44,10 @@ router.post('/sessions/revoke', (req, res) => {
     sessionService.activeSessions.clear();
     sessionService.savePersistedSessions();
     socketService.notifyAllSessionsRevoked();
+    auditLog('ALL_SESSIONS_REVOKED', {
+      count,
+      revokedByIp: authService.getClientIp(req),
+    });
 
     if (req.accepts('json') && !req.accepts('html')) {
       return res.json({ success: true, all: true, count, message: `Revoked all ${count} active sessions.` });
@@ -60,6 +65,12 @@ router.post('/sessions/revoke', (req, res) => {
         sessionService.activeSessions.delete(token);
         sessionService.savePersistedSessions();
         socketService.notifySessionRevoked(sid, token);
+        auditLog('SESSION_REVOKED', {
+          sessionId: sid,
+          device: session.friendlyDevice,
+          deviceIp: session.ip,
+          revokedByIp: authService.getClientIp(req),
+        });
 
         if (req.accepts('json') && !req.accepts('html')) {
           return res.json({ success: true, sessionId: sid, message: `Session for ${session.friendlyDevice} was revoked.` });
@@ -130,6 +141,7 @@ router.get('/exchange', (req, res) => {
 
 // 5. Logout Endpoint
 router.get('/logout', (req, res) => {
+  auditLog('USER_LOGOUT', { ip: authService.getClientIp(req) });
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (token) {
     sessionService.activeSessions.delete(token);

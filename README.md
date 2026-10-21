@@ -81,7 +81,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 
 ### 2. Configuration
 
-Create your `config.json` based on [config.sample.json](file:///home/szymon/Projects/auth-gateway/config.sample.json):
+Create your `config.json` based on [config.sample.json](/config.sample.json):
 
 ```json
 {
@@ -373,8 +373,8 @@ Add an entry to the `"services"` array in your `config.json`:
 - `url`: Public URL of your service.
 - `upstream`: Internal Docker URL and port where the app container is listening.
 - `allowedRedirects`: Allowed redirect URL patterns after successful authentication.
-- `disableService`: *(Optional)* If `true`, hides the service from the dashboard and blocks redirects/access.
-- `disableAuth`: *(Optional)* If `true`, bypasses authentication verification for this service.
+- `disableService`: _(Optional)_ If `true`, hides the service from the dashboard and blocks redirects/access.
+- `disableAuth`: _(Optional)_ If `true`, bypasses authentication verification for this service.
 
 ### Step 3: Add Service Block to Caddy
 
@@ -431,28 +431,28 @@ myapp.example.com {
 
 ## Configuration Reference (`config.json`)
 
-| Section    | Key                  | Type    | Description                                                                    |
-| ---------- | -------------------- | ------- | ------------------------------------------------------------------------------ |
-| `app`      | `name`               | string  | Portal title displayed on login and dashboard pages.                           |
-| `app`      | `subtitle`           | string  | Explanatory text beneath the portal title.                                     |
-| `app`      | `footerText`         | string  | Text shown in the footer of all auth views.                                    |
-| `server`   | `port`               | number  | Port Auth Gateway listens on inside the container (default: `3000`).           |
-| `server`   | `host`               | string  | Listening interface (default: `0.0.0.0`).                                      |
-| `server`   | `baseUrl`            | string  | Full public URL of the auth portal (e.g. `https://auth.example.com`).          |
-| `session`  | `cookieDomain`       | string  | Root domain with leading dot for shared cookies (e.g. `.example.com`).         |
-| `session`  | `authCookieName`     | string  | Name of the authentication cookie (default: `gateway_auth_token`).             |
-| `session`  | `approverCookieName` | string  | Name of the mobile approver session cookie.                                    |
-| `session`  | `sessionTtlHours`    | number  | Lifespan of an authenticated user session in hours (e.g. `72`).                |
-| `session`  | `qrSessionTtlMs`     | number  | Lifespan of a pending QR approval request in milliseconds (default: `120000`). |
-| `session`  | `approverTtlDays`    | number  | Lifespan of an approver session in days (e.g. `30`).                           |
-| `services` | `id`                 | string  | Unique service identifier.                                                     |
-| `services` | `name`               | string  | Title shown on the dashboard card.                                             |
-| `services` | `subtitle`           | string  | Description shown on the dashboard card.                                       |
-| `services` | `url`                | string  | Public HTTPS URL of the service.                                               |
-| `services` | `upstream`           | string  | Internal backend container URL (e.g. `http://my-app:8080`).                    |
-| `services` | `allowedRedirects`   | array   | List of URL patterns permitted for post-login redirection.                     |
+| Section    | Key                  | Type    | Description                                                                            |
+| ---------- | -------------------- | ------- | -------------------------------------------------------------------------------------- |
+| `app`      | `name`               | string  | Portal title displayed on login and dashboard pages.                                   |
+| `app`      | `subtitle`           | string  | Explanatory text beneath the portal title.                                             |
+| `app`      | `footerText`         | string  | Text shown in the footer of all auth views.                                            |
+| `server`   | `port`               | number  | Port Auth Gateway listens on inside the container (default: `3000`).                   |
+| `server`   | `host`               | string  | Listening interface (default: `0.0.0.0`).                                              |
+| `server`   | `baseUrl`            | string  | Full public URL of the auth portal (e.g. `https://auth.example.com`).                  |
+| `session`  | `cookieDomain`       | string  | Root domain with leading dot for shared cookies (e.g. `.example.com`).                 |
+| `session`  | `authCookieName`     | string  | Name of the authentication cookie (default: `gateway_auth_token`).                     |
+| `session`  | `approverCookieName` | string  | Name of the mobile approver session cookie.                                            |
+| `session`  | `sessionTtlHours`    | number  | Lifespan of an authenticated user session in hours (e.g. `72`).                        |
+| `session`  | `qrSessionTtlMs`     | number  | Lifespan of a pending QR approval request in milliseconds (default: `120000`).         |
+| `session`  | `approverTtlDays`    | number  | Lifespan of an approver session in days (e.g. `30`).                                   |
+| `services` | `id`                 | string  | Unique service identifier.                                                             |
+| `services` | `name`               | string  | Title shown on the dashboard card.                                                     |
+| `services` | `subtitle`           | string  | Description shown on the dashboard card.                                               |
+| `services` | `url`                | string  | Public HTTPS URL of the service.                                                       |
+| `services` | `upstream`           | string  | Internal backend container URL (e.g. `http://my-app:8080`).                            |
+| `services` | `allowedRedirects`   | array   | List of URL patterns permitted for post-login redirection.                             |
 | `services` | `disableService`     | boolean | Optional. When `true`, completely hides service from dashboard and disables redirects. |
-| `services` | `disableAuth`        | boolean | Optional. When `true`, bypasses authentication verification for this service. |
+| `services` | `disableAuth`        | boolean | Optional. When `true`, bypasses authentication verification for this service.          |
 
 ---
 

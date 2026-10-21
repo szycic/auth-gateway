@@ -4,6 +4,7 @@ const config = require('../config');
 const { getCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
@@ -89,6 +90,11 @@ router.post('/login', (req, res) => {
   const isValid = authService.verifyPassword(password, currentHash);
   if (!isValid) {
     const attempt = authService.recordFailedLogin(clientIp);
+    auditLog('LOGIN_FAILED', {
+      ip: clientIp,
+      locked: attempt.locked,
+      remainingAttempts: attempt.remainingAttempts,
+    });
     if (attempt.locked) {
       return res.redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}&error=${encodeURIComponent('Account locked for 15 minutes due to failed attempts.')}`);
     } else {
@@ -98,6 +104,10 @@ router.post('/login', (req, res) => {
   }
 
   authService.clearFailedLogins(clientIp);
+  auditLog('LOGIN_SUCCESS', {
+    ip: clientIp,
+    userAgent: req.headers['user-agent'] || 'Unknown',
+  });
 
   const approverToken = crypto.randomBytes(48).toString('base64url');
   const maxAgeMs = config.APPROVER_TTL_DAYS * 24 * 3600 * 1000;

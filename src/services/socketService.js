@@ -65,9 +65,19 @@ function notifyAllSessionsRevoked() {
   }
 }
 
+function closeSocketIO() {
+  if (ioInstance) {
+    try {
+      ioInstance.close();
+    } catch (e) {}
+    ioInstance = null;
+  }
+}
+
 module.exports = {
   initSocketIO,
   getIO,
+  closeSocketIO,
   notifySessionApproved,
   notifySessionRejected,
   notifySessionRevoked,
