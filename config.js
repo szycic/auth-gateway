@@ -31,6 +31,7 @@ const DEFAULT_CONFIG = {
       upstream: 'http://share-app:3000',
       allowedRedirects: ['https://share.example.com*'],
       enabled: true,
+      authRequired: true,
     },
   ],
   downstream: {
@@ -67,11 +68,19 @@ function loadConfigFile() {
 
 const fileConfig = loadConfigFile();
 
+function resolveAuthRequired(svc) {
+  if (svc.authRequired !== undefined) return svc.authRequired !== false;
+  if (svc.requireAuth !== undefined) return svc.requireAuth !== false;
+  if (svc.auth !== undefined) return svc.auth !== false;
+  return true;
+}
+
 const mergedServices = (Array.isArray(fileConfig.services) && fileConfig.services.length > 0
   ? fileConfig.services
   : DEFAULT_CONFIG.services).map(svc => ({
     ...svc,
     enabled: svc.enabled !== false,
+    authRequired: resolveAuthRequired(svc),
   }));
 
 const config = {
@@ -150,6 +159,12 @@ const config = {
     return Boolean(svc && svc.enabled !== false);
   },
 
+  isAuthRequired(idOrUrl) {
+    const svc = this.getService(idOrUrl);
+    if (!svc) return true;
+    return svc.authRequired !== false;
+  },
+
   isAllowedRedirect(redirectUrl) {
     if (!redirectUrl || typeof redirectUrl !== 'string') return false;
     const trimmed = redirectUrl.trim();
@@ -207,6 +222,7 @@ const config = {
         : DEFAULT_CONFIG.services).map(svc => ({
           ...svc,
           enabled: svc.enabled !== false,
+          authRequired: resolveAuthRequired(svc),
         }));
 
       this.app = {
@@ -222,7 +238,7 @@ const config = {
         ...(fileConfig.downstream || {}),
         targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
       };
-      console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getEnabledServices().length} enabled).`);
+      console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getEnabledServices().length} enabled, ${this.services.filter(s => s.authRequired !== false).length} require auth).`);
       return true;
     } catch (err) {
       console.error('[auth-gateway] Error reloading configuration:', err.message);
