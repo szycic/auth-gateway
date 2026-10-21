@@ -1,6 +1,5 @@
 const http = require('http');
 const config = require('../config');
-const { renderStatusNoticeHtml } = require('../views/statusNoticeView');
 const sessionService = require('./sessionService');
 
 /**
@@ -98,13 +97,13 @@ function relaxCspHeader(val, authBaseUrl) {
 function proxyToTargetApp(req, res) {
   const matchedService = config.getService(req.headers.host);
   if (matchedService && matchedService.disableService) {
-    return res.status(503).send(renderStatusNoticeHtml({
+    return res.status(503).render('statusNotice', {
       title: `${matchedService.name} is Temporarily Disabled`,
       message: 'This service is currently disabled on demand or undergoing maintenance.',
       actionUrl: config.BASE_URL,
       actionLabel: 'Return to Dashboard',
       type: 'error',
-    }));
+    });
   }
 
   const isAuthRequired = matchedService ? !matchedService.disableAuth : true;
@@ -112,7 +111,7 @@ function proxyToTargetApp(req, res) {
   const session = sessionService.activeSessions.get(token);
 
   if (isAuthRequired && !sessionService.isApprover(req) && (!matchedService || !sessionService.isSessionAllowedForService(session, matchedService))) {
-    return res.status(403).send(renderStatusNoticeHtml({
+    return res.status(403).render('statusNotice', {
       title: 'Access Restricted',
       message: matchedService
         ? `Your active session is not authorized to access ${matchedService.name}.`
@@ -120,31 +119,31 @@ function proxyToTargetApp(req, res) {
       actionUrl: config.BASE_URL,
       actionLabel: 'Return to Dashboard',
       type: 'error',
-    }));
+    });
   }
 
   const upstreamBase = getUpstreamUrlForHost(req.headers.host);
   if (!upstreamBase || !upstreamBase.trim()) {
-    return res.status(502).send(renderStatusNoticeHtml({
+    return res.status(502).render('statusNotice', {
       title: 'Service Unavailable',
       message: 'Downstream application is not configured.',
       actionUrl: config.BASE_URL,
       actionLabel: 'Return Home',
       type: 'error',
-    }));
+    });
   }
 
   let targetUrl;
   try {
     targetUrl = new URL(req.originalUrl || req.url, upstreamBase);
   } catch (err) {
-    return res.status(400).send(renderStatusNoticeHtml({
+    return res.status(400).render('statusNotice', {
       title: 'Invalid Request',
       message: 'The requested URL is invalid.',
       actionUrl: config.BASE_URL,
       actionLabel: 'Return Home',
       type: 'error',
-    }));
+    });
   }
 
   const downstreamHost = req.headers.host || (matchedService && matchedService.url ? new URL(matchedService.url).host : 'localhost');
@@ -204,13 +203,13 @@ function proxyToTargetApp(req, res) {
 
   proxyReq.on('error', (err) => {
     console.error('[target-app proxy error]', err.message);
-    res.status(502).send(renderStatusNoticeHtml({
+    res.status(502).render('statusNotice', {
       title: 'Service Unavailable',
       message: 'The downstream service is currently unreachable.',
       actionUrl: config.BASE_URL,
       actionLabel: 'Return Home',
       type: 'error',
-    }));
+    });
   });
 
   if (req.body && Object.keys(req.body).length > 0) {

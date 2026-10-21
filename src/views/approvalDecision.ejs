@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { extraCss: '/css/approve.css' }) %>
+  <title>Authorize Desktop - <%= config.app.name %></title>
+</head>
+<body>
+  <%
+    const activeCount = (activeSessionsList || []).length;
+    const servicesList = (services || config.services || []).filter(svc => !svc.disableService && !svc.disableAuth);
+    const targetServiceId = targetService && !targetService.disableAuth ? targetService.id : null;
+  %>
+  <div class="card">
+    <div class="header">
+      <h1>Authorize Desktop Access?</h1>
+    </div>
+
+    <form method="POST" action="/auth/approve/action" onsubmit="return validateApprovalForm(event)">
+      <input type="hidden" name="id" value="<%= id %>">
+      <input type="hidden" name="key" value="<%= key %>">
+
+      <div class="device-info">
+        <div class="info-row">
+          <span class="info-label">Detected Device</span>
+          <span class="info-val"><%= friendlyDevice %></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">IP Address</span>
+          <span class="info-val"><%= desktopIp %></span>
+        </div>
+        <% if (targetService) { %>
+        <div class="info-row">
+          <span class="info-label">Target Platform</span>
+          <span class="info-val" style="color: #38bdf8; font-weight: 700;"><%= targetService.name %></span>
+        </div>
+        <% } %>
+        <div class="info-row">
+          <span class="info-label">Access Level</span>
+          <span class="info-val" style="color: #38bdf8;">Standard Access</span>
+        </div>
+      </div>
+
+      <div class="name-box">
+        <label for="customName">Device Name</label>
+        <div class="name-input-wrapper">
+          <input
+            type="text"
+            id="customName"
+            name="customName"
+            value="<%= friendlyDevice %>"
+            placeholder="e.g. Work Laptop, Living Room PC"
+            maxlength="40"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+      </div>
+
+      <!-- Service Access Restriction Toggle (Prominent on Main Screen) -->
+      <% if (targetService) { %>
+      <label class="trust-box">
+        <input type="checkbox" id="onlyPlatformToggle" data-target-id="<%= targetService.id %>" onchange="handleOnlyPlatformToggle(this, '<%= targetService.id %>')">
+        <div class="trust-text">
+          <span class="trust-title">Grant access only to <%= targetService.name %></span>
+          <span class="trust-desc">Lock this session exclusively to <%= targetService.name %> (uncheck other services).</span>
+        </div>
+      </label>
+      <% } else { %>
+      <label class="trust-box">
+        <input type="checkbox" id="onlyPlatformToggle" onchange="handleGenericPlatformToggle(this)">
+        <div class="trust-text">
+          <span class="trust-title">Restrict to single platform</span>
+          <span class="trust-desc">Limit this device to one service instead of full access.</span>
+        </div>
+      </label>
+      <div id="platformPickerWrap" style="display: none; margin-top: -0.5rem; margin-bottom: 1rem; width: 100%;">
+        <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.35rem;">Select allowed platform:</label>
+        <select id="platformPickerSelect" class="adv-select" onchange="handlePlatformPickerChange(this)">
+          <% servicesList.forEach(function(s) { %>
+            <option value="<%= s.id %>"><%= s.name %></option>
+          <% }); %>
+        </select>
+      </div>
+      <% } %>
+
+      <label class="trust-box">
+        <input type="checkbox" name="trusted" id="trustedCheckbox" value="true" onchange="handleTrustChange(this)">
+        <div class="trust-text">
+          <span class="trust-title">Trust this device</span>
+          <span class="trust-desc">Keep signed in permanently until manually revoked.</span>
+        </div>
+      </label>
+
+      <!-- Advanced Settings: Custom Expiration & Service Permissions -->
+      <details class="advanced-box">
+        <summary class="advanced-summary">
+          <span class="advanced-title">
+            <svg style="width: 15px; height: 15px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            </svg>
+            Advanced
+          </span>
+          <svg class="chevron-icon" style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
+
+        <div class="advanced-content">
+          <!-- 1. Expiration Time -->
+          <div class="adv-group" id="expirationGroup">
+            <div class="adv-label-row">
+              <label class="adv-label" for="sessionTtl">Expiration Time</label>
+              <span id="ttlTrustBadge" class="ttl-trust-badge" style="display: none;">Permanent (Trusted)</span>
+            </div>
+            <select name="sessionTtl" id="sessionTtl" class="adv-select" onchange="handleTtlChange(this)">
+              <option value="1">1 hour</option>
+              <option value="8">8 hours</option>
+              <option value="24">24 hours (1 day)</option>
+              <option value="72" selected>72 hours (3 days - default)</option>
+              <option value="168">7 days (1 week)</option>
+              <option value="720">30 days (1 month)</option>
+              <option value="custom">Custom hours...</option>
+            </select>
+            <div id="customTtlWrap" style="display: none; margin-top: 0.5rem;">
+              <input type="number" name="customTtlHours" id="customTtlHours" class="adv-input" min="1" max="87600" placeholder="Enter hours (e.g. 12)">
+            </div>
+            <div id="ttlTrustNotice" class="ttl-trust-notice" style="display: none;">
+              Trusted devices never expire automatically. Expiration time cannot be changed while trusted.
+            </div>
+          </div>
+
+          <!-- 2. Services Access Checklist -->
+          <div class="adv-group" style="margin-top: 1rem;">
+            <div class="adv-label-row">
+              <label class="adv-label">Service Access</label>
+              <div class="services-header-actions">
+                <% if (targetService) { %>
+                  <button type="button" class="btn-toggle-service" onclick="selectOnlyTargetService('<%= targetService.id %>')">Only <%= targetService.name %></button>
+                <% } %>
+                <button type="button" class="btn-toggle-all" onclick="toggleAllServices()">Toggle All</button>
+              </div>
+            </div>
+            <div class="adv-desc">Customize individual service permissions:</div>
+            <div class="services-checklist">
+              <% servicesList.forEach(function(svc) { 
+                   const isTarget = targetServiceId && svc.id.toLowerCase() === targetServiceId.toLowerCase();
+              %>
+                <label class="service-check-item <%= isTarget ? 'service-check-target' : '' %>">
+                  <input type="checkbox" name="services" value="<%= svc.id %>" checked class="service-checkbox" data-service-id="<%= svc.id %>" onchange="handleServiceCheckboxChange()">
+                  <div class="service-check-info">
+                    <div class="service-check-name-row">
+                      <span class="service-check-name"><%= svc.name %></span>
+                      <% if (isTarget) { %><span class="badge-target-svc">Current</span><% } %>
+                    </div>
+                    <span class="service-check-sub"><%= svc.subtitle || svc.url %></span>
+                  </div>
+                </label>
+              <% }); %>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div class="btn-group">
+        <button type="submit" name="action" value="reject" class="btn btn-reject">Reject</button>
+        <button type="submit" name="action" value="approve" class="btn btn-approve">Approve Desktop</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="bottom-link">
+    Currently active sessions: <b><%= activeCount %></b> &bull; <a href="/auth/sessions">Manage Sessions</a>
+  </div>
+  <%- include('partials/pwa-sw') %>
+
+  <script>
+    function syncToggleBoxStyle(checkbox) {
+      if (!checkbox) return;
+      var box = checkbox.closest('.trust-box');
+      if (box) {
+        if (checkbox.checked) {
+          box.classList.add('is-checked');
+        } else {
+          box.classList.remove('is-checked');
+        }
+      }
+    }
+
+    function handleTrustChange(checkbox) {
+      syncToggleBoxStyle(checkbox);
+      var isTrusted = checkbox.checked;
+      var sel = document.getElementById('sessionTtl');
+      var customInp = document.getElementById('customTtlHours');
+      var badge = document.getElementById('ttlTrustBadge');
+      var notice = document.getElementById('ttlTrustNotice');
+      var expGroup = document.getElementById('expirationGroup');
+
+      if (sel) {
+        sel.disabled = isTrusted;
+      }
+      if (customInp) {
+        customInp.disabled = isTrusted;
+      }
+      if (badge) {
+        badge.style.display = isTrusted ? 'inline-block' : 'none';
+      }
+      if (notice) {
+        notice.style.display = isTrusted ? 'block' : 'none';
+      }
+      if (expGroup) {
+        if (isTrusted) {
+          expGroup.classList.add('adv-group-disabled');
+        } else {
+          expGroup.classList.remove('adv-group-disabled');
+        }
+      }
+    }
+
+    function handleTtlChange(sel) {
+      var wrap = document.getElementById('customTtlWrap');
+      if (!wrap) return;
+      if (sel.value === 'custom') {
+        wrap.style.display = 'block';
+        var inp = document.getElementById('customTtlHours');
+        if (inp) inp.focus();
+      } else {
+        wrap.style.display = 'none';
+      }
+    }
+
+    function handleOnlyPlatformToggle(toggle, targetId) {
+      syncToggleBoxStyle(toggle);
+      var boxes = document.querySelectorAll('.service-checkbox');
+      if (toggle.checked) {
+        boxes.forEach(function(b) {
+          b.checked = (b.value.toLowerCase() === targetId.toLowerCase());
+        });
+      } else {
+        boxes.forEach(function(b) {
+          b.checked = true;
+        });
+      }
+    }
+
+    function handleGenericPlatformToggle(toggle) {
+      syncToggleBoxStyle(toggle);
+      var wrap = document.getElementById('platformPickerWrap');
+      var sel = document.getElementById('platformPickerSelect');
+      var boxes = document.querySelectorAll('.service-checkbox');
+
+      if (toggle.checked) {
+        if (wrap) wrap.style.display = 'block';
+        var selectedId = sel ? sel.value : (boxes[0] ? boxes[0].value : '');
+        boxes.forEach(function(b) {
+          b.checked = (b.value.toLowerCase() === selectedId.toLowerCase());
+        });
+      } else {
+        if (wrap) wrap.style.display = 'none';
+        boxes.forEach(function(b) {
+          b.checked = true;
+        });
+      }
+    }
+
+    function handlePlatformPickerChange(sel) {
+      var toggle = document.getElementById('onlyPlatformToggle');
+      if (!toggle || !toggle.checked) return;
+      var selectedId = sel.value;
+      var boxes = document.querySelectorAll('.service-checkbox');
+      boxes.forEach(function(b) {
+        b.checked = (b.value.toLowerCase() === selectedId.toLowerCase());
+      });
+    }
+
+    function selectOnlyTargetService(targetId) {
+      var toggle = document.getElementById('onlyPlatformToggle');
+      if (toggle) {
+        toggle.checked = true;
+        syncToggleBoxStyle(toggle);
+        handleOnlyPlatformToggle(toggle, targetId);
+      } else {
+        var boxes = document.querySelectorAll('.service-checkbox');
+        boxes.forEach(function(b) {
+          b.checked = (b.value.toLowerCase() === targetId.toLowerCase());
+        });
+      }
+    }
+
+    function handleServiceCheckboxChange() {
+      updatePlatformToggleState();
+    }
+
+    function updatePlatformToggleState() {
+      var toggle = document.getElementById('onlyPlatformToggle');
+      if (!toggle) return;
+      var targetId = toggle.getAttribute('data-target-id');
+      var boxes = document.querySelectorAll('.service-checkbox');
+
+      if (targetId) {
+        var targetFound = false;
+        var anyOtherChecked = false;
+
+        boxes.forEach(function(b) {
+          if (b.value.toLowerCase() === targetId.toLowerCase()) {
+            if (b.checked) targetFound = true;
+          } else {
+            if (b.checked) anyOtherChecked = true;
+          }
+        });
+
+        toggle.checked = targetFound && !anyOtherChecked;
+      } else {
+        var wrap = document.getElementById('platformPickerWrap');
+        var sel = document.getElementById('platformPickerSelect');
+        var checkedBoxes = Array.from(boxes).filter(function(b) { return b.checked; });
+
+        if (checkedBoxes.length === 1) {
+          toggle.checked = true;
+          if (wrap) wrap.style.display = 'block';
+          if (sel) sel.value = checkedBoxes[0].value;
+        } else {
+          toggle.checked = false;
+          if (wrap) wrap.style.display = 'none';
+        }
+      }
+      syncToggleBoxStyle(toggle);
+    }
+
+    function toggleAllServices() {
+      var boxes = document.querySelectorAll('.service-checkbox');
+      var allChecked = Array.from(boxes).every(function(b) { return b.checked; });
+      boxes.forEach(function(b) { b.checked = !allChecked; });
+      updatePlatformToggleState();
+    }
+
+    function validateApprovalForm(event) {
+      var submitter = event.submitter || document.activeElement;
+      if (submitter && submitter.value === 'reject') {
+        return true;
+      }
+      var checkedBoxes = document.querySelectorAll('.service-checkbox:checked');
+      if (checkedBoxes.length === 0) {
+        alert('Please select at least one service to grant access.');
+        event.preventDefault();
+        return false;
+      }
+      return true;
+    }
+
+    // Initialize toggle box states on load
+    document.querySelectorAll('.trust-box input[type="checkbox"]').forEach(function(inp) {
+      syncToggleBoxStyle(inp);
+    });
+  </script>
+</body>
+</html>

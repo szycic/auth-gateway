@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { extraCss: '/css/approver.css' }) %>
+  <title>Master Approver - Self Authorization</title>
+</head>
+<body style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem;">
+  <div class="card" style="width: 100%; max-width: 440px; text-align: center;">
+    <div class="icon" style="margin: 0 auto 1.25rem auto;">
+      <svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
+      </svg>
+    </div>
+    <h1 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Master Approver Device</h1>
+    <% 
+      const noticeText = notice === 'revoked'
+        ? 'Your device session was revoked from the management dashboard.'
+        : (notice === 'logged_out'
+          ? 'You have signed out of this device session.'
+          : (notice ? String(notice) : 'Your device session is no longer active.'));
+    %>
+    <div class="notice-box"><%= noticeText %></div>
+    <p class="desc" style="font-size: 0.875rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">As the Master Approver, you can instantly authorize access to all protected services on this phone.</p>
+    <form method="POST" action="/auth/approver/self-authorize">
+      <input type="hidden" name="redirect" value="<%= redirect %>">
+      <button type="submit" class="btn-auth">Authorize This Phone</button>
+    </form>
+    <a href="/auth/sessions" class="btn-link">Open Sessions &amp; QR Scanner</a>
+  </div>
+  <%- include('partials/pwa-sw') %>
+</body>
+</html>

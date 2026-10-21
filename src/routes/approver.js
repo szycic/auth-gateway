@@ -4,8 +4,6 @@ const config = require('../config');
 const { getCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
-const { renderApproverSetupRequiredHtml } = require('../views/approverSetupView');
-const { renderApproverLoginHtml } = require('../views/approverLoginView');
 
 const router = express.Router();
 
@@ -25,9 +23,9 @@ router.get('/approver/login', (req, res) => {
   }
   const currentHash = authService.getApproverPasswordHash();
   if (!currentHash) {
-    return res.status(503).send(renderApproverSetupRequiredHtml());
+    return res.status(503).render('approverSetup', {});
   }
-  res.send(renderApproverLoginHtml({ returnTo }));
+  return res.render('approverLogin', { returnTo, error: '' });
 });
 
 router.post('/approver/login', (req, res) => {
@@ -37,39 +35,39 @@ router.post('/approver/login', (req, res) => {
 
   const currentHash = authService.getApproverPasswordHash();
   if (!currentHash) {
-    return res.status(503).send(renderApproverSetupRequiredHtml());
+    return res.status(503).render('approverSetup', {});
   }
 
   const clientIp = authService.getClientIp(req);
   const lockoutStatus = authService.checkLoginLockout(clientIp);
   if (lockoutStatus.locked) {
-    return res.status(429).send(renderApproverLoginHtml({
+    return res.status(429).render('approverLogin', {
       returnTo: redirectTarget,
       error: `Too many failed login attempts. Locked out for ${lockoutStatus.remainingMins} more minute(s).`,
-    }));
+    });
   }
 
   if (!password || typeof password !== 'string') {
-    return res.status(400).send(renderApproverLoginHtml({
+    return res.status(400).render('approverLogin', {
       returnTo: redirectTarget,
       error: 'Please enter the approver password.',
-    }));
+    });
   }
 
   const isValid = authService.verifyPassword(password, currentHash);
   if (!isValid) {
     const attempt = authService.recordFailedLogin(clientIp);
     if (attempt.locked) {
-      return res.status(429).send(renderApproverLoginHtml({
+      return res.status(429).render('approverLogin', {
         returnTo: redirectTarget,
         error: 'Too many failed attempts. Account locked for 15 minutes.',
-      }));
+      });
     } else {
-      const remaining = attempt.remainingAttempts;
-      return res.status(401).send(renderApproverLoginHtml({
+      const remainingAttempts = attempt.remainingAttempts;
+      return res.status(401).render('approverLogin', {
         returnTo: redirectTarget,
-        error: `Incorrect approver password. (${remaining} attempt${remaining === 1 ? '' : 's'} remaining)`,
-      }));
+        error: `Incorrect approver password. (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`,
+      });
     }
   }
 
