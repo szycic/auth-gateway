@@ -16,40 +16,66 @@
     </div>
 
     <h1><%= config.app.name %></h1>
-    <p class="subtitle"><%= config.app.subtitle %></p>
+    <p class="subtitle" id="pageSubtitle"><%= isFromOpenHandle ? 'Protected Service Notice' : config.app.subtitle %></p>
 
     <% if (matchedService) { %>
-      <div class="service-target-badge">
+      <div class="service-target-badge" id="serviceBadge">
         <div class="service-target-main">
           Signing in to <span class="service-target-name"><%= matchedService.name %></span>
         </div>
       </div>
     <% } %>
 
-    <div class="qr-frame" id="qrContainer">
-      <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
+    <% if (isFromOpenHandle) { %>
+      <div class="monit-container" id="openHandleMonit">
+        <div class="monit-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <div class="monit-title">
+          Authentication Required
+        </div>
+        <p class="monit-desc">
+          This part of <strong class="monit-service-name"><%= matchedService ? matchedService.name : 'the service' %></strong> is behind authentication and requires authorization to access.
+        </p>
+        <div class="monit-actions">
+          <button type="button" class="btn-authorize" id="btnAuthorize" onclick="revealQrLogin()">
+            Authorize Access
+          </button>
+          <a href="<%= fromUrl %>" class="btn-go-back" id="btnGoBack" onclick="handleGoBack(event, '<%= fromUrl %>')">
+            ← Go Back
+          </a>
+        </div>
+      </div>
+    <% } %>
 
-      <div class="overlay active" id="loadingOverlay">
-        <div class="spinner"></div>
-        <p style="font-size: 0.875rem; color: #cbd5e1;">Generating secure QR...</p>
+    <div id="qrAuthSection" <%- isFromOpenHandle ? 'style="display: none;"' : '' %>>
+      <div class="qr-frame" id="qrContainer">
+        <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
+
+        <div class="overlay active" id="loadingOverlay">
+          <div class="spinner"></div>
+          <p style="font-size: 0.875rem; color: #cbd5e1;">Generating secure QR...</p>
+        </div>
+
+        <div class="overlay" id="expiredOverlay">
+          <svg style="width: 36px; height: 36px; color: #f59e0b; margin-bottom: 0.5rem;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p style="font-size: 0.875rem; color: #e2e8f0; margin-bottom: 0.75rem;">Session Expired</p>
+          <button class="btn-refresh" onclick="initQrSession()">Refresh Session</button>
+        </div>
       </div>
 
-      <div class="overlay" id="expiredOverlay">
-        <svg style="width: 36px; height: 36px; color: #f59e0b; margin-bottom: 0.5rem;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p style="font-size: 0.875rem; color: #e2e8f0; margin-bottom: 0.75rem;">Session Expired</p>
-        <button class="btn-refresh" onclick="initQrSession()">Refresh Session</button>
+      <div class="pair-code-card" id="pairCodeCard">
+        <div class="pair-code-digits" id="pairCodeDigits">•••• - ••••</div>
       </div>
-    </div>
 
-    <div class="pair-code-card" id="pairCodeCard">
-      <div class="pair-code-digits" id="pairCodeDigits">•••• - ••••</div>
-    </div>
-
-    <div class="status-bar" id="statusBar">
-      <div class="status-dot"></div>
-      <span id="statusText">Awaiting approval (<span id="timerCount">120</span>s)</span>
+      <div class="status-bar" id="statusBar">
+        <div class="status-dot"></div>
+        <span id="statusText">Awaiting approval (<span id="timerCount">120</span>s)</span>
+      </div>
     </div>
 
     <div class="footer">
@@ -183,7 +209,48 @@
       }
     });
 
-    initQrSession();
+    const isFromOpenHandle = <%- isFromOpenHandle ? 'true' : 'false' %>;
+    const defaultSubtitle = <%- JSON.stringify(config.app.subtitle) %>;
+
+    function revealQrLogin() {
+      const monit = document.getElementById('openHandleMonit');
+      const qrSection = document.getElementById('qrAuthSection');
+      const pageSubtitle = document.getElementById('pageSubtitle');
+      if (monit) monit.style.display = 'none';
+      if (qrSection) {
+        qrSection.style.display = 'block';
+      }
+      if (pageSubtitle) {
+        pageSubtitle.textContent = defaultSubtitle;
+      }
+      try {
+        history.replaceState(null, '', window.location.pathname + window.location.search + '#auth');
+      } catch {}
+      initQrSession();
+    }
+
+    function handleGoBack(event, fallbackUrl) {
+      event.preventDefault();
+      if (window.history.length > 1) {
+        window.history.back();
+      } else if (fallbackUrl) {
+        window.location.href = fallbackUrl;
+      }
+    }
+
+    if (isFromOpenHandle && window.location.hash !== '#auth') {
+      // Monit is active: do not show QR code or start session timer right away
+    } else {
+      if (isFromOpenHandle && window.location.hash === '#auth') {
+        const monit = document.getElementById('openHandleMonit');
+        const qrSection = document.getElementById('qrAuthSection');
+        const pageSubtitle = document.getElementById('pageSubtitle');
+        if (monit) monit.style.display = 'none';
+        if (qrSection) qrSection.style.display = 'block';
+        if (pageSubtitle) pageSubtitle.textContent = defaultSubtitle;
+      }
+      initQrSession();
+    }
   </script>
   <%- include('partials/pwa-sw') %>
 </body>

@@ -127,6 +127,8 @@ share.example.com {
 		}
 
 		handle {
+			@withReferer header Referer *
+			redir @withReferer https://auth.example.com/login?redirect={scheme}://{host}{uri}&from={header.Referer} 302
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
