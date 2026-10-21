@@ -4,10 +4,6 @@ const config = require('../config');
 const { getCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
-const { renderStatusNoticeHtml } = require('../views/statusNoticeView');
-const { renderApproverSetupRequiredHtml } = require('../views/approverSetupView');
-const { renderApproverSelfAuthHtml } = require('../views/approverSelfAuthView');
-const { renderDesktopLoginHtml } = require('../views/desktopLoginView');
 
 const router = express.Router();
 
@@ -17,13 +13,13 @@ router.get('/login', (req, res) => {
   const matchedService = config.getService(req.query.service || redirectTarget);
 
   if (matchedService && matchedService.disableService) {
-    return res.status(503).send(renderStatusNoticeHtml({
+    return res.status(503).render('statusNotice', {
       title: `${matchedService.name} is Temporarily Disabled`,
       message: 'This service is currently disabled on demand or undergoing maintenance.',
       actionUrl: '/',
       actionLabel: 'Return to Dashboard',
       type: 'error',
-    }));
+    });
   }
 
   if (matchedService && matchedService.disableAuth) {
@@ -36,13 +32,13 @@ router.get('/login', (req, res) => {
     if (redirectTarget) {
       const targetService = config.getService(redirectTarget);
       if (targetService && !sessionService.isSessionAllowedForService(session, targetService)) {
-        return res.status(403).send(renderStatusNoticeHtml({
+        return res.status(403).render('statusNotice', {
           title: 'Access Restricted',
           message: `Your active session is not authorized to access ${targetService.name}.`,
           actionUrl: '/',
           actionLabel: 'Return to Dashboard',
           type: 'error',
-        }));
+        });
       }
     }
     return res.redirect(redirectTarget || '/');
@@ -51,22 +47,22 @@ router.get('/login', (req, res) => {
   // Seamless Mobile Approver Auto-Authorization
   if (sessionService.isApprover(req)) {
     if (req.query.notice) {
-      return res.send(renderApproverSelfAuthHtml({
+      return res.render('approverSelfAuth', {
         redirect: redirectTarget,
         notice: req.query.notice,
-      }));
+      });
     }
 
     sessionService.mintApproverSession(req, res);
     return res.redirect(redirectTarget || '/');
   }
 
-  return res.send(renderDesktopLoginHtml({
+  return res.render('desktopLogin', {
     matchedService,
     redirectTarget,
     error: req.query.error || '',
     notice: req.query.notice || '',
-  }));
+  });
 });
 
 router.post('/login', (req, res) => {
@@ -76,7 +72,7 @@ router.post('/login', (req, res) => {
 
   const currentHash = authService.getApproverPasswordHash();
   if (!currentHash) {
-    return res.status(503).send(renderApproverSetupRequiredHtml());
+    return res.status(503).render('approverSetup', {});
   }
 
   const clientIp = authService.getClientIp(req);

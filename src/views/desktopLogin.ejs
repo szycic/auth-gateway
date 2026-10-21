@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { extraCss: '/css/login.css' }) %>
+  <%
+    const appDisplayName = matchedService ? matchedService.name : config.app.name;
+    const appDisplaySubtitle = matchedService
+      ? (matchedService.subtitle || `Scan the QR code with your mobile device to sign in to ${matchedService.name}.`)
+      : config.app.subtitle;
+  %>
+  <title>Sign in to <%= appDisplayName %></title>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="ambient-glow"></div>
+
+  <div class="card" id="mainCard">
+    <div class="logo-container">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+      </svg>
+    </div>
+
+    <h1><%= appDisplayName %></h1>
+    <p class="subtitle"><%= appDisplaySubtitle %></p>
+
+    <div class="qr-frame" id="qrContainer">
+      <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
+
+      <div class="overlay active" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p style="font-size: 0.875rem; color: #cbd5e1;">Generating secure QR...</p>
+      </div>
+
+      <div class="overlay" id="expiredOverlay">
+        <svg style="width: 36px; height: 36px; color: #f59e0b; margin-bottom: 0.5rem;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p style="font-size: 0.875rem; color: #e2e8f0; margin-bottom: 0.75rem;">Session Expired</p>
+        <button class="btn-refresh" onclick="initQrSession()">Refresh Session</button>
+      </div>
+    </div>
+
+    <div class="pair-code-card" id="pairCodeCard">
+      <div class="pair-code-label">Or enter the code below</div>
+      <div class="pair-code-digits" id="pairCodeDigits">•••• - ••••</div>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+      <div class="status-dot"></div>
+      <span id="statusText">Awaiting approval (<span id="timerCount">120</span>s)</span>
+    </div>
+
+    <div class="footer">
+      <%= config.app.footerText %>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let currentSessionId = null;
+    let timerInterval = null;
+    let secondsLeft = 120;
+
+    const redirectTarget = <%- JSON.stringify(redirectTarget || '') %>;
+    const serviceId = <%- JSON.stringify(matchedService ? matchedService.id : '') %>;
+
+    const qrImage = document.getElementById('qrImage');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const expiredOverlay = document.getElementById('expiredOverlay');
+    const statusText = document.getElementById('statusText');
+    const mainCard = document.getElementById('mainCard');
+
+    function startTimer(durationMs) {
+      clearInterval(timerInterval);
+      secondsLeft = Math.floor(durationMs / 1000);
+      statusText.innerHTML = 'Awaiting approval (<span id="timerCount">' + secondsLeft + '</span>s)';
+
+      timerInterval = setInterval(() => {
+        secondsLeft--;
+        const countSpan = document.getElementById('timerCount');
+        if (countSpan) {
+          countSpan.textContent = secondsLeft;
+        }
+
+        if (secondsLeft <= 0) {
+          clearInterval(timerInterval);
+          onSessionExpired();
+        }
+      }, 1000);
+    }
+
+    function onSessionExpired() {
+      expiredOverlay.classList.add('active');
+      statusText.textContent = 'Session timed out';
+      const pairCodeCard = document.getElementById('pairCodeCard');
+      if (pairCodeCard) pairCodeCard.style.opacity = '0.35';
+    }
+
+    async function initQrSession() {
+      try {
+        loadingOverlay.classList.add('active');
+        expiredOverlay.classList.remove('active');
+
+        const params = new URLSearchParams();
+        if (redirectTarget) params.append('redirect', redirectTarget);
+        if (serviceId) params.append('service', serviceId);
+
+        const url = '/auth/init' + (params.toString() ? '?' + params.toString() : '');
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to fetch session init');
+        const data = await res.json();
+
+        currentSessionId = data.loginSessionId;
+        qrImage.src = data.qrCode;
+        qrImage.style.display = 'block';
+
+        const pairCodeDigits = document.getElementById('pairCodeDigits');
+        if (pairCodeDigits && data.pairCodeFormatted) {
+          pairCodeDigits.textContent = data.pairCodeFormatted;
+        }
+        const pairCodeCard = document.getElementById('pairCodeCard');
+        if (pairCodeCard) pairCodeCard.style.opacity = '1';
+
+        socket.emit('join-session', currentSessionId);
+
+        loadingOverlay.classList.remove('active');
+
+        startTimer(data.ttlMs || 120000);
+      } catch (err) {
+        console.error(err);
+        statusText.textContent = 'Failed to load QR code';
+      }
+    }
+
+    socket.on('approved', (data) => {
+      clearInterval(timerInterval);
+
+      mainCard.innerHTML = `
+        <div class="approved-state">
+          <div class="approved-icon">
+            <svg style="width: 36px; height: 36px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 style="color: #ffffff; font-size: 1.45rem; font-weight: 700; margin-bottom: 0.5rem;">Access Approved</h2>
+          <p style="color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem;">Starting session...</p>
+          <div class="spinner"></div>
+        </div>
+      `;
+
+      setTimeout(() => {
+        const dest = (data && data.redirect) ? data.redirect : redirectTarget;
+        if (data && data.code) {
+          window.location.href = '/auth/exchange?code=' + encodeURIComponent(data.code) + (dest ? '&redirect=' + encodeURIComponent(dest) : '');
+        } else if (data && data.token) {
+          window.location.href = '/auth/exchange?token=' + encodeURIComponent(data.token) + (dest ? '&redirect=' + encodeURIComponent(dest) : '');
+        } else {
+          window.location.href = dest || '/';
+        }
+      }, 700);
+    });
+
+    socket.on('rejected', (data) => {
+      clearInterval(timerInterval);
+      statusText.innerHTML = '<span style="color: #ef4444; font-weight: 600;">Request Rejected by Approver</span>';
+      setTimeout(() => {
+        initQrSession();
+      }, 2500);
+    });
+
+    socket.on('connect', () => {
+      if (currentSessionId) {
+        socket.emit('join-session', currentSessionId);
+      }
+    });
+
+    initQrSession();
+  </script>
+  <%- include('partials/pwa-sw') %>
+</body>
+</html>

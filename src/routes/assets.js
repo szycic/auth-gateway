@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const config = require('../config');
 const { isAuthDomain } = require('../utils/originHelper');
-const { generatePwaManifest } = require('../views/components/pwa');
+const { generatePwaManifest } = require('../utils/pwaHelper');
 
 const router = express.Router();
 
@@ -21,11 +21,18 @@ const servePwaStatic = express.static(path.join(config.ROOT_DIR, 'public'), {
     if (filePath.endsWith('sw.js')) {
       res.setHeader('Service-Worker-Allowed', '/');
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (filePath.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+      res.setHeader('Cache-Control', 'public, max-age=604800');
     } else if (filePath.endsWith('.png') || filePath.endsWith('.svg')) {
       res.setHeader('Cache-Control', 'public, max-age=604800');
     }
   },
 });
+
+router.use('/auth/assets/css', express.static(path.join(config.ROOT_DIR, 'public/css'), {
+  maxAge: '7d',
+}));
 
 router.use((req, res, next) => {
   if (isAuthDomain(req) || req.path.startsWith('/auth/')) {

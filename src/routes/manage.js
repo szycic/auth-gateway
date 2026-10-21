@@ -5,7 +5,6 @@ const { parseUserAgent } = require('../utils/deviceDetector');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const socketService = require('../services/socketService');
-const { renderSessionsDashboardHtml } = require('../views/sessionsDashboardView');
 
 const router = express.Router();
 
@@ -15,10 +14,10 @@ router.get('/sessions', (req, res) => {
     return res.redirect('/auth/approver/login?returnTo=/auth/sessions');
   }
 
-  return res.send(renderSessionsDashboardHtml({
+  return res.render('sessionsDashboard', {
     activeSessionsList: Array.from(sessionService.activeSessions.values()),
     notice: req.query.notice,
-  }));
+  });
 });
 
 // 2. Revoke a specific session or all sessions

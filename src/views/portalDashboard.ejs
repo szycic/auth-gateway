@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { extraCss: '/css/portal.css' }) %>
+  <title><%= config.app.name || 'Auth Gateway' %> - Portal</title>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="ambient-glow"></div>
+  <div class="card">
+    <div class="header">
+      <div class="logo-container">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <h1><%= config.app.name %></h1>
+      <p class="subtitle">Central Authentication &amp; Services Portal</p>
+    </div>
+
+    <% if (notice) { %>
+      <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #a7f3d0; padding: 0.65rem 0.9rem; border-radius: 12px; font-size: 0.85rem; margin-bottom: 1.25rem;"><%= notice %></div>
+    <% } %>
+
+    <%
+      const isTrusted = session && session.isTrusted;
+      const friendlyDevice = (session && session.friendlyDevice) || 'Current Device';
+      const ip = (session && session.ip) || 'Unknown IP';
+      const sessionId = (session && (session.id || session.token)) || '';
+      const sessionToken = (session && session.token) || '';
+      const activeServices = (services || []).filter(s => !s.disableService);
+      const isRestrictedSession = Array.isArray(session && session.allowedServices) &&
+        session.allowedServices.length > 0 &&
+        !session.allowedServices.includes('*');
+      const allowedServiceIds = isRestrictedSession
+        ? (session.allowedServices || []).map(s => String(s).toLowerCase())
+        : null;
+    %>
+
+    <div class="session-badge">
+      <div>
+        <div class="device-title"><%= friendlyDevice %></div>
+        <div class="device-sub"><%= ip %></div>
+      </div>
+      <span class="status-tag <%= isTrusted ? 'status-trusted' : 'status-guest' %>">
+        <%= isTrusted ? 'Trusted Device' : 'Active Session' %>
+      </span>
+    </div>
+
+    <div class="section-title">Authorized Services</div>
+    <div class="services-grid">
+      <% if (activeServices.length === 0) { %>
+        <p style="color: #94a3b8; font-size: 0.85rem;">No services configured.</p>
+      <% } else { %>
+        <% activeServices.forEach(function(s) { 
+             const isAllowed = isApproverUser || !isRestrictedSession || (allowedServiceIds && allowedServiceIds.includes((s.id || '').toLowerCase()));
+             const targetUrl = s.url || '#';
+        %>
+          <div class="service-item <%= !isAllowed ? 'service-item-disabled' : '' %>">
+            <div class="service-info">
+              <div class="service-name-row">
+                <span class="service-name"><%= s.name %></span>
+                <% if (s.disableAuth) { %>
+                  <span class="badge-public" style="font-size: 0.7rem; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.3);">Public</span>
+                <% } %>
+              </div>
+              <div class="service-subtitle"><%= s.subtitle || s.url %></div>
+            </div>
+            <% if (isAllowed) { %>
+              <a href="<%= targetUrl %>" class="btn-launch" title="Open <%= s.name %>" target="_blank" rel="noopener noreferrer">
+                <span>Open</span>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            <% } else { %>
+              <span class="badge-no-access" style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; background: rgba(255, 255, 255, 0.05); padding: 0.4rem 0.7rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">Restricted</span>
+            <% } %>
+          </div>
+        <% }); %>
+      <% } %>
+    </div>
+
+    <div class="actions-row" style="justify-content: <%= isApproverUser ? 'space-between' : 'flex-end' %>;">
+      <% if (isApproverUser) { %>
+        <a href="/auth/sessions" class="btn-action" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Manage Sessions</a>
+      <% } %>
+      <a href="/auth/logout" class="btn-action btn-logout">Sign Out</a>
+    </div>
+  </div>
+
+  <script>
+    const socket = typeof io !== 'undefined' ? io() : null;
+    if (socket) {
+      function registerDesktop() {
+        socket.emit('register-desktop', '<%= sessionId %>');
+      }
+      socket.on('connect', registerDesktop);
+      registerDesktop();
+
+      socket.on('session-revoked', function(data) {
+        if (data && (data.all || data.sessionId === '<%= sessionId %>' || (data.token && data.token === '<%= sessionToken %>'))) {
+          lockCurrentSession();
+        } else {
+          fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+            if (r.status === 401) lockCurrentSession();
+          }).catch(function() {});
+        }
+      });
+    }
+
+    function lockCurrentSession() {
+      document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: inherit; padding: 1.5rem;">' +
+        '<div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 24px; padding: 2.25rem 2rem; max-width: 400px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);">' +
+          '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">' +
+            '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />' +
+            '</svg>' +
+          '</div>' +
+          '<h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h1>' +
+          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>' +
+        '</div>' +
+      '</div>';
+      setTimeout(function() {
+        window.location.href = '/auth/logout?notice=' + encodeURIComponent('Your session has been revoked.');
+      }, 1000);
+    }
+
+    setInterval(function() {
+      fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+        if (r.status === 401) {
+          lockCurrentSession();
+        }
+      }).catch(function() {});
+    }, 2000);
+
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+          if (r.status === 401) lockCurrentSession();
+        }).catch(function() {});
+      }
+    });
+  </script>
+  <%- include('partials/pwa-sw') %>
+</body>
+</html>

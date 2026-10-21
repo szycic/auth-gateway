@@ -1,7 +1,6 @@
 const express = require('express');
 const config = require('../config');
 const sessionService = require('../services/sessionService');
-const { renderPortalDashboardHtml } = require('../views/portalDashboardView');
 
 const router = express.Router();
 
@@ -18,12 +17,12 @@ router.get('/', (req, res) => {
     }
   }
 
-  return res.send(renderPortalDashboardHtml({
+  return res.render('portalDashboard', {
     session,
     isApproverUser: sessionService.isApprover(req),
     services: config.services,
     notice: req.query.notice,
-  }));
+  });
 });
 
 module.exports = router;

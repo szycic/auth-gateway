@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
+    "ejs": "^7.0.2",
     "express": "^4.21.2",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",

@@ -1,30 +1,4 @@
-const config = require('../../config');
-const { escapeHtml } = require('../../utils/htmlEscape');
-
-function getPwaHeadTags() {
-  return `
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#090d16">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.name || 'Auth Gateway')}">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="icon" type="image/svg+xml" href="/icon.svg">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">`;
-}
-
-const PWA_SW_SCRIPT = `
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' })
-          .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));
-      });
-    }
-  </script>
-`;
+const config = require('../config');
 
 function generatePwaManifest() {
   return {
@@ -58,7 +32,5 @@ function generatePwaManifest() {
 }
 
 module.exports = {
-  getPwaHeadTags,
-  PWA_SW_SCRIPT,
   generatePwaManifest,
 };
