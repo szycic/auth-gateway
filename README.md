@@ -31,10 +31,10 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 - **Centralized Authentication**: One shared cookie across all subdomains (e.g., `*.example.com`).
 - **Flexible Login Flows**:
   - **QR Code Scanning**: Scan a QR code on desktop using your authenticated mobile device to instantly approve the desktop session.
-  - **PIN Code Authorization**: Enter a 8-digit PIN code from any device to authorize a pending login.
+  - **PIN Code Authorization**: Enter an 8-digit PIN code on your mobile device to authorize a pending desktop login.
 - **Instant Revocation Watchdog**: Automatically injects a lightweight `auth-watchdog.js` script into HTML responses. If a session is revoked or expires, client browsers (including SPAs and cached tabs) immediately lock and redirect to login without needing a page refresh.
 - **Service Dashboard**: Displays a sleek launchpad with direct links to all configured services.
-- **PWA & Shortcuts**: Installable Progressive Web App (PWA) with native mobile shortcuts (`Enter PIN`, `Approve Session`, `Scan QR`).
+- **PWA & Shortcuts**: Installable Progressive Web App (PWA) with native mobile shortcuts (`Scan QR`, `Enter PIN`).
 - **Zero Heavy Dependencies**: Pure Node.js + Express with no bulky database dependencies; sessions and configuration are kept in JSON storage.
 
 ---
@@ -114,14 +114,18 @@ Create your `data/config.json` based on [config.sample.json](file:///home/szymon
 Run the CLI tool to set up the administrative approver password:
 
 ```bash
-# If running locally with Node:
+# Option A: Interactive setup (hashes with scrypt and saves to data/password.json):
 npm run set-password
-
 # Or via Docker:
 docker compose run --rm auth-gateway node set-password.js
+
+# Option B: Generate a hash directly to set via APPROVER_PASSWORD_HASH env var:
+npm run hash-password "MySecretPassword"
+# Or via Docker:
+docker compose run --rm auth-gateway node hash-password.js "MySecretPassword"
 ```
 
-This hashes the password using `scrypt` and saves it to `data/password.json`.
+This hashes the password using `scrypt` and either saves it to `data/password.json` or outputs `APPROVER_PASSWORD_HASH=...` for your environment.
 
 ### 4. Docker Compose Deployment
 
@@ -352,7 +356,9 @@ Add an entry to the `"services"` array in your `data/config.json`:
   "subtitle": "Description shown on the Auth Portal dashboard",
   "url": "https://myapp.example.com",
   "upstream": "http://my-app:8080",
-  "allowedRedirects": ["https://myapp.example.com*"]
+  "allowedRedirects": ["https://myapp.example.com*"],
+  "disableService": false,
+  "disableAuth": false
 }
 ```
 
@@ -362,6 +368,8 @@ Add an entry to the `"services"` array in your `data/config.json`:
 - `url`: Public URL of your service.
 - `upstream`: Internal Docker URL and port where the app container is listening.
 - `allowedRedirects`: Allowed redirect URL patterns after successful authentication.
+- `disableService`: *(Optional)* If `true`, hides the service from the dashboard and blocks redirects/access.
+- `disableAuth`: *(Optional)* If `true`, bypasses authentication verification for this service.
 
 ### Step 3: Add Service Block to Caddy
 
@@ -411,33 +419,35 @@ myapp.example.com {
 ### Step 5: Verify the Setup
 
 1. **Test unauthenticated access**: Visit `https://myapp.example.com` in a private browsing window. You should be redirected to `https://auth.example.com/login?redirect=https://myapp.example.com/`.
-2. **Test login & dashboard**: Log in via PIN or QR approval on the portal. You should see "My Application" listed on the dashboard and clicking it should open the app without re-prompting for credentials.
+2. **Test login & dashboard**: Log in via QR code or 8-digit PIN authorization on your mobile device. You should see "My Application" listed on the dashboard and clicking it should open the app without re-prompting for credentials.
 3. **Test watchdog logout**: With the app open in one tab, open `https://auth.example.com` in another tab and click **Log Out** (or revoke the session). The app tab should lock and redirect to the login screen within seconds.
 
 ---
 
 ## Configuration Reference (`config.json`)
 
-| Section    | Key                  | Type   | Description                                                                    |
-| ---------- | -------------------- | ------ | ------------------------------------------------------------------------------ |
-| `app`      | `name`               | string | Portal title displayed on login and dashboard pages.                           |
-| `app`      | `subtitle`           | string | Explanatory text beneath the portal title.                                     |
-| `app`      | `footerText`         | string | Text shown in the footer of all auth views.                                    |
-| `server`   | `port`               | number | Port Auth Gateway listens on inside the container (default: `3000`).           |
-| `server`   | `host`               | string | Listening interface (default: `0.0.0.0`).                                      |
-| `server`   | `baseUrl`            | string | Full public URL of the auth portal (e.g. `https://auth.example.com`).          |
-| `session`  | `cookieDomain`       | string | Root domain with leading dot for shared cookies (e.g. `.example.com`).         |
-| `session`  | `authCookieName`     | string | Name of the authentication cookie (default: `gateway_auth_token`).             |
-| `session`  | `approverCookieName` | string | Name of the mobile approver session cookie.                                    |
-| `session`  | `sessionTtlHours`    | number | Lifespan of an authenticated user session in hours (e.g. `72`).                |
-| `session`  | `qrSessionTtlMs`     | number | Lifespan of a pending QR approval request in milliseconds (default: `120000`). |
-| `session`  | `approverTtlDays`    | number | Lifespan of an approver session in days (e.g. `30`).                           |
-| `services` | `id`                 | string | Unique service identifier.                                                     |
-| `services` | `name`               | string | Title shown on the dashboard card.                                             |
-| `services` | `subtitle`           | string | Description shown on the dashboard card.                                       |
-| `services` | `url`                | string | Public HTTPS URL of the service.                                               |
-| `services` | `upstream`           | string | Internal backend container URL (e.g. `http://my-app:8080`).                    |
-| `services` | `allowedRedirects`   | array  | List of URL patterns permitted for post-login redirection.                     |
+| Section    | Key                  | Type    | Description                                                                    |
+| ---------- | -------------------- | ------- | ------------------------------------------------------------------------------ |
+| `app`      | `name`               | string  | Portal title displayed on login and dashboard pages.                           |
+| `app`      | `subtitle`           | string  | Explanatory text beneath the portal title.                                     |
+| `app`      | `footerText`         | string  | Text shown in the footer of all auth views.                                    |
+| `server`   | `port`               | number  | Port Auth Gateway listens on inside the container (default: `3000`).           |
+| `server`   | `host`               | string  | Listening interface (default: `0.0.0.0`).                                      |
+| `server`   | `baseUrl`            | string  | Full public URL of the auth portal (e.g. `https://auth.example.com`).          |
+| `session`  | `cookieDomain`       | string  | Root domain with leading dot for shared cookies (e.g. `.example.com`).         |
+| `session`  | `authCookieName`     | string  | Name of the authentication cookie (default: `gateway_auth_token`).             |
+| `session`  | `approverCookieName` | string  | Name of the mobile approver session cookie.                                    |
+| `session`  | `sessionTtlHours`    | number  | Lifespan of an authenticated user session in hours (e.g. `72`).                |
+| `session`  | `qrSessionTtlMs`     | number  | Lifespan of a pending QR approval request in milliseconds (default: `120000`). |
+| `session`  | `approverTtlDays`    | number  | Lifespan of an approver session in days (e.g. `30`).                           |
+| `services` | `id`                 | string  | Unique service identifier.                                                     |
+| `services` | `name`               | string  | Title shown on the dashboard card.                                             |
+| `services` | `subtitle`           | string  | Description shown on the dashboard card.                                       |
+| `services` | `url`                | string  | Public HTTPS URL of the service.                                               |
+| `services` | `upstream`           | string  | Internal backend container URL (e.g. `http://my-app:8080`).                    |
+| `services` | `allowedRedirects`   | array   | List of URL patterns permitted for post-login redirection.                     |
+| `services` | `disableService`     | boolean | Optional. When `true`, completely hides service from dashboard and disables redirects. |
+| `services` | `disableAuth`        | boolean | Optional. When `true`, bypasses authentication verification for this service. |
 
 ---
 
@@ -445,8 +455,16 @@ myapp.example.com {
 
 Auth Gateway includes CLI helper scripts in the repository:
 
-- **`npm run set-password`**: Interactive command to set or update the administrator / approver password. It automatically prompts for confirmation, hashes the password using `scrypt`, updates `data/password.json`, and invalidates existing approver sessions.
-- **`npm run hash-password`**: Helper script to generate a salted password hash from standard input.
+- **`npm run set-password`**: Interactive command to set or update the administrator / approver password. It prompts for confirmation, hashes the password using `scrypt`, updates `data/password.json`, and invalidates existing approver sessions.
+  ```bash
+  npm run set-password
+  # Or: node set-password.js
+  ```
+- **`npm run hash-password <password>`**: Helper script to generate a salted `scrypt` password hash directly from the command line for use with the `APPROVER_PASSWORD_HASH` environment variable.
+  ```bash
+  npm run hash-password "MySecretPassword"
+  # Or: node hash-password.js "MySecretPassword"
+  ```
 
 ---
 
