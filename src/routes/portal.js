@@ -4,7 +4,7 @@ const sessionService = require('../services/sessionService');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
+router.get(['/', '/portal'], (req, res) => {
   let token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   let session = sessionService.activeSessions.get(token);
 
