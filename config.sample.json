@@ -89,6 +89,14 @@
       "url": "https://access.example.com",
       "upstream": "http://goaccess:443",
       "allowedRedirects": ["https://access.example.com*"]
+    },
+    {
+      "id": "beszel",
+      "name": "Beszel",
+      "subtitle": "Lightweight server resource monitoring hub",
+      "url": "https://beszel.example.com",
+      "upstream": "http://beszel:8090",
+      "allowedRedirects": ["https://beszel.example.com*"]
     }
   ]
 }
