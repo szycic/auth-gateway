@@ -2,7 +2,7 @@
 
 A secure, lightweight, and modern centralized authentication portal and forward-auth gateway designed for homelabs and self-hosted environments.
 
-Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple subdomains with mobile QR or 8-digit PIN code approval and an intelligent **auth-watchdog** that immediately locks client sessions upon revocation.
+Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple subdomains with mobile QR code or 8-digit PIN approval and an intelligent **auth-watchdog** that immediately locks client sessions upon revocation.
 
 ---
 
@@ -31,7 +31,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 - **Centralized Authentication**: One shared cookie across all subdomains (e.g., `*.example.com`).
 - **Flexible Login Flows**:
   - **QR Code Scanning**: Scan a QR code on desktop using your authenticated mobile device to instantly approve the desktop session.
-  - **PIN Code Authorization**: Enter an 8-digit PIN code on your mobile device to authorize a pending desktop login.
+  - **PIN Authorization**: Enter an 8-digit PIN on your mobile device to authorize a pending desktop login.
 - **Instant Revocation Watchdog**: Automatically injects a lightweight `auth-watchdog.js` script into HTML responses. If a session is revoked or expires, client browsers (including SPAs and cached tabs) immediately lock and redirect to login without needing a page refresh.
 - **Service Dashboard**: Displays a sleek launchpad with direct links to all configured services.
 - **PWA & Shortcuts**: Installable Progressive Web App (PWA) with native mobile shortcuts (`Scan QR`, `Enter PIN`).
