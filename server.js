@@ -1569,6 +1569,9 @@ function getUpstreamUrlForHost(hostHeader = '') {
   if (host === 'dozzle.szycic.com') {
     return 'http://dozzle:8080';
   }
+  if (host === 'access.szycic.com') {
+    return 'http://goaccess:7890';
+  }
 
   return TARGET_APP_URL || 'http://share-app:3000';
 }
