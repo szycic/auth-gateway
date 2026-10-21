@@ -30,6 +30,7 @@ const DEFAULT_CONFIG = {
       url: 'https://share.example.com',
       upstream: 'http://share-app:3000',
       allowedRedirects: ['https://share.example.com*'],
+      enabled: true,
     },
   ],
   downstream: {
@@ -63,9 +64,12 @@ function loadConfigFile() {
 
 const fileConfig = loadConfigFile();
 
-const mergedServices = Array.isArray(fileConfig.services) && fileConfig.services.length > 0
+const mergedServices = (Array.isArray(fileConfig.services) && fileConfig.services.length > 0
   ? fileConfig.services
-  : DEFAULT_CONFIG.services;
+  : DEFAULT_CONFIG.services).map(svc => ({
+    ...svc,
+    enabled: svc.enabled !== false,
+  }));
 
 const config = {
   app: {
@@ -114,32 +118,33 @@ const config = {
   QR_SESSION_TTL_MS: parseInt(process.env.QR_SESSION_TTL_MS || (fileConfig.session && fileConfig.session.qrSessionTtlMs) || DEFAULT_CONFIG.session.qrSessionTtlMs, 10),
   APPROVER_TTL_DAYS: parseInt(process.env.APPROVER_TTL_DAYS || (fileConfig.session && fileConfig.session.approverTtlDays) || DEFAULT_CONFIG.session.approverTtlDays, 10),
 
-  getService(idOrUrl) {
+  getService(idOrUrl, onlyEnabled = false) {
     if (!idOrUrl || typeof idOrUrl !== 'string') return null;
     const term = idOrUrl.trim().toLowerCase();
 
-    // Match by ID
-    const byId = this.services.find(s => s.id && s.id.toLowerCase() === term);
-    if (byId) return byId;
+    const matches = s => {
+      if (onlyEnabled && s.enabled === false) return false;
+      if (s.id && s.id.toLowerCase() === term) return true;
+      if (s.name && s.name.toLowerCase() === term) return true;
+      try {
+        const parsed = new URL(term.startsWith('http') ? term : `https://${term}`);
+        const sUrl = new URL(s.url);
+        return sUrl.hostname.toLowerCase() === parsed.hostname.toLowerCase();
+      } catch {
+        return false;
+      }
+    };
 
-    // Match by Name
-    const byName = this.services.find(s => s.name && s.name.toLowerCase() === term);
-    if (byName) return byName;
+    return this.services.find(matches) || null;
+  },
 
-    // Match by URL or hostname
-    try {
-      const parsed = new URL(term.startsWith('http') ? term : `https://${term}`);
-      return this.services.find(s => {
-        try {
-          const sUrl = new URL(s.url);
-          return sUrl.hostname.toLowerCase() === parsed.hostname.toLowerCase();
-        } catch {
-          return false;
-        }
-      }) || null;
-    } catch {
-      return null;
-    }
+  getEnabledServices() {
+    return this.services.filter(s => s.enabled !== false);
+  },
+
+  isServiceEnabled(idOrUrl) {
+    const svc = this.getService(idOrUrl);
+    return Boolean(svc && svc.enabled !== false);
   },
 
   isAllowedRedirect(redirectUrl) {
@@ -165,9 +170,9 @@ const config = {
         return true;
       }
 
-      // Check configured services by parsed hostname
+      // Check configured services by parsed hostname (only if enabled)
       for (const svc of this.services) {
-        if (svc && svc.url) {
+        if (svc && svc.enabled !== false && svc.url) {
           try {
             const targetHostname = new URL(svc.url).hostname.toLowerCase();
             if (parsed.hostname.toLowerCase() === targetHostname) return true;

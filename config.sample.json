@@ -24,7 +24,8 @@
       "subtitle": "Secure file sharing & storage portal",
       "url": "https://share.example.com",
       "upstream": "http://share-app:3000",
-      "allowedRedirects": ["https://share.example.com*"]
+      "allowedRedirects": ["https://share.example.com*"],
+      "enabled": true
     }
   ]
 }
