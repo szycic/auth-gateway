@@ -1,26 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <%- include('partials/head', { extraCss: null }) %>
+  <%- include('partials/head', { extraCss: '/css/notice.css' }) %>
   <title><%= title %> - <%= config.app.name %></title>
 </head>
 <body>
   <div class="ambient-glow"></div>
-  <div class="card card-sm">
-    <% const isSuccess = type === 'success'; %>
-    <div class="status-icon <%= isSuccess ? 'status-icon-success' : 'status-icon-error' %>">
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <% if (isSuccess) { %>
+  <div class="card card-notice">
+    <% 
+      const noticeType = (typeof type !== 'undefined' && type) ? type : 'info';
+      const isSuccess = noticeType === 'success';
+      const isWarning = noticeType === 'warning' || noticeType === 'warn' || (typeof title === 'string' && title.toLowerCase().includes('expired'));
+      const isError = !isSuccess && !isWarning;
+    %>
+    <div class="notice-icon-wrapper <%= isSuccess ? 'notice-icon-success' : (isWarning ? 'notice-icon-warning' : 'notice-icon-error') %>">
+      <% if (isSuccess) { %>
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-        <% } else { %>
+        </svg>
+      <% } else if (isWarning) { %>
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      <% } else { %>
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        <% } %>
-      </svg>
+        </svg>
+      <% } %>
     </div>
+
     <h1><%= title %></h1>
     <p class="desc"><%= message %></p>
-    <% if (actionUrl) { %>
-      <a href="<%= actionUrl %>" class="btn"><%= actionLabel || 'Continue' %></a>
+
+    <% if (typeof actionUrl !== 'undefined' && actionUrl) { %>
+      <a href="<%= actionUrl %>" class="btn <%= isSuccess ? 'btn-success' : (isWarning ? 'btn-warning' : '') %>">
+        <%= (typeof actionLabel !== 'undefined' && actionLabel) ? actionLabel : 'Continue' %>
+      </a>
+    <% } %>
+
+    <% if (typeof secondaryUrl !== 'undefined' && secondaryUrl) { %>
+      <div>
+        <a href="<%= secondaryUrl %>" class="btn-notice-secondary">
+          <%= (typeof secondaryLabel !== 'undefined' && secondaryLabel) ? secondaryLabel : 'Return' %>
+        </a>
+      </div>
     <% } %>
   </div>
   <%- include('partials/pwa-sw') %>
