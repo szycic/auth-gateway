@@ -23,20 +23,10 @@ router.all('/verify', (req, res) => {
 
   const targetService = sessionService.getTargetServiceForRequest(req);
   if (targetService && targetService.disableService) {
-    res.status(503).set({
+    return res.status(503).set({
       'X-Auth-Status': 'service_disabled',
       'X-Auth-Reason': 'service_disabled',
-    });
-    if (req.accepts('html') && !req.xhr) {
-      return res.render('statusNotice', {
-        title: `${targetService.name} is Temporarily Disabled`,
-        message: 'This service is currently disabled on demand or undergoing maintenance.',
-        actionUrl: config.BASE_URL,
-        actionLabel: 'Return to Dashboard',
-        type: 'error',
-      });
-    }
-    return res.send('Service Disabled');
+    }).send('Service Disabled');
   }
 
   // Public service bypass: If authentication is disabled for this service, allow all traffic
