@@ -1234,10 +1234,9 @@ app.post('/auth/approve/action', (req, res) => {
     expiresAt: Date.now() + 60 * 1000,
   });
 
-  // Emit real-time approved event to desktop room
+  // Emit real-time approved event to desktop room with single-use exchange code
   io.to(id).emit('approved', {
     code: exchangeCode,
-    token: sessionToken,
     redirect: session.redirect,
   });
 
@@ -1385,9 +1384,6 @@ app.get('/auth/exchange', (req, res) => {
     if (item && item.expiresAt > Date.now()) {
       sessionToken = item.token;
     }
-  } else if (rawToken && typeof rawToken === 'string') {
-    // Backwards-compatible direct token exchange
-    sessionToken = rawToken;
   }
 
   if (sessionToken && isValidSession(sessionToken)) {
@@ -1566,6 +1562,12 @@ function getUpstreamUrlForHost(hostHeader = '') {
   }
   if (host === 'pdf.szycic.com') {
     return 'http://stirling-pdf:8080';
+  }
+  if (host === 'chef.szycic.com') {
+    return 'http://cyberchef:8080';
+  }
+  if (host === 'paste.szycic.com') {
+    return 'http://privatebin:8080';
   }
 
   return TARGET_APP_URL || 'http://share-app:3000';

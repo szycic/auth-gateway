@@ -2,14 +2,24 @@
 	email dev@example.com
 }
 
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Robots-Tag "noindex, nofollow, noarchive"
+	}
+	# Prevent untrusted clients from spoofing internal authentication headers
+	request_header -X-Auth-Status
+	request_header -X-Auth-Role
+	request_header -X-Auth-User
+}
+
 # Centralized Authentication Portal
 auth.example.com {
+	import security_headers
 	reverse_proxy auth-gateway:3000
-
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
 }
 
 # Pingvin Share Service (Protected via auth.example.com)
@@ -64,11 +74,11 @@ share.example.com {
 		reverse_proxy share-app:3000
 	}
 
-	handle /api/reverseShares* {
+	handle /api/reverseShares/* {
 		reverse_proxy share-app:3000
 	}
 
-	handle /api/configs* {
+	handle /api/configs {
 		reverse_proxy share-app:3000
 	}
 
@@ -104,11 +114,7 @@ share.example.com {
 		}
 	}
 
-	# Security headers
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 
 # IT Tools Service (Protected via auth.example.com)
@@ -133,11 +139,7 @@ tools.example.com {
 		}
 	}
 
-	# Security headers
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 
 # Quartz Digital Garden (Protected via auth.example.com)
@@ -169,11 +171,7 @@ garden.example.com {
 		}
 	}
 
-	# Security headers
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 
 # Uptime Kuma Service (Protected via auth.example.com)
@@ -217,11 +215,7 @@ uptime.example.com {
 		}
 	}
 
-	# Security headers
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 
 # Dozzle Service (Protected via auth.example.com)
@@ -260,11 +254,7 @@ dozzle.example.com {
 		}
 	}
 
-	# Security headers
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 
 # Glances Service (Protected via auth.example.com)
@@ -308,11 +298,63 @@ glances.example.com {
 		}
 	}
 
-	# Security headers
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
+	import security_headers
+}
+
+# CyberChef Service (Protected via auth.example.com)
+chef.example.com {
+	# 1. Forward Auth Protected Routes
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
 	}
+
+	# 2. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	import security_headers
+}
+
+# PrivateBin Service (Protected via auth.example.com)
+paste.example.com {
+	# 1. Forward Auth Protected Routes
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 2. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		@api expression {http.error.status_code} == 401 && header({'X-Requested-With': 'JSONHttpRequest'})
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"status":1,"message":"Authentication required"}` 401
+		}
+
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	import security_headers
 }
 
 # Unused/forwarded subdomains without services
