@@ -56,14 +56,21 @@
     </div>
   </div>
 
+  <script id="auth-config" type="application/json"><%- JSON.stringify({
+    redirectTarget: redirectTarget || '',
+    serviceId: matchedService ? matchedService.id : ''
+  }) %></script>
+
   <script>
     const socket = io();
     let currentSessionId = null;
     let timerInterval = null;
     let secondsLeft = 120;
 
-    const redirectTarget = <%- JSON.stringify(redirectTarget || '') %>;
-    const serviceId = <%- JSON.stringify(matchedService ? matchedService.id : '') %>;
+    const authConfigEl = document.getElementById('auth-config');
+    const authConfig = authConfigEl ? JSON.parse(authConfigEl.textContent || '{}') : {};
+    const redirectTarget = authConfig.redirectTarget || '';
+    const serviceId = authConfig.serviceId || '';
 
     const qrImage = document.getElementById('qrImage');
     const loadingOverlay = document.getElementById('loadingOverlay');

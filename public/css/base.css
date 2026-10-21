@@ -190,3 +190,31 @@ p.subtitle, p.desc {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Status Icons */
+.status-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem auto;
+}
+
+.status-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.status-icon-success {
+  background: var(--success-bg, rgba(16, 185, 129, 0.15));
+  border: 2px solid var(--success-color, #10b981);
+  color: var(--success-color, #10b981);
+}
+
+.status-icon-error {
+  background: var(--error-bg, rgba(239, 68, 68, 0.15));
+  border: 2px solid var(--error-color, #ef4444);
+  color: var(--error-color, #ef4444);
+}
