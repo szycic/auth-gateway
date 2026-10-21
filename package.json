@@ -1,7 +1,7 @@
 {
   "name": "auth-gateway",
   "version": "1.0.0",
-  "description": "Secure, lightweight custom Forward Auth Gateway with QR code authentication for Pingvin Share",
+  "description": "Secure, lightweight custom Forward Auth Gateway with QR code and PIN approval homelabs",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
