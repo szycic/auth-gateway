@@ -81,7 +81,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 
 ### 2. Configuration
 
-Create your `data/config.json` based on [config.sample.json](file:///home/szymon/Projects/auth-gateway/config.sample.json):
+Create your `config.json` based on [config.sample.json](file:///home/szymon/Projects/auth-gateway/config.sample.json):
 
 ```json
 {
@@ -134,25 +134,30 @@ Create a `docker-compose.yml`:
 ```yaml
 services:
   auth-gateway:
-    image: auth-gateway:latest
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: auth-gateway
     restart: unless-stopped
     volumes:
       - gateway-data:/usr/src/app/data
+      - ./config.json:/usr/src/app/config.json:ro
     environment:
       - PORT=3000
       - DATA_DIR=/usr/src/app/data
+      - CONFIG_PATH=/usr/src/app/config.json
     networks:
       - proxy-net
 
 volumes:
   gateway-data:
-    name: auth_gateway_data
+    external: true
+    name: gateway-data
 
 networks:
   proxy-net:
     external: true
+    name: proxy-net
 ```
 
 Start the container:
@@ -347,7 +352,7 @@ networks:
 
 ### Step 2: Register Service in `config.json`
 
-Add an entry to the `"services"` array in your `data/config.json`:
+Add an entry to the `"services"` array in your `config.json`:
 
 ```json
 {
