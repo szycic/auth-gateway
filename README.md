@@ -87,7 +87,7 @@ Create your `config.json` based on [config.sample.json](/config.sample.json):
 {
   "app": {
     "name": "Auth Gateway",
-    "subtitle": "Scan the QR code with your mobile device to approve access.",
+    "subtitle": "Scan the QR code or enter the PIN on the authenticated mobile device to approve access.",
     "footerText": "auth.example.com"
   },
   "server": {
@@ -412,7 +412,8 @@ myapp.example.com {
 
 1. **Restart Auth Gateway** to load the updated `config.json`:
    ```bash
-   docker compose restart auth-gateway
+   ./reload-config.sh
+   # Or: docker compose restart auth-gateway
    ```
 2. **Reload Caddy**:
    ```bash
@@ -450,7 +451,7 @@ myapp.example.com {
 | `services` | `subtitle`           | string  | Description shown on the dashboard card.                                               |
 | `services` | `url`                | string  | Public HTTPS URL of the service.                                                       |
 | `services` | `upstream`           | string  | Internal backend container URL (e.g. `http://my-app:8080`).                            |
-| `services` | `allowedRedirects`   | array   | List of URL patterns permitted for post-login redirection.                             |
+| `services` | `allowedRedirects`   | array   | List of URL patterns permitted for post-login redirection (e.g. `["https://myapp.example.com*"]`). Wildcards (`*`) supported. |
 | `services` | `disableService`     | boolean | Optional. When `true`, completely hides service from dashboard and disables redirects. |
 | `services` | `disableAuth`        | boolean | Optional. When `true`, bypasses authentication verification for this service.          |
 
@@ -469,6 +470,10 @@ Auth Gateway includes CLI helper scripts in the repository:
   ```bash
   npm run hash-password "MySecretPassword"
   # Or: node hash-password.js "MySecretPassword"
+  ```
+- **`./reload-config.sh`**: Reloads configuration changes by cleanly restarting the Docker container while preserving all active sessions.
+  ```bash
+  ./reload-config.sh
   ```
 
 ---
