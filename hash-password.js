@@ -13,8 +13,8 @@ function hashPassword(password) {
 const password = process.argv[2];
 
 if (!password) {
-  console.error('Usage: node hash.js <password>');
-  console.error('Example: node hash.js "MySecurePass123"');
+  console.error('Usage: node hash-password.js <password>');
+  console.error('Example: node hash-password.js "MySecurePass123"');
   process.exit(1);
 }
 

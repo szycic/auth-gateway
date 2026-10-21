@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "hash-password": "node hash.js",
+    "hash-password": "node hash-password.js",
     "set-password": "node set-password.js"
   },
   "dependencies": {
