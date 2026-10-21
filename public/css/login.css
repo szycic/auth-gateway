@@ -26,20 +26,13 @@
 }
 
 .service-target-main {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-muted, #94a3b8);
 }
 
 .service-target-name {
   color: #ffffff;
   font-weight: 600;
-}
-
-.service-target-sub {
-  font-size: 0.775rem;
-  color: var(--text-dim, #64748b);
-  margin-top: 0.2rem;
-  line-height: 1.4;
 }
 
 .qr-frame {
