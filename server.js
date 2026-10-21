@@ -304,6 +304,7 @@ function isApprover(req) {
 
 // Check if a session has permission to access a specific service
 function isSessionAllowedForService(session, service) {
+  if (service && service.enabled === false) return false;
   if (!session) return false;
   // If allowedServices is not set, empty, or contains '*', all services are permitted
   const hasRestrictedServices = Array.isArray(session.allowedServices) && session.allowedServices.length > 0 && !session.allowedServices.includes('*');
@@ -589,7 +590,7 @@ app.get('/auth/health', (req, res) => {
     activeSessions: activeSessions.size,
     approverSessions: approverSessions.size,
     pendingLoginSessions: pendingLoginSessions.size,
-    services: config.services.map(s => ({ id: s.id, name: s.name, url: s.url })),
+    services: config.services.map(s => ({ id: s.id, name: s.name, url: s.url, enabled: s.enabled !== false })),
     uptime: process.uptime(),
   });
 });
@@ -788,12 +789,19 @@ app.all('/auth/verify', (req, res) => {
     return res.status(204).end();
   }
 
+  const targetService = getTargetServiceForRequest(req);
+  if (targetService && targetService.enabled === false) {
+    return res.status(503).set({
+      'X-Auth-Status': 'service_disabled',
+      'X-Auth-Reason': 'service_disabled',
+    }).send('Service Disabled');
+  }
+
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (isValidSession(token)) {
     const session = activeSessions.get(token);
 
     // Check service access restrictions (fail-closed if restricted session)
-    const targetService = getTargetServiceForRequest(req);
     const authHost = new URL(BASE_URL).hostname.toLowerCase();
     const reqHost = ((req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0]).toLowerCase().trim();
 
@@ -1225,7 +1233,7 @@ app.post('/auth/approve/action', (req, res) => {
       rawServices = [req.body.services.trim()];
     }
 
-    const allConfiguredServices = (config.services || []);
+    const allConfiguredServices = (config.services || []).filter(s => s.enabled !== false);
     if (rawServices.length > 0 && rawServices.length < allConfiguredServices.length) {
       allowedServices = rawServices;
     }
@@ -1560,6 +1568,7 @@ function getUpstreamUrlForHost(hostHeader = '') {
   });
 
   if (matchedService && matchedService.upstream) {
+    if (matchedService.enabled === false) return '';
     return matchedService.upstream;
   }
 
@@ -1571,6 +1580,7 @@ function getUpstreamUrlForHost(hostHeader = '') {
   });
 
   if (byId && byId.upstream) {
+    if (byId.enabled === false) return '';
     return byId.upstream;
   }
 
@@ -1620,6 +1630,16 @@ function relaxCspHeader(val, authBaseUrl) {
 
 function proxyToTargetApp(req, res) {
   const matchedService = config.getService(req.headers.host);
+  if (matchedService && matchedService.enabled === false) {
+    return res.status(503).send(renderStatusNoticeHtml({
+      title: `${matchedService.name} is Temporarily Disabled`,
+      message: 'This service is currently disabled on demand or undergoing maintenance.',
+      actionUrl: BASE_URL,
+      actionLabel: 'Return to Dashboard',
+      type: 'error',
+    }));
+  }
+
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   const session = activeSessions.get(token);
 
@@ -1820,6 +1840,16 @@ app.get('/login', (req, res) => {
   const rawRedirect = req.query.redirect || req.query.returnTo || '';
   const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '';
   const matchedService = config.getService(req.query.service || redirectTarget);
+
+  if (matchedService && matchedService.enabled === false) {
+    return res.status(503).send(renderStatusNoticeHtml({
+      title: `${matchedService.name} is Temporarily Disabled`,
+      message: 'This service is currently disabled on demand or undergoing maintenance.',
+      actionUrl: '/',
+      actionLabel: 'Return to Dashboard',
+      type: 'error',
+    }));
+  }
 
   const token = req.cookies[AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (isValidSession(token)) {
@@ -2549,7 +2579,7 @@ function renderApproverSelfAuthHtml({ redirect = '', notice = '' }) {
 // 2. Approval Decision HTML (Mobile Scanned Screen)
 function renderApprovalDecisionHtml({ id, key, desktopIp, friendlyDevice, targetService, expiresAt, activeSessionsList, services }) {
   const activeCount = activeSessionsList.length;
-  const servicesList = services || config.services || [];
+  const servicesList = (services || config.services || []).filter(svc => svc.enabled !== false);
   const targetServiceId = targetService ? targetService.id : null;
 
   const servicesChecklistHtml = servicesList.map(svc => {
@@ -4144,7 +4174,7 @@ function renderPortalDashboardHtml({ session, isApproverUser, services = [], not
   const sessionId = (session && session.id) || '';
   const sessionToken = (session && session.token) || '';
 
-  const servicesHtml = services.map(svc => {
+  const servicesHtml = services.filter(svc => svc.enabled !== false).map(svc => {
     const isAllowed = isApproverUser || isSessionAllowedForService(session, svc);
     return `
     <div class="service-card" style="${isAllowed ? '' : 'opacity: 0.55;'}">
