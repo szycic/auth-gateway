@@ -596,17 +596,35 @@ app.get('/auth/health', (req, res) => {
 });
 
 // Endpoint to reload configuration on demand (restricted to approver)
-app.post('/auth/reload', (req, res) => {
+app.all('/auth/reload', (req, res) => {
+  const isHtml = (req.headers.accept || '').includes('text/html');
+
   if (!isApprover(req)) {
+    if (isHtml && req.method === 'GET') {
+      return res.redirect('/auth/approver/login?returnTo=' + encodeURIComponent('/auth/reload'));
+    }
     return res.status(401).json({ status: 'error', message: 'Unauthorized approver.' });
   }
+
   const ok = config.reload();
   if (ok) {
+    const enabledCount = config.getEnabledServices().length;
+    const totalCount = config.services.length;
+    const msg = `Configuration reloaded successfully (${totalCount} services, ${enabledCount} enabled).`;
+
+    if (isHtml && req.method === 'GET') {
+      return res.redirect('/?notice=' + encodeURIComponent(msg));
+    }
+
     return res.status(200).json({
       status: 'ok',
-      message: 'Configuration reloaded successfully.',
+      message: msg,
       services: config.services.map(s => ({ id: s.id, name: s.name, enabled: s.enabled })),
     });
+  }
+
+  if (isHtml && req.method === 'GET') {
+    return res.redirect('/?notice=' + encodeURIComponent('Error reloading configuration.'));
   }
   return res.status(500).json({ status: 'error', message: 'Failed to reload configuration.' });
 });
