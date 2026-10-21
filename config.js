@@ -164,6 +164,12 @@ const config = {
         if (parsed.origin === baseParsed.origin) return true;
       } catch {}
 
+      // Reject if the target matches an explicitly disabled service
+      const matchedService = this.getService(parsed.hostname);
+      if (matchedService && matchedService.enabled === false) {
+        return false;
+      }
+
       // Allowed root domain match
       const rootDomain = (this.session.cookieDomain || '').replace(/^\./, '').toLowerCase();
       if (rootDomain && (parsed.hostname.toLowerCase() === rootDomain || parsed.hostname.toLowerCase().endsWith('.' + rootDomain))) {
