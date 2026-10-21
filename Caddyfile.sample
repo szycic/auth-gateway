@@ -326,37 +326,6 @@ chef.example.com {
 	import security_headers
 }
 
-# PrivateBin Service (Protected via auth.example.com)
-paste.example.com {
-	# 1. Forward Auth Protected Routes
-	handle {
-		forward_auth auth-gateway:3000 {
-			uri /auth/verify
-			copy_headers X-Auth-Status X-Auth-Role
-			@unauthorized status 401
-			handle_response @unauthorized {
-				error 401
-			}
-		}
-		reverse_proxy auth-gateway:3000
-	}
-
-	# 2. Intelligent handling of 401 Unauthorized errors
-	handle_errors {
-		@api expression {http.error.status_code} == 401 && header({'X-Requested-With': 'JSONHttpRequest'})
-		handle @api {
-			header Content-Type "application/json"
-			respond `{"status":1,"message":"Authentication required"}` 401
-		}
-
-		handle {
-			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
-		}
-	}
-
-	import security_headers
-}
-
 # Unused/forwarded subdomains without services
 vm.example.com {
 	respond "Not Found" 404

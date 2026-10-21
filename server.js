@@ -1566,9 +1566,6 @@ function getUpstreamUrlForHost(hostHeader = '') {
   if (host === 'chef.szycic.com') {
     return 'http://cyberchef:8080';
   }
-  if (host === 'paste.szycic.com') {
-    return 'http://privatebin:8080';
-  }
 
   return TARGET_APP_URL || 'http://share-app:3000';
 }

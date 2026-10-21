@@ -81,14 +81,6 @@
       "url": "https://chef.example.com",
       "upstream": "http://cyberchef:8080",
       "allowedRedirects": ["https://chef.example.com*"]
-    },
-    {
-      "id": "paste",
-      "name": "PrivateBin",
-      "subtitle": "Encrypted pastebin with client-side zero-knowledge AES-256",
-      "url": "https://paste.example.com",
-      "upstream": "http://privatebin:8080",
-      "allowedRedirects": ["https://paste.example.com*"]
     }
   ]
 }
