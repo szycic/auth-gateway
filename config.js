@@ -30,8 +30,6 @@ const DEFAULT_CONFIG = {
       url: 'https://share.example.com',
       upstream: 'http://share-app:3000',
       allowedRedirects: ['https://share.example.com*'],
-      auth: true,
-      disabled: false,
     },
   ],
   downstream: {
@@ -69,28 +67,32 @@ function loadConfigFile() {
 
 const fileConfig = loadConfigFile();
 
-function resolveDisabled(svc) {
+function resolveDisableService(svc) {
+  if (svc.disableService !== undefined) return Boolean(svc.disableService);
   if (svc.disabled !== undefined) return Boolean(svc.disabled);
   if (svc.enabled !== undefined) return svc.enabled === false;
   return false;
 }
 
-function resolveAuth(svc) {
-  if (svc.auth !== undefined) return svc.auth !== false;
-  if (svc.authRequired !== undefined) return svc.authRequired !== false;
-  if (svc.requireAuth !== undefined) return svc.requireAuth !== false;
-  return true;
+function resolveDisableAuth(svc) {
+  if (svc.disableAuth !== undefined) return Boolean(svc.disableAuth);
+  if (svc.auth !== undefined) return svc.auth === false;
+  if (svc.authRequired !== undefined) return svc.authRequired === false;
+  if (svc.requireAuth !== undefined) return svc.requireAuth === false;
+  return false;
 }
 
 function normalizeService(svc) {
-  const disabled = resolveDisabled(svc);
-  const auth = resolveAuth(svc);
+  const disableService = resolveDisableService(svc);
+  const disableAuth = resolveDisableAuth(svc);
   return {
     ...svc,
-    disabled,
-    enabled: !disabled,
-    auth,
-    authRequired: auth,
+    disableService,
+    disableAuth,
+    disabled: disableService,
+    enabled: !disableService,
+    auth: !disableAuth,
+    authRequired: !disableAuth,
   };
 }
 
@@ -150,7 +152,7 @@ const config = {
     const term = idOrUrl.trim().toLowerCase();
 
     const matches = s => {
-      if (onlyActive && s.disabled) return false;
+      if (onlyActive && s.disableService) return false;
       if (s.id && s.id.toLowerCase() === term) return true;
       if (s.name && s.name.toLowerCase() === term) return true;
       try {
@@ -166,7 +168,7 @@ const config = {
   },
 
   getActiveServices() {
-    return this.services.filter(s => !s.disabled);
+    return this.services.filter(s => !s.disableService);
   },
 
   getEnabledServices() {
@@ -175,18 +177,24 @@ const config = {
 
   isServiceDisabled(idOrUrl) {
     const svc = this.getService(idOrUrl);
-    return Boolean(svc && svc.disabled);
+    return Boolean(svc && svc.disableService);
   },
 
   isServiceEnabled(idOrUrl) {
     const svc = this.getService(idOrUrl);
-    return Boolean(svc && !svc.disabled);
+    return Boolean(svc && !svc.disableService);
+  },
+
+  isAuthDisabled(idOrUrl) {
+    const svc = this.getService(idOrUrl);
+    if (!svc) return false;
+    return svc.disableAuth === true;
   },
 
   isAuth(idOrUrl) {
     const svc = this.getService(idOrUrl);
     if (!svc) return true;
-    return svc.auth !== false;
+    return !svc.disableAuth;
   },
 
   isAuthRequired(idOrUrl) {
@@ -212,7 +220,7 @@ const config = {
 
       // Reject if the target matches an explicitly disabled service
       const matchedService = this.getService(parsed.hostname);
-      if (matchedService && matchedService.disabled) {
+      if (matchedService && matchedService.disableService) {
         return false;
       }
 
@@ -224,7 +232,7 @@ const config = {
 
       // Check configured services by parsed hostname (only if active)
       for (const svc of this.services) {
-        if (svc && !svc.disabled && svc.url) {
+        if (svc && !svc.disableService && svc.url) {
           try {
             const targetHostname = new URL(svc.url).hostname.toLowerCase();
             if (parsed.hostname.toLowerCase() === targetHostname) return true;
@@ -262,7 +270,7 @@ const config = {
         ...(fileConfig.downstream || {}),
         targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
       };
-      console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getActiveServices().length} active, ${this.services.filter(s => s.auth !== false).length} require auth).`);
+      console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getActiveServices().length} active, ${this.services.filter(s => !s.disableAuth).length} require auth).`);
       return true;
     } catch (err) {
       console.error('[auth-gateway] Error reloading configuration:', err.message);
