@@ -181,18 +181,30 @@ const config = {
         return false;
       }
 
-      // Allowed root domain match
-      const rootDomain = (this.session.cookieDomain || '').replace(/^\./, '').toLowerCase();
-      if (rootDomain && (parsed.hostname.toLowerCase() === rootDomain || parsed.hostname.toLowerCase().endsWith('.' + rootDomain))) {
-        return true;
-      }
-
-      // Check configured services by parsed hostname (only if active)
+      // Check configured active services and their allowedRedirects
       for (const svc of this.services) {
-        if (svc && !svc.disableService && svc.url) {
+        if (!svc || svc.disableService) continue;
+
+        if (Array.isArray(svc.allowedRedirects) && svc.allowedRedirects.length > 0) {
+          for (const pattern of svc.allowedRedirects) {
+            if (typeof pattern !== 'string') continue;
+            const p = pattern.trim();
+            if (p === '*') return true;
+            if (p.includes('*')) {
+              const escaped = p.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+              if (new RegExp(`^${escaped}$`, 'i').test(trimmed)) {
+                return true;
+              }
+            } else if (trimmed === p || trimmed === p + '/' || trimmed + '/' === p) {
+              return true;
+            }
+          }
+        } else if (svc.url) {
           try {
-            const targetHostname = new URL(svc.url).hostname.toLowerCase();
-            if (parsed.hostname.toLowerCase() === targetHostname) return true;
+            const svcOrigin = new URL(svc.url).origin.toLowerCase();
+            if (parsed.origin.toLowerCase() === svcOrigin) {
+              return true;
+            }
           } catch {}
         }
       }
