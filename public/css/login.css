@@ -21,47 +21,29 @@
 }
 
 .service-target-badge {
-  background: rgba(14, 165, 233, 0.08);
-  border: 1px solid rgba(56, 189, 248, 0.22);
-  border-radius: 16px;
-  padding: 0.75rem 1rem;
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.55rem 1rem;
   margin: -0.5rem auto 1.5rem;
   max-width: 320px;
   text-align: center;
 }
 
-.service-target-header {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  margin-bottom: 0.2rem;
-}
-
-.service-target-header svg {
-  width: 13px;
-  height: 13px;
-  color: var(--accent-sky, #38bdf8);
-}
-
-.service-target-label {
-  font-size: 0.725rem;
-  font-weight: 700;
+.service-target-main {
+  font-size: 0.85rem;
   color: var(--text-muted, #94a3b8);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .service-target-name {
-  font-size: 1.15rem;
-  font-weight: 700;
   color: #ffffff;
-  line-height: 1.3;
+  font-weight: 600;
 }
 
 .service-target-sub {
-  font-size: 0.8rem;
-  color: var(--text-muted, #94a3b8);
+  font-size: 0.775rem;
+  color: var(--text-dim, #64748b);
   margin-top: 0.2rem;
   line-height: 1.4;
 }
