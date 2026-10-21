@@ -53,7 +53,7 @@
         <p style="color: #94a3b8; font-size: 0.85rem;">No services configured.</p>
       <% } else { %>
         <% activeServices.forEach(function(s) { 
-             const isAllowed = isApproverUser || !isRestrictedSession || (allowedServiceIds && allowedServiceIds.includes((s.id || '').toLowerCase()));
+             const isAllowed = isApproverUser || (typeof isSessionAllowedForService === 'function' ? isSessionAllowedForService(session, s) : (!isRestrictedSession || (allowedServiceIds && allowedServiceIds.includes((s.id || '').toLowerCase()))));
              const targetUrl = s.url || '#';
         %>
           <div class="service-item <%= !isAllowed ? 'service-item-disabled' : '' %>">
