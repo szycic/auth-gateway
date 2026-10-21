@@ -128,7 +128,12 @@ function getTargetServiceForRequest(req) {
   let rawHost = req.headers['x-service-host'] || req.headers['x-forwarded-host'] || req.headers.host || '';
   if (typeof rawHost === 'string' && rawHost.includes(',')) {
     const parts = rawHost.split(',').map(s => s.trim()).filter(Boolean);
-    rawHost = parts[parts.length - 1] || '';
+    for (const part of parts) {
+      const h = part.toLowerCase().split(':')[0].trim();
+      const svc = config.getService(h);
+      if (svc) return svc;
+    }
+    rawHost = parts[0] || '';
   }
   const host = rawHost.toLowerCase().split(':')[0].trim();
   const matched = config.getService(host);

@@ -1,2 +1,5 @@
 #!/bin/sh
-docker kill -s HUP auth-gateway
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+docker compose restart auth-gateway
