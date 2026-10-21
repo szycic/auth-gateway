@@ -58,9 +58,41 @@ router.get('/login', (req, res) => {
     return res.redirect(redirectTarget || '/');
   }
 
+  // Detect whether request comes from an open handle of the service
+  const rawFrom = req.query.from || req.headers.referer || '';
+  let isFromOpenHandle = false;
+  let fromUrl = '';
+
+  if (rawFrom) {
+    try {
+      const fromParsed = new URL(rawFrom.startsWith('/') ? `${config.server.baseUrl}${rawFrom}` : rawFrom);
+      const authParsed = new URL(config.server.baseUrl);
+
+      if (fromParsed.hostname.toLowerCase() !== authParsed.hostname.toLowerCase()) {
+        if (matchedService) {
+          const serviceParsed = new URL(matchedService.url);
+          if (fromParsed.hostname.toLowerCase() === serviceParsed.hostname.toLowerCase()) {
+            const redirectParsed = redirectTarget ? new URL(redirectTarget.startsWith('/') ? `${serviceParsed.origin}${redirectTarget}` : redirectTarget) : null;
+            if (!redirectParsed || fromParsed.pathname !== redirectParsed.pathname) {
+              isFromOpenHandle = true;
+              fromUrl = rawFrom;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (req.query.monit === '1' || req.query.prompt === '1') {
+    isFromOpenHandle = true;
+    if (!fromUrl) fromUrl = rawFrom || (matchedService ? matchedService.url : '/');
+  }
+
   return res.render('desktopLogin', {
     matchedService,
     redirectTarget,
+    isFromOpenHandle,
+    fromUrl,
     error: req.query.error || '',
     notice: req.query.notice || '',
   });
