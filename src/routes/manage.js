@@ -9,7 +9,7 @@ const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
-// 1. Session Management Dashboard
+// Session management dashboard
 router.get('/sessions', (req, res) => {
   if (!sessionService.isApprover(req)) {
     return res.redirect('/auth/approver/login?returnTo=/auth/sessions');
@@ -21,7 +21,7 @@ router.get('/sessions', (req, res) => {
   });
 });
 
-// 2. Revoke a specific session or all sessions
+// Revoke session(s)
 router.post('/sessions/revoke', (req, res) => {
   if (!sessionService.isApprover(req)) {
     if (req.accepts('json') && !req.accepts('html')) {
@@ -86,7 +86,7 @@ router.post('/sessions/revoke', (req, res) => {
   return res.redirect('/auth/sessions');
 });
 
-// 3. Rename a specific session in dashboard
+// Rename session
 router.post('/sessions/rename', (req, res) => {
   if (!sessionService.isApprover(req)) {
     return res.status(401).send('Unauthorized.');
@@ -116,7 +116,7 @@ router.post('/sessions/rename', (req, res) => {
   return res.redirect('/auth/sessions');
 });
 
-// 4. Desktop Token Exchange Endpoint
+// Desktop token exchange
 router.get('/exchange', (req, res) => {
   const { code, redirect } = req.query;
   let sessionToken = null;
@@ -139,7 +139,7 @@ router.get('/exchange', (req, res) => {
   return res.redirect('/login');
 });
 
-// 5. Logout Endpoint
+// Logout
 router.get('/logout', (req, res) => {
   auditLog('USER_LOGOUT', { ip: authService.getClientIp(req) });
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
@@ -170,7 +170,7 @@ router.get('/logout', (req, res) => {
   return res.redirect(redirectTarget);
 });
 
-// 6. Current Session Device Rename
+// Rename current device
 router.post('/device/rename', (req, res) => {
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (!sessionService.isValidSession(token)) {

@@ -45,7 +45,7 @@ router.get('/login', (req, res) => {
     return res.redirect(redirectTarget || '/');
   }
 
-  // Seamless Mobile Approver Auto-Authorization
+  // Approver auto-authorization
   if (sessionService.isApprover(req)) {
     if (req.query.notice) {
       return res.render('approverSelfAuth', {

@@ -8,8 +8,6 @@ const routes = require('./routes');
 const app = express();
 
 app.set('trust proxy', 1);
-
-// Configure EJS view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.locals.config = config;
@@ -20,10 +18,9 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Mount all application routes
 app.use(routes);
 
-// Global 404 Not Found Handler
+// 404 handler
 app.use((req, res) => {
   if (req.accepts('json') && !req.accepts('html')) {
     return res.status(404).json({ error: 'Not Found', path: req.originalUrl });
@@ -37,7 +34,7 @@ app.use((req, res) => {
   });
 });
 
-// Global 500 Uncaught Error Handler
+// Error handler
 app.use((err, req, res, next) => {
   console.error('[auth-gateway uncaught error]', err);
   if (res.headersSent) {

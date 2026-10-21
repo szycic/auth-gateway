@@ -7,10 +7,8 @@ const { initSocketIO, closeSocketIO } = require('./services/socketService');
 
 const server = http.createServer(app);
 
-// Initialize Socket.io
 initSocketIO(server);
 
-// Password configured check on startup
 const activeHashOnBoot = authService.getApproverPasswordHash();
 if (activeHashOnBoot) {
   console.log('[auth-gateway] Approver password hash is active.');
@@ -22,7 +20,6 @@ if (activeHashOnBoot) {
   console.warn('*******************************************************************\n');
 }
 
-// SIGHUP reload signal
 process.on('SIGHUP', () => {
   console.log('[auth-gateway] Received SIGHUP signal, reloading configuration...');
   config.reload();
@@ -61,7 +58,6 @@ function gracefulShutdown(signal) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Start Server
 if (require.main === module || require.main?.filename === require.resolve('../server.js')) {
   server.listen(config.PORT, config.HOST, () => {
     console.log(`[auth-gateway] Server running on http://${config.HOST}:${config.PORT}`);

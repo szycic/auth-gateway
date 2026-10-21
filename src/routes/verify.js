@@ -72,7 +72,7 @@ router.all('/verify', (req, res) => {
     }).send('OK');
   }
 
-  // Seamlessly authorize master approver on protected services without forcing redirect
+  // Authorize approver without redirect
   if (sessionService.isApprover(req)) {
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',

@@ -15,10 +15,8 @@ const portalRoutes = require('./portal');
 
 const router = express.Router();
 
-// 1. Static Assets & PWA manifests / workers
 router.use(assetsRoutes);
 
-// 2. Auth API & Core Endpoints
 router.use('/auth', healthRoutes);
 router.use('/auth', verifyRoutes);
 router.use('/auth', sessionRoutes);
@@ -27,7 +25,7 @@ router.use('/auth', approverRoutes);
 router.use('/auth', approveRoutes);
 router.use('/auth', manageRoutes);
 
-// 3. Downstream Reverse Proxy Middleware (handles non-auth domains)
+// Downstream reverse proxy (handles non-auth domains)
 router.use((req, res, next) => {
   const host = (req.headers.host || '').split(':')[0].toLowerCase();
   let authHost = '';
@@ -45,7 +43,6 @@ router.use((req, res, next) => {
   next();
 });
 
-// 4. Central Portal & Login Routes
 router.use(loginRoutes);
 router.use(portalRoutes);
 
