@@ -483,6 +483,67 @@ access.example.com {
 	import security_headers
 }
 
+# Beszel Service (Protected via auth.example.com)
+beszel.example.com {
+	request_body {
+		max_size 10MB
+	}
+
+	# 1. Public Agent Connect WebSockets (bypasses forward auth)
+	handle /api/beszel/* {
+		reverse_proxy beszel:8090 {
+			transport http {
+				read_timeout 360s
+			}
+		}
+	}
+
+	# 2. REST & Realtime APIs (checked via forward_auth, then direct to beszel:8090)
+	handle /api/* {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy beszel:8090 {
+			transport http {
+				read_timeout 360s
+			}
+		}
+	}
+
+	# 3. Web UI routes with auth-watchdog injection
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 4. Intelligent handling of 401 Unauthorized errors
+	handle_errors {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required","redirect":"https://auth.example.com/login?redirect=https://beszel.example.com"}` 401
+		}
+
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	import security_headers
+}
+
 # ==============================================================================
 # Unused / Forwarded Subdomains
 # ==============================================================================
