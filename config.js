@@ -44,6 +44,7 @@ let loadedConfigPath = null;
 function loadConfigFile() {
   const possiblePaths = [
     process.env.CONFIG_PATH,
+    path.join(__dirname, 'config', 'config.json'),
     path.join(DATA_DIR, 'config.json'),
     path.join(__dirname, 'config.json'),
     path.join(DATA_DIR, 'config.sample.json'),
