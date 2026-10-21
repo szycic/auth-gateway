@@ -13,8 +13,8 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 - [Quick Start](#quick-start)
   - [1. Prerequisites](#1-prerequisites)
   - [2. Configuration](#2-configuration)
-  - [3. Set Approver Password](#3-set-approver-password)
-  - [4. Docker Compose Deployment](#4-docker-compose-deployment)
+  - [3. Docker Compose Deployment](#3-docker-compose-deployment)
+  - [4. Set Approver Password](#4-set-approver-password)
 - [Reverse Proxy Setup (Caddy)](#reverse-proxy-setup-caddy)
   - [Central Auth Portal Block](#central-auth-portal-block)
   - [Pattern A: Standard Protected Web App (SPA / Static)](#pattern-a-standard-protected-web-app-spa--static)
@@ -109,25 +109,7 @@ Create your `config.json` based on [config.sample.json](/config.sample.json):
 
 > **Important**: Ensure `cookieDomain` matches your root domain prefixed with a dot (e.g., `.example.com`) so cookies are shared across all subdomains.
 
-### 3. Set Approver Password
-
-Run the CLI tool to set up the administrative approver password:
-
-```bash
-# Option A: Interactive setup (hashes with scrypt and saves to data/password.json):
-npm run set-password
-# Or via Docker:
-docker compose run --rm auth-gateway node set-password.js
-
-# Option B: Generate a hash directly to set via APPROVER_PASSWORD_HASH env var:
-npm run hash-password "MySecretPassword"
-# Or via Docker:
-docker compose run --rm auth-gateway node hash-password.js "MySecretPassword"
-```
-
-This hashes the password using `scrypt` and either saves it to `data/password.json` or outputs `APPROVER_PASSWORD_HASH=...` for your environment.
-
-### 4. Docker Compose Deployment
+### 3. Docker Compose Deployment
 
 Create a `docker-compose.yml`:
 
@@ -165,6 +147,24 @@ Start the container:
 ```bash
 docker compose up -d
 ```
+
+### 4. Set Approver Password
+
+Run the CLI tool to set up the administrative approver password:
+
+```bash
+# Option A: Interactive setup (hashes with scrypt and saves to data/password.json):
+npm run set-password
+# Or via Docker:
+docker compose run --rm auth-gateway node set-password.js
+
+# Option B: Generate a hash directly to set via APPROVER_PASSWORD_HASH env var:
+npm run hash-password "MySecretPassword"
+# Or via Docker:
+docker compose run --rm auth-gateway node hash-password.js "MySecretPassword"
+```
+
+This hashes the password using `scrypt` and either saves it to `data/password.json` or outputs `APPROVER_PASSWORD_HASH=...` for your environment.
 
 ---
 
