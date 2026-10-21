@@ -34,6 +34,23 @@ router.use('/auth/assets/css', express.static(path.join(config.ROOT_DIR, 'public
   maxAge: '7d',
 }));
 
+router.use('/auth/assets', express.static(path.join(config.ROOT_DIR, 'public/assets'), {
+  maxAge: '7d',
+}));
+
+// Root icon fallbacks for standard browser probes
+router.get(['/favicon.ico', '/icon.svg'], (req, res, next) => {
+  if (!isAuthDomain(req)) return next();
+  res.setHeader('Cache-Control', 'public, max-age=604800');
+  return res.sendFile(path.join(config.ROOT_DIR, 'public/assets/icon.svg'));
+});
+
+router.get('/apple-touch-icon.png', (req, res, next) => {
+  if (!isAuthDomain(req)) return next();
+  res.setHeader('Cache-Control', 'public, max-age=604800');
+  return res.sendFile(path.join(config.ROOT_DIR, 'public/assets/apple-touch-icon.png'));
+});
+
 router.use((req, res, next) => {
   if (isAuthDomain(req) || req.path.startsWith('/auth/')) {
     return servePwaStatic(req, res, next);

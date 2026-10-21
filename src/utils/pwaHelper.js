@@ -14,10 +14,10 @@ function generatePwaManifest() {
     theme_color: '#090d16',
     categories: ['utilities', 'security'],
     icons: [
-      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-      { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/icon-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/assets/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+      { src: '/assets/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/assets/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/assets/icon-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
     shortcuts: [
       {
@@ -25,7 +25,7 @@ function generatePwaManifest() {
         short_name: 'Scan QR',
         description: 'Quickly scan a desktop login QR code',
         url: '/auth/sessions?action=scan&source=pwa',
-        icons: [{ src: '/icon-192.png', sizes: '192x192' }],
+        icons: [{ src: '/assets/icon-192.png', sizes: '192x192' }],
       },
     ],
   };
