@@ -20,7 +20,6 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
   - [Pattern A: Standard Protected Web App (SPA / Static)](#pattern-a-standard-protected-web-app-spa--static)
   - [Pattern B: App with Public Bypasses (e.g. Webhooks, Public Shares)](#pattern-b-app-with-public-bypasses-eg-webhooks-public-shares)
   - [Pattern C: App with WebSocket Connections (e.g. Uptime Kuma)](#pattern-c-app-with-websocket-connections-eg-uptime-kuma)
-  - [Pattern D: Native API Key Passthrough (e.g. Karakeep)](#pattern-d-native-api-key-passthrough-eg-karakeep)
 - [Automated & API Access (Gateway Token)](#automated--api-access-gateway-token)
 - [Adding and Configuring a New Service](#adding-and-configuring-a-new-service)
 - [Configuration Reference (`config.json`)](#configuration-reference-configjson)
@@ -330,50 +329,6 @@ uptime.example.com {
 	handle_errors {
 		@unauthorized expression {http.error.status_code} == 401
 		handle @unauthorized {
-			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
-		}
-	}
-
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
-}
-```
-
-### Pattern D: Native API Key Passthrough (e.g. Karakeep)
-
-For services like **Karakeep** (formerly Hoarder) that offer their own native API keys for companion apps and browser extensions, you can route the public REST API directly to the application backend while keeping all Web UI dashboard pages protected behind Auth Gateway:
-
-```caddy
-keep.example.com {
-	# 1. Direct REST API Access (secured natively by Karakeep Bearer API Key)
-	handle /api/v1/* {
-		reverse_proxy karakeep-web:3000
-	}
-
-	# 2. Forward Auth Protected Web UI (dashboard, settings, etc.)
-	handle {
-		forward_auth auth-gateway:3000 {
-			uri /auth/verify
-			copy_headers X-Auth-Status X-Auth-Role
-			@unauthorized status 401
-			handle_response @unauthorized {
-				error 401
-			}
-		}
-		reverse_proxy auth-gateway:3000
-	}
-
-	# 3. Intelligent error handling (redirect web users to login, return 401 JSON for APIs)
-	handle_errors {
-		@api expression {http.error.status_code} == 401 && path('/api/*')
-		handle @api {
-			header Content-Type "application/json"
-			respond `{"statusCode":401,"message":"Authentication required"}` 401
-		}
-
-		handle {
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
