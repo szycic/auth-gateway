@@ -77,7 +77,10 @@
 
   <script id="auth-config" type="application/json"><%- JSON.stringify({
     redirectTarget: redirectTarget || '',
-    serviceId: matchedService ? matchedService.id : ''
+    serviceId: matchedService ? matchedService.id : '',
+    isFromOpenHandle: Boolean(isFromOpenHandle),
+    defaultTitle: config.app.name,
+    defaultSubtitle: config.app.subtitle
   }) %></script>
 
   <script>
@@ -90,6 +93,9 @@
     const authConfig = authConfigEl ? JSON.parse(authConfigEl.textContent || '{}') : {};
     const redirectTarget = authConfig.redirectTarget || '';
     const serviceId = authConfig.serviceId || '';
+    const isFromOpenHandle = Boolean(authConfig.isFromOpenHandle);
+    const defaultTitle = authConfig.defaultTitle || '';
+    const defaultSubtitle = authConfig.defaultSubtitle || '';
 
     const qrImage = document.getElementById('qrImage');
     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -200,10 +206,6 @@
         socket.emit('join-session', currentSessionId);
       }
     });
-
-    const isFromOpenHandle = <%- isFromOpenHandle ? 'true' : 'false' %>;
-    const defaultTitle = <%- JSON.stringify(config.app.name) %>;
-    const defaultSubtitle = <%- JSON.stringify(config.app.subtitle) %>;
 
     function revealQrLogin() {
       const monit = document.getElementById('openHandleMonit');
