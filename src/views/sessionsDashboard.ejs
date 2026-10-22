@@ -67,13 +67,30 @@
                }
                const deviceName = s.friendlyDevice || 'Desktop Browser';
           %>
-            <div class="session-card" id="session-card-<%= s.id %>">
+            <% 
+              const isCustomAccess = Array.isArray(s.allowedServices) && s.allowedServices.length > 0 && !s.allowedServices.includes('*');
+              let initialSvcNames = 'All Services';
+              let initialAllowed = ['*'];
+              if (isCustomAccess) {
+                initialSvcNames = s.allowedServices.map(function(id) {
+                  const found = (config.services || []).find(svc => (svc.id || '').toLowerCase() === id.toLowerCase());
+                  return found ? found.name : id;
+                }).join(', ');
+                initialAllowed = s.allowedServices;
+              }
+            %>
+            <div class="session-card" id="session-card-<%= s.id %>" data-session-id="<%= s.id %>" data-device-name="<%= deviceName %>" data-allowed-services='<%- JSON.stringify(initialAllowed) %>'>
               <div class="session-info">
                 <div class="session-header" id="header-<%= s.id %>">
                   <span class="session-name" id="name-<%= s.id %>"><%= deviceName %></span>
                   <button type="button" class="btn-rename-trigger" onclick="openRename('<%= s.id %>')" title="Rename device" aria-label="Rename device">
                     <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                  <button type="button" class="btn-perm-trigger" onclick="openPermissionsModalForCard('<%= s.id %>')" title="Edit service permissions" aria-label="Edit service permissions">
+                    <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                     </svg>
                   </button>
                   <% if (s.isTrusted) { %>
@@ -96,14 +113,10 @@
                 <div class="session-sub">
                   <div><%= s.ip %> &bull; <span class="session-started" data-created="<%= s.createdAt || '' %>">Started <%= timeLabel %></span></div>
                   <div class="session-expiry" data-expires="<%= s.expiresAt || '' %>">Expires <%= expiresLabel %></div>
-                  <% if (Array.isArray(s.allowedServices) && s.allowedServices.length > 0) { 
-                       const svcNames = s.allowedServices.map(function(id) {
-                         const found = (config.services || []).find(svc => (svc.id || '').toLowerCase() === id.toLowerCase());
-                         return found ? found.name : id;
-                       }).join(', ');
-                  %>
-                    <div class="session-services" style="font-size: 0.75rem; color: #38bdf8; margin-top: 0.15rem;">Access: <%= svcNames %></div>
-                  <% } %>
+                  <div class="session-services-row" id="services-row-<%= s.id %>">
+                    <span style="color: #94a3b8;">Access:</span>
+                    <span class="session-services-label" id="services-label-<%= s.id %>" style="color: #38bdf8; font-weight: 500;"><%= initialSvcNames %></span>
+                  </div>
                 </div>
               </div>
               <form method="POST" action="/auth/sessions/revoke" onsubmit="handleRevoke(event, '<%= s.id %>')">
@@ -208,6 +221,62 @@
     </div>
   </div>
 
+  <!-- In-App Permissions Management Modal -->
+  <div class="pair-modal-overlay" id="permissionsModal" style="display: none;" onclick="if(event.target===this)closePermissionsModal()">
+    <div class="pair-modal-card permissions-modal-card">
+      <div class="pair-modal-header">
+        <div>
+          <div class="pair-modal-title">Edit Permissions</div>
+          <div class="permissions-modal-device" id="modalDeviceName">Desktop Browser</div>
+        </div>
+        <button type="button" class="btn-close-scanner" onclick="closePermissionsModal()" aria-label="Close">
+          <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <p class="pair-modal-desc" style="margin-bottom: 0.5rem;">Select which services this session is permitted to access.</p>
+
+      <div class="permissions-header-actions">
+        <button type="button" class="btn-toggle-all" id="btnToggleAllServices" onclick="toggleAllModalServices()">Select All</button>
+      </div>
+
+      <form id="permissionsForm" onsubmit="handlePermissionsSubmit(event)">
+        <input type="hidden" id="permSessionId" name="sessionId" value="">
+
+        <div class="modal-services-checklist" id="modalServicesChecklist">
+          <% 
+            const activeSvcs = (config.getActiveServices ? config.getActiveServices() : config.services) || [];
+            activeSvcs.forEach(function(svc) { 
+          %>
+            <label class="modal-service-check-item" for="perm-svc-<%= svc.id %>">
+              <input 
+                type="checkbox" 
+                class="modal-service-checkbox" 
+                id="perm-svc-<%= svc.id %>" 
+                name="services" 
+                value="<%= svc.id %>"
+                onchange="onModalServiceChange()"
+              />
+              <div class="modal-service-check-info">
+                <span class="modal-service-check-name"><%= svc.name %></span>
+                <span class="modal-service-check-sub"><%= svc.description || svc.id %></span>
+              </div>
+            </label>
+          <% }); %>
+        </div>
+
+        <div class="pair-modal-error" id="permissionsModalError" style="display: none;"></div>
+
+        <div class="permissions-modal-footer">
+          <button type="button" class="btn-modal-cancel" onclick="closePermissionsModal()">Cancel</button>
+          <button type="submit" class="btn-pair-submit" id="btnSavePermissions" style="flex: 1; margin-top: 0;">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     function openRename(id) {
       const form = document.getElementById('rename-form-' + id);
@@ -271,6 +340,159 @@
     updateSessionTimestamps();
     setInterval(updateSessionTimestamps, 60000);
 
+    const KNOWN_SERVICES = <%- JSON.stringify(((config.getActiveServices ? config.getActiveServices() : config.services) || []).map(s => ({ id: (s.id || '').toLowerCase(), name: s.name }))) %>;
+
+    function getAccessLabel(allowedServices) {
+      if (!allowedServices || (Array.isArray(allowedServices) && (allowedServices.includes('*') || allowedServices.length === 0))) {
+        return 'All Services';
+      }
+      return allowedServices.map(function(id) {
+        const found = KNOWN_SERVICES.find(s => s.id === (id || '').toLowerCase());
+        return found ? found.name : id;
+      }).join(', ');
+    }
+
+    function updateCardPermissions(sessionId, allowedServices) {
+      const card = document.getElementById('session-card-' + sessionId);
+      if (!card) return;
+      const normalized = (!allowedServices || allowedServices.includes('*')) ? ['*'] : allowedServices;
+      card.dataset.allowedServices = JSON.stringify(normalized);
+      const labelEl = document.getElementById('services-label-' + sessionId);
+      if (labelEl) {
+        labelEl.textContent = getAccessLabel(allowedServices);
+      }
+    }
+
+    function openPermissionsModalForCard(sessionId) {
+      const card = document.getElementById('session-card-' + sessionId);
+      if (!card) return;
+      const deviceName = card.dataset.deviceName || 'Desktop Browser';
+      let allowed = ['*'];
+      try {
+        if (card.dataset.allowedServices) {
+          allowed = JSON.parse(card.dataset.allowedServices);
+        }
+      } catch (e) {}
+      openPermissionsModal(sessionId, deviceName, allowed);
+    }
+
+    function openPermissionsModal(sessionId, deviceName, allowedServices) {
+      const modal = document.getElementById('permissionsModal');
+      const idInput = document.getElementById('permSessionId');
+      const devNameEl = document.getElementById('modalDeviceName');
+      const errEl = document.getElementById('permissionsModalError');
+      if (!modal || !idInput) return;
+
+      idInput.value = sessionId;
+      if (devNameEl) devNameEl.textContent = deviceName;
+      if (errEl) {
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+      }
+
+      const isAll = !allowedServices || !Array.isArray(allowedServices) || allowedServices.includes('*') || allowedServices.length === 0;
+      const lowerAllowed = Array.isArray(allowedServices) ? allowedServices.map(s => String(s).toLowerCase()) : [];
+
+      const checkboxes = document.querySelectorAll('.modal-service-checkbox');
+      checkboxes.forEach(function(cb) {
+        if (isAll) {
+          cb.checked = true;
+        } else {
+          cb.checked = lowerAllowed.includes(cb.value.toLowerCase());
+        }
+      });
+
+      updateToggleAllButtonText();
+      modal.style.display = 'flex';
+    }
+
+    function closePermissionsModal() {
+      const modal = document.getElementById('permissionsModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function updateToggleAllButtonText() {
+      const btn = document.getElementById('btnToggleAllServices');
+      if (!btn) return;
+      const checkboxes = Array.from(document.querySelectorAll('.modal-service-checkbox'));
+      const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
+      btn.textContent = allChecked ? 'Deselect All' : 'Select All';
+    }
+
+    function onModalServiceChange() {
+      updateToggleAllButtonText();
+      const errEl = document.getElementById('permissionsModalError');
+      if (errEl) errEl.style.display = 'none';
+    }
+
+    function toggleAllModalServices() {
+      const checkboxes = Array.from(document.querySelectorAll('.modal-service-checkbox'));
+      const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
+      checkboxes.forEach(function(cb) {
+        cb.checked = !allChecked;
+      });
+      updateToggleAllButtonText();
+      const errEl = document.getElementById('permissionsModalError');
+      if (errEl) errEl.style.display = 'none';
+    }
+
+    async function handlePermissionsSubmit(e) {
+      if (e) e.preventDefault();
+      const idInput = document.getElementById('permSessionId');
+      const btn = document.getElementById('btnSavePermissions');
+      const errEl = document.getElementById('permissionsModalError');
+      if (!idInput) return;
+      const sessionId = idInput.value;
+
+      const checked = Array.from(document.querySelectorAll('.modal-service-checkbox:checked')).map(cb => cb.value);
+      if (checked.length === 0) {
+        if (errEl) {
+          errEl.textContent = 'Please select at least one service.';
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+      }
+
+      try {
+        const res = await fetch('/auth/sessions/permissions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            sessionId: sessionId,
+            services: checked,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to update permissions.');
+        }
+
+        updateCardPermissions(data.sessionId || sessionId, data.allowedServices);
+        showNotice(data.message || 'Permissions updated successfully.');
+        closePermissionsModal();
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = err.message || 'Failed to update permissions.';
+          errEl.style.display = 'block';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Save Changes';
+        }
+      }
+    }
+
     const socket = typeof io !== 'undefined' ? io() : null;
     if (socket) {
       socket.on('session-revoked', function(data) {
@@ -278,6 +500,11 @@
           removeAllSessionCards('All sessions revoked.');
         } else if (data && data.sessionId) {
           removeSessionCard(data.sessionId, 'Session revoked.');
+        }
+      });
+      socket.on('session-permissions-updated', function(data) {
+        if (data && data.sessionId) {
+          updateCardPermissions(data.sessionId, data.allowedServices);
         }
       });
     }

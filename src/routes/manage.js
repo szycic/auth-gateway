@@ -116,6 +116,87 @@ router.post('/sessions/rename', (req, res) => {
   return res.redirect('/auth/sessions');
 });
 
+// Update session service permissions
+router.post('/sessions/permissions', (req, res) => {
+  if (!sessionService.isApprover(req)) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
+    return res.status(401).send('Unauthorized.');
+  }
+
+  const { sessionId, services } = req.body;
+  if (!sessionId || typeof sessionId !== 'string') {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(400).json({ error: 'Invalid session ID.' });
+    }
+    return res.status(400).send('Invalid session ID.');
+  }
+
+  let targetSession = null;
+  for (const session of sessionService.activeSessions.values()) {
+    if (session.id === sessionId) {
+      targetSession = session;
+      break;
+    }
+  }
+
+  if (!targetSession) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(404).json({ error: 'Session not found or expired.' });
+    }
+    return res.redirect('/auth/sessions?notice=' + encodeURIComponent('Session not found or expired.'));
+  }
+
+  const allActiveServices = (config.getActiveServices ? config.getActiveServices() : config.services)
+    .map(s => (s.id || '').toLowerCase());
+  const selectedList = (Array.isArray(services) ? services : (services ? [services] : []))
+    .map(s => String(s).trim().toLowerCase())
+    .filter(Boolean);
+
+  if (selectedList.length === 0) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(400).json({ error: 'At least one service must be selected.' });
+    }
+    return res.redirect('/auth/sessions?notice=' + encodeURIComponent('At least one service must be selected.'));
+  }
+
+  // If all active services are selected or '*' is included, null means unrestricted full access
+  const isAll = selectedList.includes('*') || (allActiveServices.length > 0 && allActiveServices.every(id => selectedList.includes(id)));
+  targetSession.allowedServices = isAll ? null : selectedList;
+  sessionService.savePersistedSessions();
+
+  if (socketService.notifySessionPermissionsUpdated) {
+    socketService.notifySessionPermissionsUpdated(targetSession.id, targetSession.allowedServices);
+  }
+
+  auditLog('SESSION_PERMISSIONS_UPDATED', {
+    ip: authService.getClientIp(req),
+    sessionId: targetSession.id,
+    device: targetSession.friendlyDevice,
+    allowedServices: targetSession.allowedServices ? targetSession.allowedServices.join(',') : 'all',
+  });
+
+  const svcNames = targetSession.allowedServices
+    ? targetSession.allowedServices.map(id => {
+        const found = (config.services || []).find(s => (s.id || '').toLowerCase() === id);
+        return found ? found.name : id;
+      }).join(', ')
+    : 'All Services';
+
+  if (req.accepts('json') && !req.accepts('html')) {
+    return res.json({
+      success: true,
+      sessionId: targetSession.id,
+      allowedServices: targetSession.allowedServices,
+      accessLabel: svcNames,
+      message: `Permissions updated for "${targetSession.friendlyDevice}": ${svcNames}`,
+    });
+  }
+
+  return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Permissions updated for "${targetSession.friendlyDevice}".`));
+});
+
 // Desktop token exchange
 router.get('/exchange', (req, res) => {
   const { code, redirect } = req.query;
