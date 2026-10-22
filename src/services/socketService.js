@@ -65,6 +65,13 @@ function notifyAllSessionsRevoked() {
   }
 }
 
+function notifySessionPermissionsUpdated(sessionId, allowedServices) {
+  if (ioInstance) {
+    ioInstance.to('session:' + sessionId).emit('session-permissions-updated', { sessionId, allowedServices });
+    ioInstance.emit('session-permissions-updated', { sessionId, allowedServices });
+  }
+}
+
 function closeSocketIO() {
   if (ioInstance) {
     try {
@@ -82,4 +89,5 @@ module.exports = {
   notifySessionRejected,
   notifySessionRevoked,
   notifyAllSessionsRevoked,
+  notifySessionPermissionsUpdated,
 };
