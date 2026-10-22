@@ -2,6 +2,7 @@ const http = require('http');
 const config = require('../config');
 const sessionService = require('./sessionService');
 const authService = require('./authService');
+const { isAllowedOrigin } = require('../utils/originHelper');
 
 /**
  * Resolve target upstream URL for a given Host header.
@@ -96,6 +97,19 @@ function relaxCspHeader(val, authBaseUrl) {
  * @param {import('express').Response} res
  */
 function proxyToTargetApp(req, res) {
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    if (origin && isAllowedOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
+      const reqHeaders = req.headers['access-control-request-headers'];
+      res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
+      res.setHeader('Access-Control-Max-Age', '86400');
+    }
+    return res.status(204).end();
+  }
+
   const matchedService = sessionService.getTargetServiceForRequest(req) || config.getService(req.headers.host);
   if (matchedService && matchedService.disableService) {
     return res.status(503).render('statusNotice', {
@@ -200,7 +214,13 @@ function proxyToTargetApp(req, res) {
           res.end(body);
         });
       } else {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        const headers = { ...proxyRes.headers };
+        const origin = req.headers.origin;
+        if (origin && isAllowedOrigin(origin)) {
+          headers['access-control-allow-origin'] = origin;
+          headers['access-control-allow-credentials'] = 'true';
+        }
+        res.writeHead(proxyRes.statusCode, headers);
         proxyRes.pipe(res);
       }
     }
@@ -217,21 +237,21 @@ function proxyToTargetApp(req, res) {
     });
   });
 
-  if (req.body && Object.keys(req.body).length > 0) {
+  if (req.body !== undefined && req.body !== null && req.method !== 'GET' && req.method !== 'HEAD') {
     const ct = (req.headers['content-type'] || '').toLowerCase();
-    let bodyData;
+    let bodyData = null;
     if (ct.includes('application/json')) {
       bodyData = JSON.stringify(req.body);
     } else if (ct.includes('application/x-www-form-urlencoded')) {
       bodyData = new URLSearchParams(req.body).toString();
     }
-    if (bodyData) {
+    if (bodyData !== null) {
       proxyReq.write(bodyData);
+      proxyReq.end();
+      return;
     }
-    proxyReq.end();
-  } else {
-    req.pipe(proxyReq);
   }
+  req.pipe(proxyReq);
 }
 
 module.exports = {

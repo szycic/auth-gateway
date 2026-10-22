@@ -14,9 +14,18 @@ app.locals.config = config;
 app.locals.isSessionAllowedForService = sessionService.isSessionAllowedForService;
 app.locals.assetVersion = Date.now().toString(36);
 
+const { isAuthDomain } = require('./utils/originHelper');
+
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  if (req.path.startsWith('/auth/') || req.path === '/login' || isAuthDomain(req)) {
+    return express.json()(req, res, (err) => {
+      if (err) return next(err);
+      express.urlencoded({ extended: true })(req, res, next);
+    });
+  }
+  next();
+});
 
 app.use(routes);
 
