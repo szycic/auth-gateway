@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: auth-gateway
     restart: unless-stopped
+    env_file:
+      - .env
     volumes:
       - gateway-data:/usr/src/app/data
       - ./config.json:/usr/src/app/config.json:ro

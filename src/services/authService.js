@@ -174,6 +174,30 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
+function isGatewayTokenValid(req) {
+  if (!config.GATEWAY_TOKEN || typeof config.GATEWAY_TOKEN !== 'string' || !config.GATEWAY_TOKEN.trim()) {
+    return false;
+  }
+  if (!req || !req.headers) return false;
+
+  const rawHeaderToken = req.headers['x-gateway-token'] ||
+    req.headers['x-auth-token'] ||
+    (req.headers['authorization'] && req.headers['authorization'].startsWith('Bearer ')
+      ? req.headers['authorization'].slice(7).trim()
+      : null);
+
+  if (!rawHeaderToken || typeof rawHeaderToken !== 'string') {
+    return false;
+  }
+
+  const expected = Buffer.from(String(config.GATEWAY_TOKEN).trim());
+  const received = Buffer.from(String(rawHeaderToken).trim());
+  if (expected.length !== received.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(expected, received);
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -188,6 +212,7 @@ module.exports = {
   generatePairCode,
   createExchangeCode,
   consumeExchangeCode,
+  isGatewayTokenValid,
   MAX_LOGIN_ATTEMPTS,
   LOGIN_LOCKOUT_MS,
 };

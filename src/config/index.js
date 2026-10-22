@@ -2,6 +2,40 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT_DIR = path.resolve(__dirname, '../../');
+
+function loadEnvFile() {
+  const envPaths = [
+    process.env.ENV_PATH,
+    path.join(ROOT_DIR, '.env'),
+  ].filter(Boolean);
+
+  for (const envPath of envPaths) {
+    if (fs.existsSync(envPath)) {
+      try {
+        const raw = fs.readFileSync(envPath, 'utf8');
+        for (const line of raw.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx !== -1) {
+            const key = trimmed.slice(0, eqIdx).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1);
+            }
+            if (!(key in process.env)) {
+              process.env[key] = val;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[auth-gateway] Warning: Failed to read .env file at ${envPath}:`, err.message);
+      }
+    }
+  }
+}
+loadEnvFile();
+
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT_DIR, 'data');
 
 const DEFAULT_CONFIG = {
@@ -122,6 +156,7 @@ const config = {
   SESSION_TTL_HOURS: parseInt(process.env.SESSION_TTL_HOURS || (fileConfig.session && fileConfig.session.sessionTtlHours) || DEFAULT_CONFIG.session.sessionTtlHours, 10),
   QR_SESSION_TTL_MS: parseInt(process.env.QR_SESSION_TTL_MS || (fileConfig.session && fileConfig.session.qrSessionTtlMs) || DEFAULT_CONFIG.session.qrSessionTtlMs, 10),
   APPROVER_TTL_DAYS: parseInt(process.env.APPROVER_TTL_DAYS || (fileConfig.session && fileConfig.session.approverTtlDays) || DEFAULT_CONFIG.session.approverTtlDays, 10),
+  GATEWAY_TOKEN: (process.env.GATEWAY_TOKEN || (fileConfig.app && fileConfig.app.gatewayToken) || '').trim() || null,
 
   getService(idOrUrl, onlyActive = false) {
     if (!idOrUrl || typeof idOrUrl !== 'string') return null;
@@ -241,6 +276,7 @@ const config = {
         ...(fileConfig.downstream || {}),
         targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
       };
+      this.GATEWAY_TOKEN = (process.env.GATEWAY_TOKEN || (fileConfig.app && fileConfig.app.gatewayToken) || '').trim() || null;
       console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getActiveServices().length} active, ${this.services.filter(s => !s.disableAuth).length} require auth).`);
       return true;
     } catch (err) {
