@@ -15,7 +15,7 @@
       </svg>
     </div>
 
-    <h1><%= config.app.name %></h1>
+    <h1 id="pageTitle"><%= isFromOpenHandle ? 'Authentication Required' : config.app.name %></h1>
     <p class="subtitle" id="pageSubtitle" <%- isFromOpenHandle ? 'style="display: none;"' : '' %>><%= config.app.subtitle %></p>
 
     <% if (matchedService) { %>
@@ -28,9 +28,6 @@
 
     <% if (isFromOpenHandle) { %>
       <div class="monit-container" id="openHandleMonit">
-        <div class="monit-title">
-          Authentication Required
-        </div>
         <p class="monit-desc">
           This part of <strong class="monit-service-name"><%= matchedService ? matchedService.name : 'the service' %></strong> requires additional authentication to access.
         </p>
@@ -205,12 +202,14 @@
     });
 
     const isFromOpenHandle = <%- isFromOpenHandle ? 'true' : 'false' %>;
+    const defaultTitle = <%- JSON.stringify(config.app.name) %>;
     const defaultSubtitle = <%- JSON.stringify(config.app.subtitle) %>;
 
     function revealQrLogin() {
       const monit = document.getElementById('openHandleMonit');
       const qrSection = document.getElementById('qrAuthSection');
       const serviceBadge = document.getElementById('serviceBadge');
+      const pageTitle = document.getElementById('pageTitle');
       const pageSubtitle = document.getElementById('pageSubtitle');
       if (monit) monit.style.display = 'none';
       if (qrSection) {
@@ -218,6 +217,9 @@
       }
       if (serviceBadge) {
         serviceBadge.style.display = 'block';
+      }
+      if (pageTitle) {
+        pageTitle.textContent = defaultTitle;
       }
       if (pageSubtitle) {
         pageSubtitle.style.display = 'block';
@@ -245,10 +247,12 @@
         const monit = document.getElementById('openHandleMonit');
         const qrSection = document.getElementById('qrAuthSection');
         const serviceBadge = document.getElementById('serviceBadge');
+        const pageTitle = document.getElementById('pageTitle');
         const pageSubtitle = document.getElementById('pageSubtitle');
         if (monit) monit.style.display = 'none';
         if (qrSection) qrSection.style.display = 'block';
         if (serviceBadge) serviceBadge.style.display = 'block';
+        if (pageTitle) pageTitle.textContent = defaultTitle;
         if (pageSubtitle) {
           pageSubtitle.style.display = 'block';
           pageSubtitle.textContent = defaultSubtitle;
