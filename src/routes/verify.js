@@ -2,6 +2,7 @@ const express = require('express');
 const config = require('../config');
 const { isAllowedOrigin } = require('../utils/originHelper');
 const sessionService = require('../services/sessionService');
+const authService = require('../services/authService');
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ router.all('/verify', (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
     } else {
       return res.status(403).send('Forbidden: CORS origin not allowed');
     }
@@ -36,6 +37,15 @@ router.all('/verify', (req, res) => {
       'X-Auth-Role': 'public',
       'X-Auth-User': 'anonymous',
     }).send('OK: Service is public');
+  }
+
+  // Gateway Secret Token check (via custom headers: X-Gateway-Token, X-Auth-Token, or Bearer token)
+  if (authService.isGatewayTokenValid(req)) {
+    return res.status(200).set({
+      'X-Auth-Status': 'authenticated',
+      'X-Auth-Role': 'api_token',
+      'X-Auth-User': 'api_user',
+    }).send('OK: Authenticated via Gateway Token');
   }
 
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];

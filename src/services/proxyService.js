@@ -1,6 +1,7 @@
 const http = require('http');
 const config = require('../config');
 const sessionService = require('./sessionService');
+const authService = require('./authService');
 
 /**
  * Resolve target upstream URL for a given Host header.
@@ -107,10 +108,11 @@ function proxyToTargetApp(req, res) {
   }
 
   const isAuthRequired = matchedService ? !matchedService.disableAuth : true;
+  const isGatewayTokenAuth = authService.isGatewayTokenValid(req);
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   const session = sessionService.activeSessions.get(token);
 
-  if (isAuthRequired && !sessionService.isApprover(req) && (!matchedService || !sessionService.isSessionAllowedForService(session, matchedService))) {
+  if (isAuthRequired && !isGatewayTokenAuth && !sessionService.isApprover(req) && (!matchedService || !sessionService.isSessionAllowedForService(session, matchedService))) {
     return res.status(403).render('statusNotice', {
       title: 'Access Restricted',
       message: matchedService
@@ -158,7 +160,7 @@ function proxyToTargetApp(req, res) {
   };
 
   const isHtmlExpected = (req.headers.accept || '').includes('text/html');
-  if (isAuthRequired && isHtmlExpected && req.method === 'GET') {
+  if (isAuthRequired && !isGatewayTokenAuth && isHtmlExpected && req.method === 'GET') {
     delete proxyHeaders['accept-encoding'];
   }
 
@@ -172,7 +174,7 @@ function proxyToTargetApp(req, res) {
       const contentType = proxyRes.headers['content-type'] || '';
       const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300;
 
-      if (isAuthRequired && isHtml && req.method === 'GET') {
+      if (isAuthRequired && !isGatewayTokenAuth && isHtml && req.method === 'GET') {
         let body = '';
         proxyRes.setEncoding('utf8');
         proxyRes.on('data', (chunk) => { body += chunk; });

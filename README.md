@@ -20,6 +20,8 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
   - [Pattern A: Standard Protected Web App (SPA / Static)](#pattern-a-standard-protected-web-app-spa--static)
   - [Pattern B: App with Public Bypasses (e.g. Webhooks, Public Shares)](#pattern-b-app-with-public-bypasses-eg-webhooks-public-shares)
   - [Pattern C: App with WebSocket Connections (e.g. Uptime Kuma)](#pattern-c-app-with-websocket-connections-eg-uptime-kuma)
+  - [Pattern D: Native API Key Passthrough (e.g. Karakeep)](#pattern-d-native-api-key-passthrough-eg-karakeep)
+- [Automated & API Access (Gateway Token)](#automated--api-access-gateway-token)
 - [Adding and Configuring a New Service](#adding-and-configuring-a-new-service)
 - [Configuration Reference (`config.json`)](#configuration-reference-configjson)
 - [CLI Tools](#cli-tools)
@@ -109,6 +111,18 @@ Create your `config.json` based on [config.sample.json](/config.sample.json):
 
 > **Important**: Ensure `cookieDomain` matches your root domain prefixed with a dot (e.g., `.example.com`) so cookies are shared across all subdomains.
 
+Create an `.env` file based on `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Set a secret `GATEWAY_TOKEN` for automated scripts, browser extensions, or API access:
+
+```env
+GATEWAY_TOKEN=your-random-secret-token-here
+```
+
 ### 3. Docker Compose Deployment
 
 Create a `docker-compose.yml`:
@@ -121,6 +135,8 @@ services:
       dockerfile: Dockerfile
     container_name: auth-gateway
     restart: unless-stopped
+    env_file:
+      - .env
     volumes:
       - gateway-data:/usr/src/app/data
       - ./config.json:/usr/src/app/config.json:ro
@@ -325,6 +341,89 @@ uptime.example.com {
 }
 ```
 
+### Pattern D: Native API Key Passthrough (e.g. Karakeep)
+
+For services like **Karakeep** (formerly Hoarder) that offer their own native API keys for companion apps and browser extensions, you can route the public REST API directly to the application backend while keeping all Web UI dashboard pages protected behind Auth Gateway:
+
+```caddy
+keep.example.com {
+	# 1. Direct REST API Access (secured natively by Karakeep Bearer API Key)
+	handle /api/v1/* {
+		reverse_proxy karakeep-web:3000
+	}
+
+	# 2. Forward Auth Protected Web UI (dashboard, settings, etc.)
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 3. Intelligent error handling (redirect web users to login, return 401 JSON for APIs)
+	handle_errors {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required"}` 401
+		}
+
+		handle {
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	header {
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+	}
+}
+```
+
+---
+
+## Automated & API Access (Gateway Token)
+
+Auth Gateway supports automated, headless, and third-party client access (such as browser extensions, CLI tools, cron scripts, and mobile apps) without requiring interactive browser logins or cookie manipulation.
+
+### Configuring the Token
+
+1. Define `GATEWAY_TOKEN` in `.env`:
+   ```env
+   GATEWAY_TOKEN=your-random-secret-token-here
+   ```
+2. Docker Compose automatically passes `.env` to `auth-gateway`.
+
+### Passing the Token in Requests
+
+Any request sent with a matching token is immediately authenticated by Auth Gateway (`200 OK`, `X-Auth-Role: api_token`) and bypasses HTML watchdog injection:
+
+- **Custom Headers**:
+  ```http
+  X-Gateway-Token: your-random-secret-token-here
+  ```
+  or
+  ```http
+  X-Auth-Token: your-random-secret-token-here
+  ```
+- **Bearer Authorization**:
+  ```http
+  Authorization: Bearer your-random-secret-token-here
+  ```
+
+### Example Usage
+
+**cURL**:
+
+```bash
+curl -H "X-Gateway-Token: your-random-secret-token-here" https://myapp.example.com/api/data
+```
+
 ---
 
 ## Adding and Configuring a New Service
@@ -432,28 +531,28 @@ myapp.example.com {
 
 ## Configuration Reference (`config.json`)
 
-| Section    | Key                  | Type    | Description                                                                            |
-| ---------- | -------------------- | ------- | -------------------------------------------------------------------------------------- |
-| `app`      | `name`               | string  | Portal title displayed on login and dashboard pages.                                   |
-| `app`      | `subtitle`           | string  | Explanatory text beneath the portal title.                                             |
-| `app`      | `footerText`         | string  | Text shown in the footer of all auth views.                                            |
-| `server`   | `port`               | number  | Port Auth Gateway listens on inside the container (default: `3000`).                   |
-| `server`   | `host`               | string  | Listening interface (default: `0.0.0.0`).                                              |
-| `server`   | `baseUrl`            | string  | Full public URL of the auth portal (e.g. `https://auth.example.com`).                  |
-| `session`  | `cookieDomain`       | string  | Root domain with leading dot for shared cookies (e.g. `.example.com`).                 |
-| `session`  | `authCookieName`     | string  | Name of the authentication cookie (default: `gateway_auth_token`).                     |
-| `session`  | `approverCookieName` | string  | Name of the mobile approver session cookie.                                            |
-| `session`  | `sessionTtlHours`    | number  | Lifespan of an authenticated user session in hours (e.g. `72`).                        |
-| `session`  | `qrSessionTtlMs`     | number  | Lifespan of a pending QR approval request in milliseconds (default: `120000`).         |
-| `session`  | `approverTtlDays`    | number  | Lifespan of an approver session in days (e.g. `30`).                                   |
-| `services` | `id`                 | string  | Unique service identifier.                                                             |
-| `services` | `name`               | string  | Title shown on the dashboard card.                                                     |
-| `services` | `subtitle`           | string  | Description shown on the dashboard card.                                               |
-| `services` | `url`                | string  | Public HTTPS URL of the service.                                                       |
-| `services` | `upstream`           | string  | Internal backend container URL (e.g. `http://my-app:8080`).                            |
+| Section    | Key                  | Type    | Description                                                                                                                   |
+| ---------- | -------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `app`      | `name`               | string  | Portal title displayed on login and dashboard pages.                                                                          |
+| `app`      | `subtitle`           | string  | Explanatory text beneath the portal title.                                                                                    |
+| `app`      | `footerText`         | string  | Text shown in the footer of all auth views.                                                                                   |
+| `server`   | `port`               | number  | Port Auth Gateway listens on inside the container (default: `3000`).                                                          |
+| `server`   | `host`               | string  | Listening interface (default: `0.0.0.0`).                                                                                     |
+| `server`   | `baseUrl`            | string  | Full public URL of the auth portal (e.g. `https://auth.example.com`).                                                         |
+| `session`  | `cookieDomain`       | string  | Root domain with leading dot for shared cookies (e.g. `.example.com`).                                                        |
+| `session`  | `authCookieName`     | string  | Name of the authentication cookie (default: `gateway_auth_token`).                                                            |
+| `session`  | `approverCookieName` | string  | Name of the mobile approver session cookie.                                                                                   |
+| `session`  | `sessionTtlHours`    | number  | Lifespan of an authenticated user session in hours (e.g. `72`).                                                               |
+| `session`  | `qrSessionTtlMs`     | number  | Lifespan of a pending QR approval request in milliseconds (default: `120000`).                                                |
+| `session`  | `approverTtlDays`    | number  | Lifespan of an approver session in days (e.g. `30`).                                                                          |
+| `services` | `id`                 | string  | Unique service identifier.                                                                                                    |
+| `services` | `name`               | string  | Title shown on the dashboard card.                                                                                            |
+| `services` | `subtitle`           | string  | Description shown on the dashboard card.                                                                                      |
+| `services` | `url`                | string  | Public HTTPS URL of the service.                                                                                              |
+| `services` | `upstream`           | string  | Internal backend container URL (e.g. `http://my-app:8080`).                                                                   |
 | `services` | `allowedRedirects`   | array   | List of URL patterns permitted for post-login redirection (e.g. `["https://myapp.example.com*"]`). Wildcards (`*`) supported. |
-| `services` | `disableService`     | boolean | Optional. When `true`, completely hides service from dashboard and disables redirects. |
-| `services` | `disableAuth`        | boolean | Optional. When `true`, bypasses authentication verification for this service.          |
+| `services` | `disableService`     | boolean | Optional. When `true`, completely hides service from dashboard and disables redirects.                                        |
+| `services` | `disableAuth`        | boolean | Optional. When `true`, bypasses authentication verification for this service.                                                 |
 
 ---
 
