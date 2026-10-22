@@ -8,6 +8,10 @@ const router = express.Router();
 
 router.all('/verify', (req, res) => {
   const origin = req.headers.origin;
+  const isOptions = req.method === 'OPTIONS' ||
+    (req.headers['x-forwarded-method'] || '').toUpperCase() === 'OPTIONS' ||
+    Boolean(req.headers['access-control-request-method']);
+
   if (origin) {
     if (isAllowedOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
@@ -20,7 +24,7 @@ router.all('/verify', (req, res) => {
       return res.status(403).send('Forbidden: CORS origin not allowed');
     }
   }
-  if (req.method === 'OPTIONS') {
+  if (isOptions) {
     return res.status(204).end();
   }
 
