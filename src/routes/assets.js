@@ -244,4 +244,116 @@ router.get('/auth/assets/auth-watchdog.js', (req, res) => {
   return res.send(getAuthWatchdogScript());
 });
 
+function getAuthPublicGuardScript() {
+  const authBaseUrl = config.server.baseUrl;
+  return `(function() {
+  var AUTH_URL = window.__AUTH_BASE_URL__ || '${authBaseUrl}';
+  var currentOrigin = window.location.origin;
+  var lastPublicUrl = window.location.href;
+  var cache = {};
+
+  function redirectToAuth(targetHref) {
+    try {
+      var target = new URL(targetHref, window.location.href).href;
+      var fromUrl = lastPublicUrl || window.location.href;
+      window.location.href = AUTH_URL + '/login?redirect=' + encodeURIComponent(target) + '&from=' + encodeURIComponent(fromUrl);
+    } catch (e) {
+      window.location.href = targetHref;
+    }
+  }
+
+  function checkWithCaddy(targetUrl, onAuthRequired) {
+    var url;
+    try {
+      url = new URL(targetUrl, window.location.href);
+    } catch (e) {
+      return;
+    }
+    if (url.origin !== currentOrigin) return;
+
+    var pathname = url.pathname;
+    if (pathname === window.location.pathname) return;
+
+    if (cache[pathname] === true) return;
+    if (cache[pathname] === false) {
+      if (onAuthRequired) onAuthRequired(url.href);
+      return;
+    }
+
+    fetch(pathname, {
+      method: 'HEAD',
+      redirect: 'manual',
+      credentials: 'include'
+    }).then(function(res) {
+      if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.redirected) {
+        cache[pathname] = false;
+        if (onAuthRequired) onAuthRequired(url.href);
+      } else if (res.status === 200) {
+        cache[pathname] = true;
+        lastPublicUrl = url.href;
+      } else {
+        cache[pathname] = false;
+        if (onAuthRequired) onAuthRequired(url.href);
+      }
+    }).catch(function() {
+      cache[pathname] = false;
+      if (onAuthRequired) onAuthRequired(url.href);
+    });
+  }
+
+  var origPushState = history.pushState;
+  history.pushState = function(state, title, url) {
+    if (url) {
+      checkWithCaddy(url, function(redirectHref) {
+        redirectToAuth(redirectHref);
+      });
+    }
+    return origPushState.apply(this, arguments);
+  };
+
+  var origReplaceState = history.replaceState;
+  history.replaceState = function(state, title, url) {
+    if (url) {
+      checkWithCaddy(url, function(redirectHref) {
+        redirectToAuth(redirectHref);
+      });
+    }
+    return origReplaceState.apply(this, arguments);
+  };
+
+  document.addEventListener('mouseover', function(e) {
+    var a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (a && a.href) {
+      checkWithCaddy(a.href);
+    }
+  }, { passive: true });
+
+  document.addEventListener('focusin', function(e) {
+    var a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (a && a.href) {
+      checkWithCaddy(a.href);
+    }
+  }, { passive: true });
+
+  document.addEventListener('click', function(e) {
+    var a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (a && a.href) {
+      checkWithCaddy(a.href, function(redirectHref) {
+        e.preventDefault();
+        e.stopPropagation();
+        redirectToAuth(redirectHref);
+      });
+    }
+  }, true);
+})();`;
+}
+
+router.get('/auth/assets/auth-public-guard.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  return res.send(getAuthPublicGuardScript());
+});
+
 module.exports = router;
+
