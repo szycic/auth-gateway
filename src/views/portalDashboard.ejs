@@ -35,6 +35,23 @@
       const allowedServiceIds = isRestrictedSession
         ? (session.allowedServices || []).map(s => String(s).toLowerCase())
         : null;
+      const shouldShowRestricted = typeof showRestricted !== 'undefined' ? Boolean(showRestricted) : false;
+
+      function checkAllowed(s) {
+        if (isApproverUser) return true;
+        if (typeof isSessionAllowedForService === 'function') {
+          return isSessionAllowedForService(session, s);
+        }
+        if (isRestrictedSession) {
+          return allowedServiceIds && allowedServiceIds.includes((s.id || '').toLowerCase());
+        }
+        return true;
+      }
+
+      const visibleServices = activeServices.filter(function(s) {
+        const isAllowed = checkAllowed(s);
+        return shouldShowRestricted || isAllowed;
+      });
     %>
 
     <div class="session-badge">
@@ -49,11 +66,11 @@
 
     <div class="section-title">Authorized Services</div>
     <div class="services-grid">
-      <% if (activeServices.length === 0) { %>
-        <p style="color: #94a3b8; font-size: 0.85rem;">No services configured.</p>
+      <% if (visibleServices.length === 0) { %>
+        <p style="color: #94a3b8; font-size: 0.85rem;">No authorized services available.</p>
       <% } else { %>
-        <% activeServices.forEach(function(s) { 
-             const isAllowed = isApproverUser || (typeof isSessionAllowedForService === 'function' ? isSessionAllowedForService(session, s) : (!isRestrictedSession || (allowedServiceIds && allowedServiceIds.includes((s.id || '').toLowerCase()))));
+        <% visibleServices.forEach(function(s) { 
+             const isAllowed = checkAllowed(s);
              const targetUrl = s.url || '#';
         %>
           <div class="service-card <%= !isAllowed ? 'service-card-disabled' : '' %>">
@@ -97,6 +114,12 @@
       }
       socket.on('connect', registerDesktop);
       registerDesktop();
+
+      socket.on('session-permissions-updated', function(data) {
+        if (data && (data.all || data.sessionId === '<%= sessionId %>' || (data.token && data.token === '<%= sessionToken %>'))) {
+          window.location.reload();
+        }
+      });
 
       socket.on('session-revoked', function(data) {
         if (data && (data.all || data.sessionId === '<%= sessionId %>' || (data.token && data.token === '<%= sessionToken %>'))) {

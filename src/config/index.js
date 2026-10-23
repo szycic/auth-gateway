@@ -43,6 +43,7 @@ const DEFAULT_CONFIG = {
     name: 'Auth Gateway',
     subtitle: 'Scan the QR code or enter the PIN on the authenticated mobile device to approve access.',
     footerText: 'auth.example.com',
+    showRestricted: false,
   },
   server: {
     port: 3000,
@@ -58,9 +59,6 @@ const DEFAULT_CONFIG = {
     approverTtlDays: 30,
   },
   services: [],
-  downstream: {
-    targetUrl: process.env.TARGET_APP_URL || '',
-  },
 };
 
 let loadedConfigPath = null;
@@ -107,7 +105,18 @@ function normalizeService(svc) {
   };
 }
 
+function resolveShowRestricted(cfg) {
+  if (process.env.SHOW_RESTRICTED !== undefined) {
+    return process.env.SHOW_RESTRICTED === 'true' || process.env.SHOW_RESTRICTED === '1';
+  }
+  if (cfg && cfg.app && cfg.app.showRestricted !== undefined) {
+    return Boolean(cfg.app.showRestricted);
+  }
+  return DEFAULT_CONFIG.app.showRestricted;
+}
+
 const mergedServices = (Array.isArray(fileConfig.services) ? fileConfig.services : []).map(normalizeService);
+const initialShowRestricted = resolveShowRestricted(fileConfig);
 
 const config = {
   app: {
@@ -116,6 +125,13 @@ const config = {
     name: process.env.APP_NAME || (fileConfig.app && fileConfig.app.name) || DEFAULT_CONFIG.app.name,
     subtitle: process.env.APP_SUBTITLE || (fileConfig.app && fileConfig.app.subtitle) || DEFAULT_CONFIG.app.subtitle,
     footerText: process.env.APP_FOOTER_TEXT || (fileConfig.app && fileConfig.app.footerText) || DEFAULT_CONFIG.app.footerText,
+    showRestricted: initialShowRestricted,
+  },
+  get showRestricted() {
+    return this.app.showRestricted;
+  },
+  set showRestricted(val) {
+    this.app.showRestricted = Boolean(val);
   },
   server: {
     ...DEFAULT_CONFIG.server,
@@ -139,18 +155,12 @@ const config = {
     approverTtlDays: parseInt(process.env.APPROVER_TTL_DAYS || (fileConfig.session && fileConfig.session.approverTtlDays) || DEFAULT_CONFIG.session.approverTtlDays, 10),
   },
   services: mergedServices,
-  downstream: {
-    ...DEFAULT_CONFIG.downstream,
-    ...(fileConfig.downstream || {}),
-    targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
-  },
   dataDir: DATA_DIR,
   DATA_DIR: DATA_DIR,
   ROOT_DIR: ROOT_DIR,
   PORT: parseInt(process.env.PORT || (fileConfig.server && fileConfig.server.port) || DEFAULT_CONFIG.server.port, 10),
   HOST: process.env.HOST || (fileConfig.server && fileConfig.server.host) || DEFAULT_CONFIG.server.host,
   BASE_URL: (process.env.BASE_URL || (fileConfig.server && fileConfig.server.baseUrl) || DEFAULT_CONFIG.server.baseUrl).replace(/\/+$/, ''),
-  TARGET_APP_URL: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
   AUTH_COOKIE_NAME: process.env.AUTH_COOKIE_NAME || (fileConfig.session && fileConfig.session.authCookieName) || DEFAULT_CONFIG.session.authCookieName,
   APPROVER_COOKIE_NAME: process.env.APPROVER_COOKIE_NAME || (fileConfig.session && fileConfig.session.approverCookieName) || DEFAULT_CONFIG.session.approverCookieName,
   SESSION_TTL_HOURS: parseInt(process.env.SESSION_TTL_HOURS || (fileConfig.session && fileConfig.session.sessionTtlHours) || DEFAULT_CONFIG.session.sessionTtlHours, 10),
@@ -180,6 +190,18 @@ const config = {
 
   getActiveServices() {
     return this.services.filter(s => !s.disableService);
+  },
+
+  getVisibleServices(session, isApprover = false) {
+    const active = this.getActiveServices();
+    if (this.showRestricted || isApprover) return active;
+    return active.filter(s => {
+      if (s.disableAuth) return true;
+      if (!session) return false;
+      const hasRestricted = Array.isArray(session.allowedServices) && session.allowedServices.length > 0 && !session.allowedServices.includes('*');
+      if (!hasRestricted) return true;
+      return session.allowedServices.map(id => String(id).toLowerCase()).includes((s.id || '').toLowerCase());
+    });
   },
 
   isServiceDisabled(idOrUrl) {
@@ -269,13 +291,9 @@ const config = {
         name: process.env.APP_NAME || (fileConfig.app && fileConfig.app.name) || DEFAULT_CONFIG.app.name,
         subtitle: process.env.APP_SUBTITLE || (fileConfig.app && fileConfig.app.subtitle) || DEFAULT_CONFIG.app.subtitle,
         footerText: process.env.APP_FOOTER_TEXT || (fileConfig.app && fileConfig.app.footerText) || DEFAULT_CONFIG.app.footerText,
+        showRestricted: resolveShowRestricted(fileConfig),
       };
       this.services = newMergedServices;
-      this.downstream = {
-        ...DEFAULT_CONFIG.downstream,
-        ...(fileConfig.downstream || {}),
-        targetUrl: process.env.TARGET_APP_URL || (fileConfig.downstream && fileConfig.downstream.targetUrl) || DEFAULT_CONFIG.downstream.targetUrl,
-      };
       this.GATEWAY_TOKEN = (process.env.GATEWAY_TOKEN || (fileConfig.app && fileConfig.app.gatewayToken) || '').trim() || null;
       console.log(`[auth-gateway] Configuration reloaded successfully (${this.services.length} services, ${this.getActiveServices().length} active, ${this.services.filter(s => !s.disableAuth).length} require auth).`);
       return true;
