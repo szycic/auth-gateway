@@ -67,8 +67,6 @@ if (require.main === module || require.main?.filename === require.resolve('../se
     console.log(`[auth-gateway] Approver cookie: ${config.APPROVER_COOKIE_NAME}`);
     if (config.services && config.services.length > 0) {
       console.log(`[auth-gateway] Configured services: ${config.services.length}`);
-    } else if (config.TARGET_APP_URL) {
-      console.log(`[auth-gateway] Target downstream app: ${config.TARGET_APP_URL}`);
     }
   });
 }

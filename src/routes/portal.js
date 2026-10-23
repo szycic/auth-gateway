@@ -21,6 +21,8 @@ router.get(['/', '/portal'], (req, res) => {
     session,
     isApproverUser: sessionService.isApprover(req),
     services: config.services,
+    showRestricted: config.showRestricted !== undefined ? config.showRestricted : (config.app && config.app.showRestricted),
+    isSessionAllowedForService: sessionService.isSessionAllowedForService,
     notice: req.query.notice,
   });
 });

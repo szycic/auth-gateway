@@ -12,7 +12,7 @@ const { isAllowedOrigin } = require('../utils/originHelper');
 function getUpstreamUrlForHost(hostHeader = '') {
   const host = (hostHeader || '').split(':')[0].toLowerCase();
   if (!host) {
-    return config.TARGET_APP_URL || (config.downstream && config.downstream.targetUrl) || '';
+    return (config.services && config.services[0] ? config.services[0].upstream : '') || '';
   }
 
   // 1. Direct match by configured service URL hostname
@@ -42,8 +42,9 @@ function getUpstreamUrlForHost(hostHeader = '') {
     return byId.upstream;
   }
 
-  // 3. Fallback to generic downstream target URL from config or environment
-  return config.TARGET_APP_URL || (config.downstream && config.downstream.targetUrl) || (config.services && config.services[0] ? config.services[0].upstream : '') || '';
+  // 3. Fallback to first configured active service
+  const firstActive = (config.getActiveServices ? config.getActiveServices() : config.services)[0];
+  return (firstActive && firstActive.upstream) || '';
 }
 
 /**
