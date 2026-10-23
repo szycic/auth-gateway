@@ -16,11 +16,14 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
   - [3. Docker Compose Deployment](#3-docker-compose-deployment)
   - [4. Set Approver Password](#4-set-approver-password)
 - [Reverse Proxy Setup (Caddy)](#reverse-proxy-setup-caddy)
+  - [Shared Security Headers Snippet](#shared-security-headers-snippet)
   - [Central Auth Portal Block](#central-auth-portal-block)
   - [Pattern A: Standard Protected Web App (SPA / Static)](#pattern-a-standard-protected-web-app-spa--static)
   - [Pattern B: App with Public Bypasses (e.g. Webhooks, Public Shares)](#pattern-b-app-with-public-bypasses-eg-webhooks-public-shares)
   - [Pattern C: App with WebSocket Connections (e.g. Uptime Kuma)](#pattern-c-app-with-websocket-connections-eg-uptime-kuma)
+  - [Pattern D: SPAs with Mixed Public & Protected Routes (e.g. ByteStash)](#pattern-d-spas-with-mixed-public--protected-routes-eg-bytestash)
 - [Automated & API Access (Gateway Token)](#automated--api-access-gateway-token)
+- [Session Management & Revocation Portal](#session-management--revocation-portal)
 - [Adding and Configuring a New Service](#adding-and-configuring-a-new-service)
 - [Configuration Reference (`config.json`)](#configuration-reference-configjson)
 - [CLI Tools](#cli-tools)
@@ -34,7 +37,11 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
   - **QR Code Scanning**: Scan a QR code on desktop using your authenticated mobile device to instantly approve the desktop session.
   - **PIN Authorization**: Enter an 8-digit PIN on your mobile device to authorize a pending desktop login.
 - **Instant Revocation Watchdog**: Automatically injects a lightweight `auth-watchdog.js` script into HTML responses. If a session is revoked or expires, client browsers (including SPAs and cached tabs) immediately lock and redirect to login without needing a page refresh.
-- **Service Dashboard**: Displays a dashboard with direct links to all configured services.
+- **Dynamic SPA Navigation Guard**: Injects `auth-public-guard.js` into public SPA routes to dynamically intercept client-side transitions to protected routes (via Caddy `HEAD` probing) with zero path hardcoding.
+- **Smart "Go Back" Navigation**: Preserves previous public or external referer (`&from=...`) so unauthenticated users who encounter a protected link can return to public content with a single click.
+- **Session Management Dashboard**: Dedicated `/auth/sessions` management portal for approvers to monitor active sessions, device info, client IPs, user agents, and revoke individual sessions or all sessions simultaneously.
+- **Hot Configuration Reloading**: Dynamic configuration file watcher automatically reloads `config.json` changes on disk in real time without restarting the container or losing active sessions.
+- **Service Dashboard**: Displays a dashboard (`/portal`) with direct links to all configured services.
 - **PWA & Shortcuts**: Installable Progressive Web App (PWA) with native mobile shortcuts (`Scan QR`, `Enter PIN`).
 - **Zero External Databases**: Lightweight Node.js + Express with JSON storage for sessions and configuration.
 
@@ -187,18 +194,36 @@ This hashes the password using `scrypt` and either saves it to `data/password.js
 
 Caddy provides automatic HTTPS and clean, readable configuration. Below are the recommended patterns for your `Caddyfile`.
 
+### Shared Security Headers Snippet
+
+Define a reusable snippet in your `Caddyfile` that sets standard security headers and strips internal authentication headers so untrusted external clients cannot spoof them:
+
+```caddy
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Robots-Tag "noindex, nofollow, noarchive"
+	}
+	# Prevent untrusted clients from spoofing internal authentication headers
+	request_header -X-Auth-Status
+	request_header -X-Auth-Role
+	request_header -X-Auth-User
+}
+```
+
+---
+
 ### Central Auth Portal Block
 
 Expose the Auth Gateway itself on its dedicated subdomain:
 
 ```caddy
 auth.example.com {
+	import security_headers
 	reverse_proxy auth-gateway:3000
-
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
 }
 ```
 
@@ -223,19 +248,22 @@ tools.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 2. Handle 401 errors by redirecting to central auth login
+	# 2. Intelligent handling of 401 errors (JSON for API, redirect with Referer for browser)
 	handle_errors {
-		@unauthorized expression {http.error.status_code} == 401
-		handle @unauthorized {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required"}` 401
+		}
+
+		handle {
+			@withReferer header Referer *
+			redir @withReferer https://auth.example.com/login?redirect={scheme}://{host}{uri}&from={header.Referer} 302
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
 
-	# 3. Security headers
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 ```
 
@@ -271,18 +299,22 @@ share.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 3. Redirect unauthenticated requests to login
+	# 3. Intelligent handling of 401 errors
 	handle_errors {
-		@unauthorized expression {http.error.status_code} == 401
-		handle @unauthorized {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required"}` 401
+		}
+
+		handle {
+			@withReferer header Referer *
+			redir @withReferer https://auth.example.com/login?redirect={scheme}://{host}{uri}&from={header.Referer} 302
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
 
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 ```
 
@@ -325,10 +357,130 @@ uptime.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
-	# 4. Redirect 401s to login
+	# 4. Intelligent handling of 401 errors
 	handle_errors {
-		@unauthorized expression {http.error.status_code} == 401
-		handle @unauthorized {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required"}` 401
+		}
+
+		handle {
+			@withReferer header Referer *
+			redir @withReferer https://auth.example.com/login?redirect={scheme}://{host}{uri}&from={header.Referer} 302
+			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
+		}
+	}
+
+	import security_headers
+}
+```
+
+---
+
+### Pattern D: SPAs with Mixed Public & Protected Routes (e.g. ByteStash)
+
+When protecting **Single Page Applications (SPAs)** (built with React, Vue, Next.js, etc.) that feature both **public pages** (e.g., `/public/snippets`, `/snippets/*`, shared URLs) and **protected pages** (e.g., `/`, `/login`, `/admin`), client-side routing presents a challenge:
+
+- When an unauthenticated visitor opens a public page, the SPA runs in browser memory.
+- If the visitor clicks an internal link (e.g., "Login" or the app dashboard), client-side routers (`history.pushState`) switch the view locally **without sending an HTTP GET request to Caddy**.
+- Without handling, the unauthenticated visitor would see the app's internal login screen or a broken state rather than being redirected to central Auth Gateway login.
+
+#### The Solution: Dynamic Caddy Navigation Guard (`auth-public-guard.js`)
+
+Auth Gateway provides an automated public navigation guard with **zero hardcoded paths**:
+
+1. **Proxy Public HTML through Auth Gateway**: Public HTML routes in Caddy are routed to `reverse_proxy auth-gateway:3000` with the `header_up X-Auth-Status "public"` header.
+2. **Automated Guard Injection**: Auth Gateway forwards the public request to the upstream app without requiring a session and automatically injects `/auth/assets/auth-public-guard.js` into the HTML response. (If the user already has a valid session, the full `auth-watchdog.js` is injected instead).
+3. **Dynamic Verification with Caddy**: The guard script hooks `history.pushState`, `history.replaceState`, link hover (`mouseover`), and `click`. It dynamically verifies target URLs with Caddy using lightweight `HEAD` requests (`fetch(url, { method: 'HEAD', redirect: 'manual' })`):
+   - **Public route (`200 OK`)**: Caddy allows it — the SPA transition proceeds client-side seamlessly with no page reload.
+   - **Protected route (`302 Found` / `401`)**: Caddy intercepts it — the guard immediately forces a full browser navigation (`window.location.href = url`), allowing Caddy's `forward_auth` to redirect the user to `https://auth.example.com/login?redirect=...`.
+4. **Pre-caching on Hover**: When the user hovers over a link, the check runs in the background (< 5ms), enabling instant synchronous redirects when clicked.
+5. **No Route Hardcoding**: Caddy's `Caddyfile` remains the single source of truth for which routes are public and which are protected.
+
+#### Caddyfile Example:
+
+```caddy
+stash.example.com {
+	# 1. Public static assets & workers (direct to upstream container for max performance)
+	handle /assets/* {
+		reverse_proxy bytestash:5000
+	}
+	handle /monacoeditorwork/* {
+		reverse_proxy bytestash:5000
+	}
+	handle /favicon.ico {
+		reverse_proxy bytestash:5000
+	}
+	handle /manifest.json {
+		reverse_proxy bytestash:5000
+	}
+
+	# 2. Public HTML routes (proxied through auth-gateway with X-Auth-Status for guard injection)
+	handle /public/snippets* {
+		reverse_proxy auth-gateway:3000 {
+			header_up X-Auth-Status "public"
+		}
+	}
+	handle /snippets* {
+		reverse_proxy auth-gateway:3000 {
+			header_up X-Auth-Status "public"
+		}
+	}
+	handle /s/* {
+		reverse_proxy auth-gateway:3000 {
+			header_up X-Auth-Status "public"
+		}
+	}
+
+	# 3. Public APIs needed by public views & client bootstrapping
+	handle /api/public/* {
+		reverse_proxy bytestash:5000
+	}
+	handle /api/share/* {
+		reverse_proxy bytestash:5000
+	}
+	handle /api/auth/config {
+		reverse_proxy bytestash:5000
+	}
+
+	# 4. Protected REST APIs (checked via forward_auth, direct to upstream)
+	handle /api/* {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy bytestash:5000
+	}
+
+	# 5. Protected Web UI routes (checked via forward_auth, injected with auth-watchdog)
+	handle {
+		forward_auth auth-gateway:3000 {
+			uri /auth/verify
+			copy_headers X-Auth-Status X-Auth-Role
+			@unauthorized status 401
+			handle_response @unauthorized {
+				error 401
+			}
+		}
+		reverse_proxy auth-gateway:3000
+	}
+
+	# 6. Redirect 401s to central login
+	handle_errors {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required"}` 401
+		}
+
+		handle {
+			@withReferer header Referer *
+			redir @withReferer https://auth.example.com/login?redirect={scheme}://{host}{uri}&from={header.Referer} 302
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
@@ -378,6 +530,17 @@ Any request sent with a matching token is immediately authenticated by Auth Gate
 ```bash
 curl -H "X-Gateway-Token: your-random-secret-token-here" https://myapp.example.com/api/data
 ```
+
+---
+
+## Session Management & Revocation Portal
+
+Authenticated mobile approvers have access to an administrative session management portal at `/auth/sessions` (accessible from the mobile approver menu):
+
+- **Live Device Inspection**: View every active desktop and client session across all subdomains, including IP address, browser/device user agent, and creation/expiration timestamps.
+- **Granular Revocation**: Revoke an individual session with one click.
+- **Global Emergency Revocation**: Click **Revoke All Sessions** to immediately invalidate every active session in the homelab while maintaining your current approver credentials.
+- **Zero-Latency Client Lock**: Because `auth-watchdog.js` is active in every authenticated browser tab, revoked clients are locked and returned to the login portal within seconds via WebSockets and heartbeat polling.
 
 ---
 
@@ -432,7 +595,7 @@ Add an entry to the `"services"` array in your `config.json`:
 
 ### Step 3: Add Service Block to Caddy
 
-Add the site block to your `Caddyfile` on your reverse proxy host (choose Pattern A, B, or C above):
+Add the site block to your `Caddyfile` on your reverse proxy host (choose Pattern A, B, C, or D above):
 
 ```caddy
 myapp.example.com {
@@ -448,27 +611,31 @@ myapp.example.com {
 		reverse_proxy auth-gateway:3000
 	}
 
+	# Intelligent handling of 401 errors
 	handle_errors {
-		@unauthorized expression {http.error.status_code} == 401
-		handle @unauthorized {
+		@api expression {http.error.status_code} == 401 && path('/api/*')
+		handle @api {
+			header Content-Type "application/json"
+			respond `{"statusCode":401,"message":"Authentication required"}` 401
+		}
+
+		handle {
+			@withReferer header Referer *
+			redir @withReferer https://auth.example.com/login?redirect={scheme}://{host}{uri}&from={header.Referer} 302
 			redir * https://auth.example.com/login?redirect={scheme}://{host}{uri} 302
 		}
 	}
 
-	header {
-		X-Frame-Options SAMEORIGIN
-		X-Content-Type-Options nosniff
-	}
+	import security_headers
 }
 ```
 
 ### Step 4: Reload Services
 
-1. **Restart Auth Gateway** to load the updated `config.json`:
-   ```bash
-   ./reload-config.sh
-   # Or: docker compose restart auth-gateway
-   ```
+1. **Auth Gateway (Automatic Hot-Reload)**:
+   Auth Gateway watches `config.json` via file watching and hot-reloads service changes automatically within ~1.5 seconds without container restart or dropping active user sessions.
+   *(Optional manual restart if preferred: `./reload-config.sh` or `docker compose restart auth-gateway`)*.
+
 2. **Reload Caddy**:
    ```bash
    caddy reload --config /etc/caddy/Caddyfile
@@ -491,6 +658,7 @@ myapp.example.com {
 | `app`      | `name`               | string  | Portal title displayed on login and dashboard pages.                                                                          |
 | `app`      | `subtitle`           | string  | Explanatory text beneath the portal title.                                                                                    |
 | `app`      | `footerText`         | string  | Text shown in the footer of all auth views.                                                                                   |
+| `app`      | `gatewayToken`       | string  | Optional. Alternative to `GATEWAY_TOKEN` env var for automated API tokens.                                                    |
 | `server`   | `port`               | number  | Port Auth Gateway listens on inside the container (default: `3000`).                                                          |
 | `server`   | `host`               | string  | Listening interface (default: `0.0.0.0`).                                                                                     |
 | `server`   | `baseUrl`            | string  | Full public URL of the auth portal (e.g. `https://auth.example.com`).                                                         |

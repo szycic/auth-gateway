@@ -235,10 +235,12 @@
 
     function handleGoBack(event, fallbackUrl) {
       event.preventDefault();
-      if (window.history.length > 1) {
-        window.history.back();
-      } else if (fallbackUrl) {
+      if (fallbackUrl) {
         window.location.href = fallbackUrl;
+      } else if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = '/';
       }
     }
 

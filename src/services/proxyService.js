@@ -121,12 +121,14 @@ function proxyToTargetApp(req, res) {
     });
   }
 
+  const isPublicRequest = req.headers['x-auth-status'] === 'public';
   const isAuthRequired = matchedService ? !matchedService.disableAuth : true;
   const isGatewayTokenAuth = authService.isGatewayTokenValid(req);
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   const session = sessionService.activeSessions.get(token);
+  const isSessionValid = sessionService.isApprover(req) || (matchedService && sessionService.isSessionAllowedForService(session, matchedService));
 
-  if (isAuthRequired && !isGatewayTokenAuth && !sessionService.isApprover(req) && (!matchedService || !sessionService.isSessionAllowedForService(session, matchedService))) {
+  if (!isPublicRequest && isAuthRequired && !isGatewayTokenAuth && !isSessionValid) {
     return res.status(403).render('statusNotice', {
       title: 'Access Restricted',
       message: matchedService
@@ -174,7 +176,7 @@ function proxyToTargetApp(req, res) {
   };
 
   const isHtmlExpected = (req.headers.accept || '').includes('text/html');
-  if (isAuthRequired && !isGatewayTokenAuth && isHtmlExpected && req.method === 'GET') {
+  if (!isGatewayTokenAuth && isHtmlExpected && req.method === 'GET') {
     delete proxyHeaders['accept-encoding'];
   }
 
@@ -188,12 +190,13 @@ function proxyToTargetApp(req, res) {
       const contentType = proxyRes.headers['content-type'] || '';
       const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300;
 
-      if (isAuthRequired && !isGatewayTokenAuth && isHtml && req.method === 'GET') {
+      if (!isGatewayTokenAuth && isHtml && req.method === 'GET') {
         let body = '';
         proxyRes.setEncoding('utf8');
         proxyRes.on('data', (chunk) => { body += chunk; });
         proxyRes.on('end', () => {
-          const injectionScript = `<script src="${config.BASE_URL}/auth/assets/auth-watchdog.js"></script>`;
+          const scriptName = isSessionValid ? 'auth-watchdog.js' : 'auth-public-guard.js';
+          const injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}"></script>`;
 
           if (body.includes('</body>')) {
             body = body.replace('</body>', `${injectionScript}</body>`);
