@@ -14,7 +14,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
   - [1. Prerequisites](#1-prerequisites)
   - [2. Configuration](#2-configuration)
   - [3. Docker Compose Deployment](#3-docker-compose-deployment)
-  - [4. Set Approver Password](#4-set-approver-password)
+  - [4. Configure Approver Auth (FIDO Key or Password)](#4-configure-approver-auth-fido-key-or-password)
 - [Reverse Proxy Setup (Caddy)](#reverse-proxy-setup-caddy)
   - [Shared Security Headers Snippet](#shared-security-headers-snippet)
   - [Central Auth Portal Block](#central-auth-portal-block)
@@ -171,23 +171,34 @@ Start the container:
 docker compose up -d
 ```
 
-### 4. Set Approver Password
+### 4. Configure Approver Auth (FIDO Key or Password)
 
-Run the CLI tool to set up the administrative approver password:
+Auth Gateway supports two mutually exclusive approver authentication methods. Configure your preferred method:
+
+#### Option A: FIDO2 Hardware Security Key (Recommended)
+Register a physical hardware key (YubiKey, Google Titan) or biometric passkey via a single-use direct link in the terminal:
 
 ```bash
-# Option A: Interactive setup (hashes with scrypt and saves to data/password.json):
-npm run set-password
-# Or via Docker:
-docker compose run --rm auth-gateway node set-password.js
+docker compose exec -it auth-gateway node set-fido.js
+# Or locally: npm run set-fido
+```
+This prints a 5-minute single-use link. Open the link in your browser, touch your key, and the terminal activates FIDO mode immediately.
 
-# Option B: Generate a hash directly to set via APPROVER_PASSWORD_HASH env var:
-npm run hash-password "MySecretPassword"
-# Or via Docker:
-docker compose run --rm auth-gateway node hash-password.js "MySecretPassword"
+#### Option B: Master Password
+Set an administrative approver password (salted with `scrypt` and saved to `data/password.json`):
+
+```bash
+docker compose exec -it auth-gateway node set-password.js
+# Or locally: npm run set-password
 ```
 
-This hashes the password using `scrypt` and either saves it to `data/password.json` or outputs `APPROVER_PASSWORD_HASH=...` for your environment.
+#### Option C: Switch Methods or Manage Keys Anytime
+Toggle between Password and FIDO mode or manage keys at any time:
+
+```bash
+docker compose exec -it auth-gateway node set-auth-method.js
+# Or locally: npm run set-auth-method
+```
 
 ---
 
@@ -702,10 +713,11 @@ Auth Gateway includes CLI helper scripts in the repository:
   npm run set-auth-method
   # Or: node set-auth-method.js
   ```
-- **`npm run set-fido`**: Shortcut command to register a FIDO2 hardware security key (YubiKey, Titan, or biometric passkey). It outputs a single-use 5-minute direct enrollment link in the terminal and waits for physical touch in your browser before activating FIDO mode.
+- **`npm run set-fido`**: CLI tool to manage FIDO2 security keys: register new keys via single-use direct link, list existing keys, or revoke/delete keys with automatic password fallback protection.
   ```bash
   npm run set-fido
   # Or: node set-fido.js
+  # Or with flags: node set-fido.js --add / --delete <num|id> / --list
   ```
 - **`npm run hash-password <password>`**: Helper script to generate a salted `scrypt` password hash directly from the command line for use with the `APPROVER_PASSWORD_HASH` environment variable.
   ```bash

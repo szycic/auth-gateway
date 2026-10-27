@@ -373,7 +373,34 @@ setInterval(() => {
   }
 }, 60 * 1000).unref();
 
+function deleteCredential(identifier) {
+  loadCredentials();
+  if (!identifier) return false;
+  const idStr = String(identifier).trim();
+  const idx = inMemoryCredentials.findIndex(c => c.id === idStr || (c.name && c.name.toLowerCase() === idStr.toLowerCase()));
+  if (idx === -1) {
+    return false;
+  }
+  const [removed] = inMemoryCredentials.splice(idx, 1);
+  saveCredentials();
+  auditLog('FIDO_KEY_REVOKED', {
+    id: removed.id,
+    name: removed.name,
+    remainingKeys: inMemoryCredentials.length,
+  });
+  console.log(`[auth-gateway] Revoked FIDO security key: "${removed.name}" (${removed.id})`);
+
+  // If 0 keys left and fido was active, automatically fall back to password mode
+  if (inMemoryCredentials.length === 0 && getActiveAuthMethod() === 'fido') {
+    setActiveAuthMethod('password');
+    console.log('[auth-gateway] All FIDO keys revoked; automatically switched active approver login method to: password');
+  }
+
+  return removed;
+}
+
 module.exports = {
+  deleteCredential,
   loadCredentials,
   saveCredentials,
   inMemoryCredentials,

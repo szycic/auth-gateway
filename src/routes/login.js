@@ -96,6 +96,8 @@ router.get('/login', (req, res) => {
     fromUrl,
     error: req.query.error || '',
     notice: req.query.notice || '',
+    authMethod: webauthnService.getActiveAuthMethod(),
+    hasFidoKeys: webauthnService.hasEnrolledKeys(),
   });
 });
 
