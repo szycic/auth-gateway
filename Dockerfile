@@ -1,5 +1,5 @@
 # Minimalist, secure Node.js Alpine image
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
@@ -7,7 +7,7 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 # Production runtime stage
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
