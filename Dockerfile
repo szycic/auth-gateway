@@ -22,7 +22,7 @@ USER node
 
 COPY --chown=node:node --from=builder /usr/src/app/node_modules ./node_modules
 COPY --chown=node:node package*.json ./
-COPY --chown=node:node server.js hash-password.js set-password.js ./
+COPY --chown=node:node server.js hash-password.js set-password.js set-fido.js set-auth-method.js logout-sessions.js ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node public ./public
 
