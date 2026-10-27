@@ -13,12 +13,19 @@ const activeSessions = new Map();
 const approverSessions = new Map();
 const pendingLoginSessions = new Map();
 
+let lastSavedRaw = '';
+
 function loadPersistedSessions() {
   try {
     if (fs.existsSync(SESSIONS_FILE)) {
       const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+      lastSavedRaw = raw;
       const data = JSON.parse(raw);
       const now = Date.now();
+
+      const prevActiveCount = activeSessions.size;
+      activeSessions.clear();
+      approverSessions.clear();
 
       if (Array.isArray(data.activeSessions)) {
         for (const s of data.activeSessions) {
@@ -40,6 +47,15 @@ function loadPersistedSessions() {
       }
 
       console.log(`[auth-gateway] Loaded ${activeSessions.size} active sessions and ${approverSessions.size} approver sessions from disk.`);
+
+      if (prevActiveCount > 0 && activeSessions.size === 0) {
+        try {
+          const socketService = require('./socketService');
+          if (socketService && typeof socketService.notifyAllSessionsRevoked === 'function') {
+            socketService.notifyAllSessionsRevoked();
+          }
+        } catch (_) {}
+      }
     }
   } catch (err) {
     console.error('[auth-gateway] Error reading persisted sessions:', err.message);
@@ -53,8 +69,10 @@ function savePersistedSessions() {
       approverSessions: Array.from(approverSessions.values()),
       lastSaved: new Date().toISOString(),
     };
+    const content = JSON.stringify(data, null, 2);
+    lastSavedRaw = content;
     const tmp = `${SESSIONS_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.writeFileSync(tmp, content, 'utf8');
     fs.renameSync(tmp, SESSIONS_FILE);
   } catch (err) {
     console.error('[auth-gateway] Error persisting sessions to disk:', err.message);
@@ -64,14 +82,36 @@ function savePersistedSessions() {
 // Initial session load
 loadPersistedSessions();
 
-// Password change listener invalidates active approver sessions
-authService.setOnPasswordChanged(() => {
-  const count = approverSessions.size;
-  if (count > 0) {
-    approverSessions.clear();
-    savePersistedSessions();
-    console.log(`[auth-gateway] Invalidated all ${count} approver session(s) due to password change.`);
+// Synchronize external sessions.json modifications into memory
+function syncSessionsFromFile() {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return;
+    const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+    if (raw === lastSavedRaw) return;
+    console.log('[auth-gateway] External sessions.json update detected, synchronizing sessions...');
+    loadPersistedSessions();
+  } catch (err) {
+    // Ignore transient read errors while file is being swapped
   }
+}
+
+try {
+  if (fs.existsSync(SESSIONS_FILE)) {
+    fs.watchFile(SESSIONS_FILE, { interval: 1000 }, syncSessionsFromFile);
+  } else if (fs.existsSync(config.DATA_DIR)) {
+    fs.watch(config.DATA_DIR, (eventType, filename) => {
+      if (filename === 'sessions.json') {
+        syncSessionsFromFile();
+      }
+    });
+  }
+} catch (e) {
+  setInterval(syncSessionsFromFile, 3000).unref();
+}
+
+// Password change listener (does not auto-logout sessions; set-password / logout-sessions ask the operator)
+authService.setOnPasswordChanged(() => {
+  console.log('[auth-gateway] Approver password changed.');
 });
 
 function isValidSession(token) {
@@ -96,11 +136,15 @@ function isApprover(req) {
     savePersistedSessions();
     return false;
   }
+  if (session.authMethod === 'fido') {
+    const webauthnService = require('./webauthnService');
+    if (!webauthnService.hasEnrolledKeys()) {
+      return false;
+    }
+    return true;
+  }
   const currentHash = authService.getApproverPasswordHash();
-  if (!currentHash || (session.passwordHash && session.passwordHash !== currentHash)) {
-    console.log('[auth-gateway] Invalidating approver session due to password change/mismatch.');
-    approverSessions.delete(token);
-    savePersistedSessions();
+  if (!currentHash) {
     return false;
   }
   return true;

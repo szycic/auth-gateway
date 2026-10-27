@@ -4,6 +4,7 @@ const config = require('../config');
 const { getCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const webauthnService = require('../services/webauthnService');
 const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
@@ -102,6 +103,11 @@ router.post('/login', (req, res) => {
   const { password, redirect } = req.body;
   const rawRedirect = redirect || req.query.redirect || req.query.returnTo || '';
   const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '/';
+
+  const activeMethod = webauthnService.getActiveAuthMethod();
+  if (activeMethod !== 'password') {
+    return res.redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}&error=${encodeURIComponent('Password authentication is disabled. Active login method is FIDO Security Key.')}`);
+  }
 
   const currentHash = authService.getApproverPasswordHash();
   if (!currentHash) {

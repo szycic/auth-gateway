@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { extraCss: '/css/approver.css' }) %>
+  <title>Enroll Security Key - <%= config.app.name %></title>
+  <style>
+    .key-icon-wrapper {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 1.25rem;
+      border-radius: 16px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #38bdf8;
+    }
+    .status-msg {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: #94a3b8;
+      min-height: 1.5rem;
+      text-align: center;
+    }
+    .success-box {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #4ade80;
+      padding: 1.25rem;
+      border-radius: 12px;
+      text-align: center;
+      margin-top: 1.5rem;
+      display: none;
+    }
+    .error-box {
+      margin-top: 1rem;
+      display: none;
+    }
+    .token-expired-box {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      padding: 1.25rem;
+      border-radius: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-glow"></div>
+
+  <div class="card card-sm">
+    <div class="key-icon-wrapper" id="keyIcon">
+      <svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+      </svg>
+    </div>
+
+    <% if (expired) { %>
+      <div class="token-expired-box">
+        <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; color: #ef4444;">Enrollment Link Expired</h2>
+        <p style="font-size: 0.875rem; color: #cbd5e1;">This single-use enrollment link has timed out or has already been used. Please run the command again in your server terminal.</p>
+      </div>
+    <% } else { %>
+      <div id="enrollFormContainer">
+        <h1 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff; text-align: center;">Register FIDO Security Key</h1>
+        <p class="desc" style="text-align: center; margin-bottom: 1.5rem;">Plug in your hardware key (YubiKey) or prepare your passkey, then tap below to complete registration.</p>
+
+        <div class="form-group">
+          <label for="keyName">Key Label (Optional)</label>
+          <input type="text" id="keyName" placeholder="e.g. YubiKey 5C NFC, Work Laptop" autofocus maxlength="50">
+        </div>
+
+        <button type="button" class="btn" id="btnRegister" onclick="startFidoEnrollment()">
+          Tap Security Key to Register
+        </button>
+
+        <div class="status-msg" id="statusMsg"></div>
+        <div class="error-box" id="errorBox"></div>
+      </div>
+
+      <div class="success-box" id="successBox">
+        <svg style="width: 42px; height: 42px; color: #22c55e; margin: 0 auto 0.75rem;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Registration Complete!</h2>
+        <p style="font-size: 0.9rem; color: #cbd5e1; margin-bottom: 0.5rem;">Your security key has been linked to Auth Gateway and active approver login is now set to <strong>FIDO Key</strong>.</p>
+        <p style="font-size: 0.85rem; color: #94a3b8;">You may now safely close this browser window and check your terminal.</p>
+      </div>
+    <% } %>
+  </div>
+
+  <script id="enroll-config" type="application/json"><%- JSON.stringify({
+    token: token || ''
+  }) %></script>
+
+  <script>
+    const enrollConfig = JSON.parse(document.getElementById('enroll-config').textContent || '{}');
+    const token = enrollConfig.token || '';
+
+    function base64UrlToUint8Array(base64url) {
+      const padding = '='.repeat((4 - (base64url.length % 4)) % 4);
+      const base64 = (base64url + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    function arrayBufferToBase64Url(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function startFidoEnrollment() {
+      const btn = document.getElementById('btnRegister');
+      const statusMsg = document.getElementById('statusMsg');
+      const errorBox = document.getElementById('errorBox');
+      const successBox = document.getElementById('successBox');
+      const formContainer = document.getElementById('enrollFormContainer');
+      const keyName = document.getElementById('keyName').value.trim();
+
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+      statusMsg.textContent = 'Contacting server...';
+      btn.disabled = true;
+
+      try {
+        if (!window.PublicKeyCredential) {
+          throw new Error('WebAuthn / FIDO2 is not supported in this browser or context (requires HTTPS or localhost).');
+        }
+
+        const optRes = await fetch('/auth/enroll-fido/options?token=' + encodeURIComponent(token));
+        if (!optRes.ok) {
+          const errData = await optRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to fetch registration challenge.');
+        }
+
+        const options = await optRes.json();
+        options.challenge = base64UrlToUint8Array(options.challenge);
+        options.user.id = base64UrlToUint8Array(options.user.id);
+
+        if (Array.isArray(options.excludeCredentials)) {
+          options.excludeCredentials.forEach(cred => {
+            cred.id = base64UrlToUint8Array(cred.id);
+          });
+        }
+
+        statusMsg.innerHTML = '<span style="color: #38bdf8;">Please touch your security key or confirm biometric prompt...</span>';
+
+        const credential = await navigator.credentials.create({ publicKey: options });
+
+        statusMsg.textContent = 'Verifying with server...';
+
+        const credentialJSON = {
+          id: credential.id,
+          rawId: arrayBufferToBase64Url(credential.rawId),
+          type: credential.type,
+          response: {
+            clientDataJSON: arrayBufferToBase64Url(credential.response.clientDataJSON),
+            attestationObject: arrayBufferToBase64Url(credential.response.attestationObject),
+            transports: typeof credential.response.getTransports === 'function' ? credential.response.getTransports() : []
+          }
+        };
+
+        const verifyRes = await fetch('/auth/enroll-fido/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            keyName,
+            response: credentialJSON
+          })
+        });
+
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok || !verifyData.success) {
+          throw new Error(verifyData.error || 'FIDO key registration failed verification.');
+        }
+
+        formContainer.style.display = 'none';
+        successBox.style.display = 'block';
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        statusMsg.textContent = '';
+        errorBox.textContent = err.name === 'NotAllowedError'
+          ? 'Operation timed out or was cancelled by user.'
+          : (err.message || 'Error communicating with security key.');
+        errorBox.style.display = 'block';
+      }
+    }
+  </script>
+</body>
+</html>
