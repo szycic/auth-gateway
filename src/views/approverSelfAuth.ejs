@@ -21,10 +21,10 @@
           : (notice ? String(notice) : 'Your device session is no longer active.'));
     %>
     <div class="notice-box"><%= noticeText %></div>
-    <p class="desc">As the Master Approver, you can instantly authorize access to all protected services on this phone.</p>
+    <p class="desc">As the Master Approver, you can instantly authorize access to all protected services on this device.</p>
     <form method="POST" action="/auth/approver/self-authorize">
       <input type="hidden" name="redirect" value="<%= redirect %>">
-      <button type="submit" class="btn-auth">Authorize This Phone</button>
+      <button type="submit" class="btn-auth">Authorize This Device</button>
     </form>
     <a href="/auth/sessions" class="btn-link">Open Sessions &amp; QR Scanner</a>
   </div>

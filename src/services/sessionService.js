@@ -210,7 +210,7 @@ function mintApproverSession(req, res) {
   const maxAgeMs = 10 * 365 * 24 * 3600 * 1000; // 10 years permanent
   const clientIp = authService.getClientIp(req);
   const ua = req.headers['user-agent'] || 'Unknown';
-  const friendlyDevice = `Approver Phone (${parseUserAgent(ua)})`;
+  const friendlyDevice = `Approver (${parseUserAgent(ua)})`;
   const approverToken = req.cookies[config.APPROVER_COOKIE_NAME] || null;
 
   const sessionObj = {
