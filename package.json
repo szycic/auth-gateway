@@ -1,14 +1,18 @@
 {
   "name": "auth-gateway",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Secure, lightweight custom Forward Auth Gateway with QR code and PIN approval homelabs",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "hash-password": "node hash-password.js",
-    "set-password": "node set-password.js"
+    "set-password": "node set-password.js",
+    "set-auth-method": "node set-auth-method.js",
+    "set-fido": "node set-fido.js",
+    "logout-sessions": "node logout-sessions.js"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^14.0.3",
     "cookie-parser": "^1.4.7",
     "ejs": "^7.0.2",
     "express": "^4.21.2",

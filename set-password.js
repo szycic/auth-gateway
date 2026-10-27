@@ -17,7 +17,28 @@ function hashPassword(password) {
   return `scrypt$${salt}$${key.toString('hex')}`;
 }
 
-function savePassword(password) {
+function getSessionStats() {
+  const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+  let userSessions = 0;
+  let approverSessions = 0;
+
+  if (fs.existsSync(SESSIONS_FILE)) {
+    try {
+      const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.activeSessions)) {
+        userSessions = data.activeSessions.length;
+      }
+      if (Array.isArray(data.approverSessions)) {
+        approverSessions = data.approverSessions.length;
+      }
+    } catch (_) {}
+  }
+
+  return { userSessions, approverSessions, total: userSessions + approverSessions };
+}
+
+function savePassword(password, shouldLogout = false) {
   const trimmed = password.trim();
   if (trimmed.length < 10) {
     console.error('\n❌ Error: Password must be at least 10 characters long.\n');
@@ -36,23 +57,42 @@ function savePassword(password) {
 
   fs.writeFileSync(PASSWORD_FILE, JSON.stringify(payload, null, 2), 'utf8');
 
-  // Invalidate all active approver sessions in sessions.json
-  const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
-  let invalidatedCount = 0;
-  if (fs.existsSync(SESSIONS_FILE)) {
-    try {
-      const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
-      const data = JSON.parse(raw);
-      if (Array.isArray(data.approverSessions)) {
-        invalidatedCount = data.approverSessions.length;
-        data.approverSessions = [];
+  // Ensure active login method is set to password
+  try {
+    const authMethodFile = path.join(DATA_DIR, 'auth-method.json');
+    const methodPayload = {
+      method: 'password',
+      updatedAt: new Date().toISOString(),
+    };
+    const tmpMethod = `${authMethodFile}.tmp`;
+    fs.writeFileSync(tmpMethod, JSON.stringify(methodPayload, null, 2), 'utf8');
+    fs.renameSync(tmpMethod, authMethodFile);
+  } catch (_) {}
+
+  let invalidatedUserCount = 0;
+  let invalidatedApproverCount = 0;
+
+  if (shouldLogout) {
+    const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+    if (fs.existsSync(SESSIONS_FILE)) {
+      try {
+        const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+        const data = JSON.parse(raw);
+        if (Array.isArray(data.activeSessions)) {
+          invalidatedUserCount = data.activeSessions.length;
+          data.activeSessions = [];
+        }
+        if (Array.isArray(data.approverSessions)) {
+          invalidatedApproverCount = data.approverSessions.length;
+          data.approverSessions = [];
+        }
         data.lastSaved = new Date().toISOString();
         const tmp = `${SESSIONS_FILE}.tmp`;
         fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
         fs.renameSync(tmp, SESSIONS_FILE);
+      } catch (err) {
+        console.warn('⚠️  Could not clear sessions.json:', err.message);
       }
-    } catch (err) {
-      console.warn('⚠️  Could not clear sessions.json:', err.message);
     }
   }
 
@@ -60,16 +100,28 @@ function savePassword(password) {
   console.log('✅ Approver Password Successfully Configured!');
   console.log('======================================================');
   console.log(`Saved salted scrypt hash to: ${PASSWORD_FILE}`);
-  if (invalidatedCount > 0) {
-    console.log(`Invalidated ${invalidatedCount} active approver session(s).`);
+  if (shouldLogout) {
+    console.log(`Invalidated every session (${invalidatedUserCount} user session(s), ${invalidatedApproverCount} approver session(s)).`);
   } else {
-    console.log('All approver sessions invalidated.');
+    console.log('Existing sessions were preserved (no sessions logged out).');
   }
   console.log('The new password takes effect immediately (no restart needed).\n');
 }
 
 let nonTtyLines = null;
 let nonTtyIndex = 0;
+
+function getNonTtyLine() {
+  if (!nonTtyLines) {
+    try {
+      const raw = fs.readFileSync(0, 'utf8');
+      nonTtyLines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    } catch (e) {
+      nonTtyLines = [];
+    }
+  }
+  return nonTtyLines[nonTtyIndex++] || '';
+}
 
 /**
  * Prompts for input securely without printing plaintext to the terminal.
@@ -78,20 +130,10 @@ let nonTtyIndex = 0;
 function readSecret(promptText) {
   // If input is non-interactive (e.g. piped or redirected stdin)
   if (!process.stdin.isTTY) {
-    if (!nonTtyLines) {
-      try {
-        const raw = fs.readFileSync(0, 'utf8');
-        nonTtyLines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      } catch (e) {
-        nonTtyLines = [];
-      }
-    }
-    const val = nonTtyLines[nonTtyIndex++] || '';
-    return Promise.resolve(val);
+    return Promise.resolve(getNonTtyLine());
   }
 
   return new Promise((resolve) => {
-
     process.stdout.write(promptText);
 
     process.stdin.setRawMode(true);
@@ -132,8 +174,39 @@ function readSecret(promptText) {
   });
 }
 
+/**
+ * Prompts for plain text input.
+ */
+function askQuestion(promptText) {
+  if (!process.stdin.isTTY) {
+    return Promise.resolve(getNonTtyLine());
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(promptText, (ans) => {
+      rl.close();
+      resolve(ans.trim());
+    });
+  });
+}
+
 async function main() {
-  if (process.argv[2]) {
+  const args = process.argv.slice(2);
+  let shouldLogout = null;
+
+  if (args.includes('--logout-all') || args.includes('--logout-sessions') || args.includes('-y')) {
+    shouldLogout = true;
+  } else if (args.includes('--no-logout') || args.includes('--keep-sessions') || args.includes('-n')) {
+    shouldLogout = false;
+  }
+
+  const hasPositionalArg = args.find(a => !a.startsWith('-'));
+  if (hasPositionalArg) {
     console.warn('\n⚠️  Security Notice: Passing passwords as command-line arguments is insecure');
     console.warn('   because it exposes them in process listings (ps) and shell history (.bash_history).\n');
     console.warn('   Please enter your password securely at the prompt below.\n');
@@ -156,7 +229,16 @@ async function main() {
     process.exit(1);
   }
 
-  savePassword(password);
+  if (shouldLogout === null) {
+    const stats = getSessionStats();
+    if (stats.total > 0) {
+      console.log(`\nActive sessions detected: ${stats.userSessions} user session(s), ${stats.approverSessions} approver session(s).`);
+    }
+    const answer = await askQuestion('\nDo you want to log out every session? [y/N]: ');
+    shouldLogout = ['y', 'yes'].includes(answer.toLowerCase());
+  }
+
+  savePassword(password, shouldLogout);
 }
 
 main().catch((err) => {

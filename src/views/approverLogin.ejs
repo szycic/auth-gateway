@@ -3,6 +3,55 @@
 <head>
   <%- include('partials/head', { extraCss: '/css/approver.css' }) %>
   <title>Approver Authentication - <%= config.app.name %></title>
+  <style>
+    .key-login-box {
+      text-align: center;
+      padding: 0.5rem 0;
+    }
+    .fido-status-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 14px;
+      padding: 1.5rem 1rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .pulse-ring {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.15);
+      border: 2px solid rgba(56, 189, 248, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #38bdf8;
+      animation: fidoPulse 2s infinite ease-in-out;
+    }
+    @keyframes fidoPulse {
+      0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+      70% { transform: scale(1.04); box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+      100% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+    }
+    .status-text {
+      font-size: 0.925rem;
+      color: #cbd5e1;
+    }
+    .fido-error-box {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      margin-bottom: 1.25rem;
+      text-align: center;
+      display: none;
+    }
+  </style>
 </head>
 <body>
   <div class="ambient-glow"></div>
@@ -19,43 +68,181 @@
       <div class="error-box"><%= error %></div>
     <% } %>
 
-    <form method="POST" action="/auth/approver/login">
-      <input type="hidden" name="returnTo" value="<%= returnTo %>">
-      <div class="form-group">
-        <label for="password">Approver Password</label>
-        <div class="password-wrapper">
-          <input type="password" id="password" name="password" required autofocus placeholder="Enter password...">
-          <button type="button" class="btn-toggle-pw" id="togglePwBtn" aria-label="Show password" title="Show password" onclick="togglePasswordVisibility()">
-            <svg id="eyeIcon" style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    <% if (mode === 'fido') { %>
+      <!-- Exclusive Mode: FIDO Security Key / Passkey -->
+      <div class="key-login-box">
+        <div class="fido-error-box" id="fidoError"></div>
+
+        <div class="fido-status-card">
+          <div class="pulse-ring" id="pulseRing">
+            <svg style="width: 28px; height: 28px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
-            <svg id="eyeOffIcon" style="width: 20px; height: 20px; display: none;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
-            </svg>
-          </button>
+          </div>
+          <div class="status-text" id="fidoStatus">Insert your security key and tap below...</div>
         </div>
+
+        <button type="button" class="btn" id="btnFidoAuth" onclick="startFidoAuth()">
+          Authenticate with Security Key
+        </button>
       </div>
 
-      <button type="submit" class="btn">Sign In as Approver</button>
-    </form>
+      <script id="fido-config" type="application/json"><%- JSON.stringify({
+        returnTo: returnTo || '/'
+      }) %></script>
+
+      <script>
+        const configData = JSON.parse(document.getElementById('fido-config').textContent || '{}');
+        const returnTo = configData.returnTo || '/';
+
+        function base64UrlToUint8Array(base64url) {
+          const padding = '='.repeat((4 - (base64url.length % 4)) % 4);
+          const base64 = (base64url + padding).replace(/-/g, '+').replace(/_/g, '/');
+          const rawData = window.atob(base64);
+          const outputArray = new Uint8Array(rawData.length);
+          for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+          }
+          return outputArray;
+        }
+
+        function arrayBufferToBase64Url(buffer) {
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        async function startFidoAuth() {
+          const btn = document.getElementById('btnFidoAuth');
+          const status = document.getElementById('fidoStatus');
+          const errorBox = document.getElementById('fidoError');
+
+          errorBox.style.display = 'none';
+          errorBox.textContent = '';
+          btn.disabled = true;
+          status.textContent = 'Contacting server...';
+
+          try {
+            if (!window.PublicKeyCredential) {
+              throw new Error('WebAuthn / FIDO2 is not supported on this browser or connection (HTTPS is required).');
+            }
+
+            const optRes = await fetch('/auth/approver/webauthn/login-options');
+            if (!optRes.ok) {
+              const errData = await optRes.json().catch(() => ({}));
+              throw new Error(errData.error || 'Failed to initialize security key challenge.');
+            }
+
+            const { challengeId, options } = await optRes.json();
+            options.challenge = base64UrlToUint8Array(options.challenge);
+
+            if (Array.isArray(options.allowCredentials)) {
+              options.allowCredentials.forEach(cred => {
+                cred.id = base64UrlToUint8Array(cred.id);
+              });
+            }
+
+            status.textContent = 'Touch your security key or confirm prompt...';
+
+            const assertion = await navigator.credentials.get({ publicKey: options });
+
+            status.textContent = 'Verifying signature...';
+
+            const assertionJSON = {
+              id: assertion.id,
+              rawId: arrayBufferToBase64Url(assertion.rawId),
+              type: assertion.type,
+              response: {
+                clientDataJSON: arrayBufferToBase64Url(assertion.response.clientDataJSON),
+                authenticatorData: arrayBufferToBase64Url(assertion.response.authenticatorData),
+                signature: arrayBufferToBase64Url(assertion.response.signature),
+                userHandle: assertion.response.userHandle ? arrayBufferToBase64Url(assertion.response.userHandle) : null
+              }
+            };
+
+            const verifyRes = await fetch('/auth/approver/webauthn/login-verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                challengeId,
+                returnTo,
+                response: assertionJSON
+              })
+            });
+
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || !verifyData.success) {
+              throw new Error(verifyData.error || 'Security key authentication failed.');
+            }
+
+            status.innerHTML = '<span style="color: #4ade80; font-weight: 600;">Authenticated! Redirecting...</span>';
+            setTimeout(() => {
+              window.location.href = verifyData.redirect || returnTo || '/';
+            }, 400);
+
+          } catch (err) {
+            console.error(err);
+            btn.disabled = false;
+            status.textContent = 'Ready for security key...';
+            errorBox.textContent = err.name === 'NotAllowedError'
+              ? 'Security key request was cancelled or timed out.'
+              : (err.message || 'Authentication error.');
+            errorBox.style.display = 'block';
+          }
+        }
+
+        // Auto-trigger security key prompt on load if supported
+        window.addEventListener('DOMContentLoaded', () => {
+          if (window.PublicKeyCredential) {
+            setTimeout(startFidoAuth, 300);
+          }
+        });
+      </script>
+
+    <% } else { %>
+      <!-- Exclusive Mode: Password -->
+      <form method="POST" action="/auth/approver/login">
+        <input type="hidden" name="returnTo" value="<%= returnTo %>">
+        <div class="form-group">
+          <label for="password">Approver Password</label>
+          <div class="password-wrapper">
+            <input type="password" id="password" name="password" required autofocus placeholder="Enter password...">
+            <button type="button" class="btn-toggle-pw" id="togglePwBtn" aria-label="Show password" title="Show password" onclick="togglePasswordVisibility()">
+              <svg id="eyeIcon" style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              <svg id="eyeOffIcon" style="width: 20px; height: 20px; display: none;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn">Sign In as Approver</button>
+      </form>
+
+      <script>
+        function togglePasswordVisibility() {
+          const input = document.getElementById('password');
+          const eyeIcon = document.getElementById('eyeIcon');
+          const eyeOffIcon = document.getElementById('eyeOffIcon');
+          const btn = document.getElementById('togglePwBtn');
+          const isVisible = input.type === 'password';
+
+          input.type = isVisible ? 'text' : 'password';
+          eyeIcon.style.display = isVisible ? 'none' : 'block';
+          eyeOffIcon.style.display = isVisible ? 'block' : 'none';
+          btn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+          btn.setAttribute('title', isVisible ? 'Hide password' : 'Show password');
+        }
+      </script>
+    <% } %>
   </div>
 
-  <script>
-    function togglePasswordVisibility() {
-      const input = document.getElementById('password');
-      const eyeIcon = document.getElementById('eyeIcon');
-      const eyeOffIcon = document.getElementById('eyeOffIcon');
-      const btn = document.getElementById('togglePwBtn');
-      const isVisible = input.type === 'password';
-
-      input.type = isVisible ? 'text' : 'password';
-      eyeIcon.style.display = isVisible ? 'none' : 'block';
-      eyeOffIcon.style.display = isVisible ? 'block' : 'none';
-      btn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
-      btn.setAttribute('title', isVisible ? 'Hide password' : 'Show password');
-    }
-  </script>
   <%- include('partials/pwa-sw') %>
 </body>
 </html>

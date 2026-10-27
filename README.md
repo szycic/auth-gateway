@@ -685,10 +685,27 @@ myapp.example.com {
 
 Auth Gateway includes CLI helper scripts in the repository:
 
-- **`npm run set-password`**: Interactive command to set or update the administrator / approver password. It prompts for confirmation, hashes the password using `scrypt`, updates `data/password.json`, and invalidates existing approver sessions.
+- **`npm run set-password`**: Interactive command to set or update the administrator / approver password. It prompts for confirmation, hashes the password using `scrypt`, updates `data/password.json`, and asks whether you want to log out every active session (or keep existing sessions intact).
   ```bash
   npm run set-password
   # Or: node set-password.js
+  # Or with flags: node set-password.js --keep-sessions / --logout-all
+  ```
+- **`npm run logout-sessions`**: Interactive command to selectively log out active sessions. It prompts whether to log out only user sessions, approver sessions, or both (every session).
+  ```bash
+  npm run logout-sessions
+  # Or: node logout-sessions.js
+  # Or with flags: node logout-sessions.js --user / --approver / --both
+  ```
+- **`npm run set-auth-method`**: Interactive command to choose the active approver login method (**either Password OR FIDO Security Key**). If FIDO is selected without registered keys, it automatically starts a secure one-time enrollment link session.
+  ```bash
+  npm run set-auth-method
+  # Or: node set-auth-method.js
+  ```
+- **`npm run set-fido`**: Shortcut command to register a FIDO2 hardware security key (YubiKey, Titan, or biometric passkey). It outputs a single-use 5-minute direct enrollment link in the terminal and waits for physical touch in your browser before activating FIDO mode.
+  ```bash
+  npm run set-fido
+  # Or: node set-fido.js
   ```
 - **`npm run hash-password <password>`**: Helper script to generate a salted `scrypt` password hash directly from the command line for use with the `APPROVER_PASSWORD_HASH` environment variable.
   ```bash

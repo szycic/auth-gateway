@@ -277,6 +277,7 @@
     </div>
   </div>
 
+  <script id="known-services-data" type="application/json"><%- JSON.stringify(((config.getActiveServices ? config.getActiveServices() : config.services) || []).map(s => ({ id: (s.id || '').toLowerCase(), name: s.name }))) %></script>
   <script>
     function openRename(id) {
       const form = document.getElementById('rename-form-' + id);
@@ -340,7 +341,8 @@
     updateSessionTimestamps();
     setInterval(updateSessionTimestamps, 60000);
 
-    const KNOWN_SERVICES = <%- JSON.stringify(((config.getActiveServices ? config.getActiveServices() : config.services) || []).map(s => ({ id: (s.id || '').toLowerCase(), name: s.name }))) %>;
+    const knownServicesEl = document.getElementById('known-services-data');
+    const KNOWN_SERVICES = knownServicesEl ? JSON.parse(knownServicesEl.textContent || '[]') : [];
 
     function getAccessLabel(allowedServices) {
       if (!allowedServices || (Array.isArray(allowedServices) && (allowedServices.includes('*') || allowedServices.length === 0))) {

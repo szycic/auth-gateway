@@ -4,6 +4,7 @@ const config = require('../config');
 const { getCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const webauthnService = require('../services/webauthnService');
 const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
@@ -17,22 +18,181 @@ router.get(['/approver', '/approver/'], (req, res) => {
   return res.redirect(target);
 });
 
+// Single-use FIDO Enrollment view
+router.get('/enroll-fido', (req, res) => {
+  const token = req.query.token;
+  const tokenRecord = webauthnService.getEnrollmentToken(token);
+  if (!tokenRecord) {
+    return res.render('enrollFido', {
+      token: '',
+      expired: true,
+    });
+  }
+  return res.render('enrollFido', {
+    token,
+    expired: false,
+  });
+});
+
+// Single-use FIDO Enrollment registration options
+router.get('/enroll-fido/options', async (req, res) => {
+  try {
+    const token = req.query.token;
+    const options = await webauthnService.generateRegistrationOptionsForToken(token, req);
+    res.json(options);
+  } catch (err) {
+    console.error('[auth-gateway] FIDO enrollment options error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Single-use FIDO Enrollment verification
+router.post('/enroll-fido/verify', async (req, res) => {
+  try {
+    const { token, keyName, response } = req.body;
+    if (!token || !response) {
+      return res.status(400).json({ error: 'Missing enrollment parameters.' });
+    }
+    const credRecord = await webauthnService.verifyRegistrationForToken(token, response, keyName, req);
+    res.json({
+      success: true,
+      credential: {
+        id: credRecord.id,
+        name: credRecord.name,
+      },
+    });
+  } catch (err) {
+    console.error('[auth-gateway] FIDO enrollment verify error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// WebAuthn Approver Login challenge options
+router.get('/approver/webauthn/login-options', async (req, res) => {
+  try {
+    const activeMethod = webauthnService.getActiveAuthMethod();
+    if (activeMethod !== 'fido') {
+      return res.status(400).json({ error: 'FIDO login is not currently the active login method.' });
+    }
+    const { challengeId, options } = await webauthnService.generateLoginOptions(req);
+    res.json({ challengeId, options });
+  } catch (err) {
+    console.error('[auth-gateway] WebAuthn login options error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// WebAuthn Approver Login verification
+router.post('/approver/webauthn/login-verify', async (req, res) => {
+  const clientIp = authService.getClientIp(req);
+  const lockoutStatus = authService.checkLoginLockout(clientIp);
+  if (lockoutStatus.locked) {
+    return res.status(429).json({
+      error: `Too many failed login attempts. Locked out for ${lockoutStatus.remainingMins} more minute(s).`,
+    });
+  }
+
+  const activeMethod = webauthnService.getActiveAuthMethod();
+  if (activeMethod !== 'fido') {
+    return res.status(400).json({ error: 'FIDO login is not currently the active login method.' });
+  }
+
+  const { challengeId, response, returnTo } = req.body;
+  const rawTarget = returnTo || req.query.returnTo || req.query.redirect || '';
+  const redirectTarget = config.normalizeRedirect(rawTarget, '/');
+
+  try {
+    if (!challengeId || !response) {
+      return res.status(400).json({ error: 'Invalid authentication parameters.' });
+    }
+
+    const cred = await webauthnService.verifyLoginResponse(challengeId, response, req);
+
+    authService.clearFailedLogins(clientIp);
+    auditLog('APPROVER_LOGIN_SUCCESS', {
+      ip: clientIp,
+      method: 'fido',
+      keyName: cred.name,
+      keyId: cred.id,
+      userAgent: req.headers['user-agent'] || 'Unknown',
+    });
+
+    // Issue Approver session token (30 days)
+    const approverToken = crypto.randomBytes(48).toString('base64url');
+    const maxAgeMs = config.APPROVER_TTL_DAYS * 24 * 3600 * 1000;
+    const currentHash = authService.getApproverPasswordHash() || 'fido-auth';
+
+    sessionService.approverSessions.set(approverToken, {
+      token: approverToken,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + maxAgeMs,
+      passwordHash: currentHash,
+      authMethod: 'fido',
+      keyId: cred.id,
+      ip: req.ip || req.headers['x-forwarded-for'],
+      userAgent: req.headers['user-agent'],
+    });
+
+    sessionService.savePersistedSessions();
+    res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
+    sessionService.mintApproverSession(req, res);
+
+    return res.json({ success: true, redirect: redirectTarget });
+  } catch (err) {
+    const attempt = authService.recordFailedLogin(clientIp);
+    auditLog('APPROVER_LOGIN_FAILED', {
+      ip: clientIp,
+      method: 'fido',
+      locked: attempt.locked,
+      remainingAttempts: attempt.remainingAttempts,
+      error: err.message,
+    });
+
+    console.error('[auth-gateway] FIDO login verification failed:', err.message);
+    if (attempt.locked) {
+      return res.status(429).json({ error: 'Too many failed attempts. Account locked for 15 minutes.' });
+    }
+    return res.status(401).json({
+      error: `Security key authentication failed. (${attempt.remainingAttempts} attempt${attempt.remainingAttempts === 1 ? '' : 's'} remaining)`,
+    });
+  }
+});
+
+// Approver Login page (exclusive: either FIDO or Password)
 router.get('/approver/login', (req, res) => {
   const returnTo = req.query.returnTo || req.query.redirect || '/';
   if (sessionService.isApprover(req)) {
     return res.redirect(config.normalizeRedirect(returnTo, '/'));
   }
+
+  const activeMethod = webauthnService.getActiveAuthMethod();
   const currentHash = authService.getApproverPasswordHash();
-  if (!currentHash) {
+
+  if (activeMethod === 'password' && !currentHash) {
     return res.status(503).render('approverSetup', {});
   }
-  return res.render('approverLogin', { returnTo, error: '' });
+
+  return res.render('approverLogin', {
+    returnTo,
+    error: '',
+    mode: activeMethod,
+  });
 });
 
+// Approver Password submission
 router.post('/approver/login', (req, res) => {
+  const activeMethod = webauthnService.getActiveAuthMethod();
   const { password, returnTo } = req.body;
   const rawTarget = returnTo || req.query.returnTo || req.query.redirect || '';
   const redirectTarget = config.normalizeRedirect(rawTarget, '/');
+
+  if (activeMethod !== 'password') {
+    return res.status(400).render('approverLogin', {
+      returnTo: redirectTarget,
+      error: 'Password authentication is disabled. Active login method is FIDO Security Key.',
+      mode: activeMethod,
+    });
+  }
 
   const currentHash = authService.getApproverPasswordHash();
   if (!currentHash) {
@@ -45,6 +205,7 @@ router.post('/approver/login', (req, res) => {
     return res.status(429).render('approverLogin', {
       returnTo: redirectTarget,
       error: `Too many failed login attempts. Locked out for ${lockoutStatus.remainingMins} more minute(s).`,
+      mode: activeMethod,
     });
   }
 
@@ -52,6 +213,7 @@ router.post('/approver/login', (req, res) => {
     return res.status(400).render('approverLogin', {
       returnTo: redirectTarget,
       error: 'Please enter the approver password.',
+      mode: activeMethod,
     });
   }
 
@@ -60,6 +222,7 @@ router.post('/approver/login', (req, res) => {
     const attempt = authService.recordFailedLogin(clientIp);
     auditLog('APPROVER_LOGIN_FAILED', {
       ip: clientIp,
+      method: 'password',
       locked: attempt.locked,
       remainingAttempts: attempt.remainingAttempts,
     });
@@ -67,12 +230,14 @@ router.post('/approver/login', (req, res) => {
       return res.status(429).render('approverLogin', {
         returnTo: redirectTarget,
         error: 'Too many failed attempts. Account locked for 15 minutes.',
+        mode: activeMethod,
       });
     } else {
       const remainingAttempts = attempt.remainingAttempts;
       return res.status(401).render('approverLogin', {
         returnTo: redirectTarget,
         error: `Incorrect approver password. (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`,
+        mode: activeMethod,
       });
     }
   }
@@ -80,6 +245,7 @@ router.post('/approver/login', (req, res) => {
   authService.clearFailedLogins(clientIp);
   auditLog('APPROVER_LOGIN_SUCCESS', {
     ip: clientIp,
+    method: 'password',
     userAgent: req.headers['user-agent'] || 'Unknown',
   });
 
@@ -91,6 +257,7 @@ router.post('/approver/login', (req, res) => {
     createdAt: Date.now(),
     expiresAt: Date.now() + maxAgeMs,
     passwordHash: currentHash,
+    authMethod: 'password',
     ip: req.ip || req.headers['x-forwarded-for'],
     userAgent: req.headers['user-agent'],
   });
