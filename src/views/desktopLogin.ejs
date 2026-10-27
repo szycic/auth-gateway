@@ -4,6 +4,40 @@
   <%- include('partials/head', { extraCss: '/css/login.css' }) %>
   <title><%= matchedService ? `${matchedService.name} - ${config.app.name}` : `Sign in to ${config.app.name}` %></title>
   <script src="/socket.io/socket.io.js"></script>
+  <style>
+    .fido-quick-auth {
+      margin-top: 1rem;
+      text-align: center;
+    }
+    .btn-fido-direct {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: #38bdf8;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+    .btn-fido-direct:hover {
+      background: rgba(56, 189, 248, 0.16);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: #7dd3fc;
+      transform: translateY(-1px);
+    }
+    .fido-direct-status {
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+      color: #f87171;
+      display: none;
+    }
+  </style>
 </head>
 <body>
   <div class="ambient-glow"></div>
@@ -68,6 +102,18 @@
         <div class="status-dot"></div>
         <span id="statusText">Awaiting approval (<span id="timerCount">120</span>s)</span>
       </div>
+
+      <% if (typeof hasFidoKeys !== 'undefined' && hasFidoKeys && typeof authMethod !== 'undefined' && authMethod === 'fido') { %>
+        <div class="fido-quick-auth" id="fidoQuickAuth">
+          <button type="button" class="btn-fido-direct" id="btnFidoDirect" onclick="startDirectFidoLogin()">
+            <svg style="width: 18px; height: 18px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+            <span>Sign in with Security Key</span>
+          </button>
+          <div class="fido-direct-status" id="fidoDirectStatus"></div>
+        </div>
+      <% } %>
     </div>
 
     <div class="footer">
@@ -241,6 +287,97 @@
         window.history.back();
       } else {
         window.location.href = '/';
+      }
+    }
+
+    function base64UrlToUint8Array(base64url) {
+      const padding = '='.repeat((4 - (base64url.length % 4)) % 4);
+      const base64 = (base64url + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    function arrayBufferToBase64Url(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function startDirectFidoLogin() {
+      const btn = document.getElementById('btnFidoDirect');
+      const status = document.getElementById('fidoDirectStatus');
+      if (status) {
+        status.style.display = 'none';
+        status.textContent = '';
+      }
+      if (btn) btn.disabled = true;
+
+      try {
+        if (!window.PublicKeyCredential) {
+          throw new Error('WebAuthn / FIDO2 is not supported in this browser (HTTPS is required).');
+        }
+
+        const optRes = await fetch('/auth/approver/webauthn/login-options');
+        if (!optRes.ok) {
+          const errData = await optRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to initialize security key challenge.');
+        }
+
+        const { challengeId, options } = await optRes.json();
+        options.challenge = base64UrlToUint8Array(options.challenge);
+
+        if (Array.isArray(options.allowCredentials)) {
+          options.allowCredentials.forEach(cred => {
+            cred.id = base64UrlToUint8Array(cred.id);
+          });
+        }
+
+        const assertion = await navigator.credentials.get({ publicKey: options });
+
+        const assertionJSON = {
+          id: assertion.id,
+          rawId: arrayBufferToBase64Url(assertion.rawId),
+          type: assertion.type,
+          response: {
+            clientDataJSON: arrayBufferToBase64Url(assertion.response.clientDataJSON),
+            authenticatorData: arrayBufferToBase64Url(assertion.response.authenticatorData),
+            signature: arrayBufferToBase64Url(assertion.response.signature),
+            userHandle: assertion.response.userHandle ? arrayBufferToBase64Url(assertion.response.userHandle) : null
+          }
+        };
+
+        const verifyRes = await fetch('/auth/approver/webauthn/login-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            challengeId,
+            returnTo: redirectTarget,
+            response: assertionJSON
+          })
+        });
+
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok || !verifyData.success) {
+          throw new Error(verifyData.error || 'Security key authentication failed.');
+        }
+
+        window.location.href = verifyData.redirect || redirectTarget || '/';
+      } catch (err) {
+        console.error(err);
+        if (btn) btn.disabled = false;
+        if (status) {
+          status.textContent = err.name === 'NotAllowedError'
+            ? 'Security key request cancelled or timed out.'
+            : (err.message || 'Authentication failed.');
+          status.style.display = 'block';
+        }
       }
     }
 
