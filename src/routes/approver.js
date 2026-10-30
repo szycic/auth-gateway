@@ -6,6 +6,7 @@ const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const webauthnService = require('../services/webauthnService');
 const { auditLog } = require('../utils/auditLogger');
+const { parseUserAgent } = require('../utils/deviceDetector');
 const { verifySameOrigin } = require('../utils/csrfHelper');
 
 const router = express.Router();
@@ -116,7 +117,7 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
     const ua = (req && req.headers && req.headers['user-agent']) || 'Unknown';
     const finalDeviceName = (req.body.customName && typeof req.body.customName === 'string' && req.body.customName.trim())
       ? req.body.customName.trim().slice(0, 50)
-      : sessionService.parseUserAgent(ua);
+      : parseUserAgent(ua);
 
     // Optional: cleanup pending login session if this login occurred on a QR screen
     if (req.body.loginSessionId) {

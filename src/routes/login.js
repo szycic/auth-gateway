@@ -6,6 +6,7 @@ const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const webauthnService = require('../services/webauthnService');
 const { auditLog } = require('../utils/auditLogger');
+const { parseUserAgent } = require('../utils/deviceDetector');
 
 const router = express.Router();
 
@@ -99,7 +100,7 @@ router.get('/login', (req, res) => {
     authMethod: webauthnService.getActiveAuthMethod(),
     hasFidoKeys: webauthnService.hasEnrolledKeys(),
     clientIp: authService.getClientIp(req),
-    friendlyDevice: sessionService.parseUserAgent(req.headers['user-agent'] || ''),
+    friendlyDevice: parseUserAgent(req.headers['user-agent'] || ''),
   });
 });
 
