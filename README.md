@@ -43,6 +43,8 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 - **Hot Configuration Reloading**: Dynamic configuration file watcher automatically reloads `config.json` changes on disk in real time without restarting the container or losing active sessions.
 - **Service Dashboard**: Displays a dashboard (`/portal`) with direct links to all configured services.
 - **PWA & Shortcuts**: Installable Progressive Web App (PWA) with native mobile shortcuts (`Scan QR`, `Enter PIN`).
+- **Hardware-backed FIDO2 / WebAuthn & Password 2FA**: First-class support for physical security keys (YubiKey, Titan, TouchID, FaceID, Windows Hello) with strict origin phishing protections, or scrypt-hashed passwords.
+- **CSRF & Origin Isolation**: Built-in strict origin and Fetch-Metadata validation on all state-changing approver endpoints to prevent cross-site and cross-subdomain request forgery.
 - **Zero External Databases**: Lightweight Node.js + Express with JSON storage for sessions and configuration.
 
 ---
@@ -219,10 +221,11 @@ Define a reusable snippet in your `Caddyfile` that sets standard security header
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Robots-Tag "noindex, nofollow, noarchive"
 	}
-	# Prevent untrusted clients from spoofing internal authentication headers
+	# Prevent untrusted clients from spoofing internal authentication and proxy headers
 	request_header -X-Auth-Status
 	request_header -X-Auth-Role
 	request_header -X-Auth-User
+	request_header -X-Forwarded-Method
 }
 ```
 
@@ -287,11 +290,15 @@ Use this pattern when certain routes must bypass authentication while protecting
 
 ```caddy
 share.example.com {
-	# 1. Public bypasses (no forward_auth, directly to upstream container)
+	# 1. Public bypasses (read-only downloads directly to upstream container)
 	handle /s/* {
 		reverse_proxy share-app:3000
 	}
-	handle /api/shares* {
+	@publicShareApi {
+		method GET HEAD
+		path /api/shares/*
+	}
+	handle @publicShareApi {
 		reverse_proxy share-app:3000
 	}
 	handle /favicon.ico {
@@ -394,7 +401,7 @@ uptime.example.com {
 
 ### Pattern D: SPAs with Mixed Public & Protected Routes (e.g. ByteStash)
 
-When protecting **Single Page Applications (SPAs)** (built with React, Vue, Next.js, etc.) that feature both **public pages** (e.g., `/public/snippets`, `/snippets/*`, shared URLs) and **protected pages** (e.g., `/`, `/login`, `/admin`), client-side routing presents a challenge:
+When protecting **Single Page Applications (SPAs)** (built with React, Vue, Next.js, etc.) that feature both **public pages** (e.g., `/public/snippets`, `/s/*`, shared URLs) and **protected pages** (e.g., `/`, `/login`, `/admin`), client-side routing presents a challenge:
 
 - When an unauthenticated visitor opens a public page, the SPA runs in browser memory.
 - If the visitor clicks an internal link (e.g., "Login" or the app dashboard), client-side routers (`history.pushState`) switch the view locally **without sending an HTTP GET request to Caddy**.
@@ -432,11 +439,6 @@ stash.example.com {
 
 	# 2. Public HTML routes (proxied through auth-gateway with X-Auth-Status for guard injection)
 	handle /public/snippets* {
-		reverse_proxy auth-gateway:3000 {
-			header_up X-Auth-Status "public"
-		}
-	}
-	handle /snippets* {
 		reverse_proxy auth-gateway:3000 {
 			header_up X-Auth-Status "public"
 		}
