@@ -105,7 +105,7 @@ function getRPID(req) {
   return 'localhost';
 }
 
-function getExpectedOrigins(req) {
+function getExpectedOrigins() {
   const origins = new Set();
   if (config.server && config.server.baseUrl) {
     try {
@@ -113,16 +113,10 @@ function getExpectedOrigins(req) {
     } catch (_) {}
   }
 
-  if (req && req.headers) {
-    if (req.headers.origin) origins.add(req.headers.origin);
-    if (req.headers.host) {
-      origins.add(`https://${req.headers.host}`);
-      origins.add(`http://${req.headers.host}`);
-    }
+  if (process.env.NODE_ENV !== 'production') {
+    origins.add(`http://localhost:${config.PORT || 3000}`);
+    origins.add(`http://127.0.0.1:${config.PORT || 3000}`);
   }
-
-  origins.add(`http://localhost:${config.PORT || 3000}`);
-  origins.add(`http://127.0.0.1:${config.PORT || 3000}`);
   return Array.from(origins);
 }
 
@@ -233,7 +227,7 @@ async function verifyRegistrationForToken(token, response, keyName, req) {
   }
 
   const rpID = getRPID(req);
-  const expectedOrigins = getExpectedOrigins(req);
+  const expectedOrigins = getExpectedOrigins();
 
   const verification = await verifyRegistrationResponse({
     response,
@@ -331,7 +325,7 @@ async function verifyLoginResponse(challengeId, response, req) {
   }
 
   const rpID = getRPID(req);
-  const expectedOrigins = getExpectedOrigins(req);
+  const expectedOrigins = getExpectedOrigins();
 
   const verification = await verifyAuthenticationResponse({
     response,

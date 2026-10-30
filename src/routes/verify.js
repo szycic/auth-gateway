@@ -6,11 +6,26 @@ const authService = require('../services/authService');
 
 const router = express.Router();
 
+// CORS Preflight handler - strictly for authentic OPTIONS requests
+router.options('/verify', (req, res) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    if (isAllowedOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      const reqHeaders = req.headers['access-control-request-headers'];
+      res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
+      res.setHeader('Access-Control-Max-Age', '86400');
+      return res.status(204).end();
+    }
+    return res.status(403).send('Forbidden: CORS origin not allowed');
+  }
+  return res.status(204).end();
+});
+
 router.all('/verify', (req, res) => {
   const origin = req.headers.origin;
-  const isOptions = req.method === 'OPTIONS' ||
-    (req.headers['x-forwarded-method'] || '').toUpperCase() === 'OPTIONS' ||
-    Boolean(req.headers['access-control-request-method']);
 
   if (origin) {
     if (isAllowedOrigin(origin)) {
@@ -23,9 +38,6 @@ router.all('/verify', (req, res) => {
     } else {
       return res.status(403).send('Forbidden: CORS origin not allowed');
     }
-  }
-  if (isOptions) {
-    return res.status(204).end();
   }
 
   const targetService = sessionService.getTargetServiceForRequest(req);
