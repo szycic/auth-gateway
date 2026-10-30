@@ -291,6 +291,34 @@
     </div>
   </div>
 
+  <!-- Confirm Revoke All Sessions Modal -->
+  <div class="pair-modal-overlay" id="confirmRevokeAllModal" style="display: none;" onclick="if(event.target===this)closeRevokeAllModal()">
+    <div class="pair-modal-card confirm-modal-card">
+      <div class="pair-modal-header">
+        <div class="pair-modal-title" style="color: #f87171; display: flex; align-items: center; gap: 0.5rem;">
+          <svg style="width: 20px; height: 20px; flex-shrink: 0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          Revoke All Active Sessions
+        </div>
+        <button type="button" class="btn-close-scanner" onclick="closeRevokeAllModal()" aria-label="Close">
+          <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <p class="pair-modal-desc" style="margin-bottom: 1.25rem;">
+        Are you sure you want to revoke all active sessions? All other connected devices will be logged out immediately. Your current session will remain active.
+      </p>
+
+      <div class="confirm-modal-footer">
+        <button type="button" class="btn-modal-cancel" onclick="closeRevokeAllModal()">Cancel</button>
+        <button type="button" class="btn-modal-danger" id="btnConfirmRevokeAll" onclick="executeRevokeAll()">Revoke All</button>
+      </div>
+    </div>
+  </div>
+
   <script id="known-services-data" type="application/json"><%- JSON.stringify(((config.getActiveServices ? config.getActiveServices() : config.services) || []).map(s => ({ id: (s.id || '').toLowerCase(), name: s.name }))).replace(/</g, '\\u003c') %></script>
   <script>
     function openRename(id) {
@@ -622,11 +650,22 @@
     function removeAllSessionCards(noticeMsg) {
       const list = document.querySelector('.session-list');
       if (list) {
-        list.style.transition = 'opacity 0.25s ease';
-        list.style.opacity = '0';
-        setTimeout(() => {
-          showEmptyState();
-        }, 250);
+        const nonCurrent = list.querySelectorAll('.session-card:not(.session-card-current)');
+        nonCurrent.forEach(function(c) {
+          c.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+          c.style.opacity = '0';
+          c.style.transform = 'scale(0.95)';
+          setTimeout(function() { c.remove(); }, 250);
+        });
+        setTimeout(function() {
+          const remaining = list.querySelectorAll('.session-card');
+          if (remaining.length === 0) {
+            showEmptyState();
+          } else {
+            const revokeAllForm = document.querySelector('.revoke-all-form');
+            if (revokeAllForm) revokeAllForm.style.display = 'none';
+          }
+        }, 300);
       }
       if (noticeMsg) showNotice(noticeMsg);
     }
@@ -675,13 +714,37 @@
       }
     }
 
-    async function handleRevokeAll(e) {
+    function handleRevokeAll(e) {
       if (e) e.preventDefault();
-      if (!confirm('Revoke all authenticated desktop sessions?')) return;
-      const btn = document.getElementById('btn-revoke-all');
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Revoking All...';
+      openRevokeAllModal();
+    }
+
+    function openRevokeAllModal(e) {
+      if (e) e.preventDefault();
+      const modal = document.getElementById('confirmRevokeAllModal');
+      const confirmBtn = document.getElementById('btnConfirmRevokeAll');
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Revoke All';
+      }
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closeRevokeAllModal() {
+      const modal = document.getElementById('confirmRevokeAllModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function executeRevokeAll() {
+      const confirmBtn = document.getElementById('btnConfirmRevokeAll');
+      const mainBtn = document.getElementById('btn-revoke-all');
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Revoking...';
+      }
+      if (mainBtn) {
+        mainBtn.disabled = true;
+        mainBtn.textContent = 'Revoking All...';
       }
       try {
         const res = await fetch('/auth/sessions/revoke', {
@@ -695,13 +758,18 @@
           throw new Error(errData.error || ('Revocation failed (' + res.status + ')'));
         }
         const data = await res.json();
+        closeRevokeAllModal();
         removeAllSessionCards(data.message || 'All sessions revoked.');
       } catch (err) {
         console.error(err);
         alert('Could not revoke all sessions: ' + err.message);
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Revoke All Active Sessions';
+        if (confirmBtn) {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Revoke All';
+        }
+        if (mainBtn) {
+          mainBtn.disabled = false;
+          mainBtn.textContent = 'Revoke All Active Sessions';
         }
       }
     }
@@ -952,6 +1020,15 @@
         }
       }
     }
+
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeRevokeAllModal();
+        closePermissionsModal();
+        closePairCodeModal();
+        closeScanner();
+      }
+    });
   </script>
   <%- include('partials/pwa-sw') %>
 </body>
