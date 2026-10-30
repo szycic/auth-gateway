@@ -42,28 +42,6 @@
       </button>
     </div>
 
-    <!-- Sessions Toolbar: Grouping & Actions -->
-    <% if (activeSessionsList && activeSessionsList.length > 0) { %>
-      <div class="sessions-toolbar">
-        <div class="toolbar-section">
-          <span class="toolbar-label">Group:</span>
-          <div class="segmented-control" id="groupSegmentedControl">
-            <button type="button" class="segment-btn active" data-mode="type" onclick="setGroupMode('type')">By Type</button>
-            <button type="button" class="segment-btn" data-mode="custom" onclick="setGroupMode('custom')">Custom</button>
-            <button type="button" class="segment-btn" data-mode="none" onclick="setGroupMode('none')">None</button>
-          </div>
-        </div>
-        <div class="toolbar-actions" id="toolbarCustomActions" style="display: none;">
-          <button type="button" class="btn-add-group" onclick="promptNewGroup()">
-            <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            <span>New Group</span>
-          </button>
-        </div>
-      </div>
-    <% } %>
-
     <div id="sessions-container">
       <% if (activeSessionsList && activeSessionsList.length > 0) { %>
         <div class="session-groups-container" id="sessionGroupsContainer">
@@ -108,7 +86,6 @@
                    data-session-id="<%= s.id %>"
                    data-device-name="<%= deviceName %>"
                    data-type="<%= (s.isApprover || s.type === 'approver' || s.approverToken) ? 'approver' : (s.isTrusted ? 'trusted' : 'temporary') %>"
-                   data-group="<%= s.group || '' %>"
                    data-sort-order="<%= typeof s.sortOrder === 'number' ? s.sortOrder : 999999 %>"
                    data-created-at="<%= s.createdAt || 0 %>"
                    data-allowed-services="<%- JSON.stringify(initialAllowed || []).replace(/"/g, '&quot;') %>">
@@ -134,12 +111,6 @@
                       <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                       </svg>
-                    </button>
-                    <button type="button" class="btn-group-chip <%= s.group ? 'has-group' : '' %>" id="group-chip-<%= s.id %>" onclick="openGroupModal('<%= s.id %>', '<%= (s.group || '').replace(/'/g, "\\'") %>')" title="Assign group">
-                      <svg style="width: 11px; height: 11px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                      </svg>
-                      <span class="group-chip-text" id="group-text-<%= s.id %>"><%= s.group || 'Group' %></span>
                     </button>
                     <% if (s.isApprover || s.type === 'approver' || s.approverToken) { %>
                       <span class="badge-approver">
@@ -378,48 +349,6 @@
         <button type="button" class="btn-modal-cancel" onclick="closeRevokeAllModal()">Cancel</button>
         <button type="button" class="btn-modal-danger" id="btnConfirmRevokeAll" onclick="executeRevokeAll()">Revoke All</button>
       </div>
-    </div>
-  </div>
-
-  <!-- Assign Group Modal -->
-  <div class="pair-modal-overlay" id="groupModal" style="display: none;" onclick="if(event.target===this)closeGroupModal()">
-    <div class="pair-modal-card group-modal-card">
-      <div class="pair-modal-header">
-        <div>
-          <div class="pair-modal-title">Assign Device to Group</div>
-          <div class="permissions-modal-device" id="groupModalDeviceName">Device Name</div>
-        </div>
-        <button type="button" class="btn-close-scanner" onclick="closeGroupModal()" aria-label="Close">
-          <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      <p class="pair-modal-desc" style="margin-bottom: 0.85rem;">
-        Group devices to keep your dashboard organized (e.g. Work, Home, Personal).
-      </p>
-
-      <div class="group-preset-pills" id="groupPresetPills"></div>
-
-      <form id="groupForm" onsubmit="handleGroupSubmit(event)">
-        <input type="hidden" id="groupSessionId" value="">
-        <div style="margin-bottom: 1.25rem;">
-          <input
-            type="text"
-            id="groupInput"
-            class="group-name-input"
-            maxlength="35"
-            placeholder="Group name (or leave empty to ungroup)"
-            autocomplete="off"
-          />
-        </div>
-
-        <div class="permissions-modal-footer">
-          <button type="button" class="btn-modal-cancel" onclick="closeGroupModal()">Cancel</button>
-          <button type="submit" class="btn-pair-submit" id="btnSaveGroup" style="flex: 1; margin-top: 0;">Save Group</button>
-        </div>
-      </form>
     </div>
   </div>
 
@@ -778,8 +707,6 @@
 
     function showEmptyState() {
       const container = document.getElementById('sessions-container');
-      const toolbar = document.querySelector('.sessions-toolbar');
-      if (toolbar) toolbar.style.display = 'none';
       if (container) {
         container.innerHTML = '<div class="empty-state">' +
           '<p>No active desktop sessions.</p>' +
@@ -788,30 +715,11 @@
       }
     }
 
-    // Grouping & Reordering State
-    let currentGroupMode = localStorage.getItem('session_group_mode') || 'type';
+    // Grouping by Type & Reordering State
     let collapsedGroups = {};
     try {
       collapsedGroups = JSON.parse(localStorage.getItem('session_collapsed_groups') || '{}');
     } catch (e) { collapsedGroups = {}; }
-    let customGroupsList = [];
-
-    function setGroupMode(mode) {
-      currentGroupMode = mode;
-      localStorage.setItem('session_group_mode', mode);
-
-      const buttons = document.querySelectorAll('#groupSegmentedControl .segment-btn');
-      buttons.forEach(b => {
-        b.classList.toggle('active', b.dataset.mode === mode);
-      });
-
-      const customActions = document.getElementById('toolbarCustomActions');
-      if (customActions) {
-        customActions.style.display = mode === 'custom' ? 'block' : 'none';
-      }
-
-      applyGrouping();
-    }
 
     function toggleGroupCollapse(groupId) {
       const section = document.getElementById('group-section-' + groupId);
@@ -832,82 +740,39 @@
 
       container.innerHTML = '';
 
-      if (currentGroupMode === 'none') {
-        const list = document.createElement('div');
-        list.className = 'session-list';
-        list.id = 'mainSessionList';
-        cards.forEach(card => list.appendChild(card));
-        container.appendChild(list);
-      } else if (currentGroupMode === 'type') {
-        const typeDefs = [
-          {
-            id: 'approver',
-            title: 'Approver Devices',
-            icon: '<svg style="width: 14px; height: 14px; color: #fbbf24;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>'
-          },
-          {
-            id: 'trusted',
-            title: 'Trusted Sessions',
-            icon: '<svg style="width: 14px; height: 14px; color: #38bdf8;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>'
-          },
-          {
-            id: 'temporary',
-            title: 'Temporary Sessions',
-            icon: '<svg style="width: 14px; height: 14px; color: #94a3b8;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>'
-          }
-        ];
-
-        typeDefs.forEach(def => {
-          const matching = cards.filter(c => c.dataset.type === def.id);
-          if (matching.length === 0) return;
-
-          const section = createGroupSection(def.id, def.title, def.icon, matching.length, def.id);
-          const dropzone = section.querySelector('.session-group-dropzone');
-          matching.forEach(c => dropzone.appendChild(c));
-          container.appendChild(section);
-        });
-      } else if (currentGroupMode === 'custom') {
-        const groupsSet = new Set(customGroupsList);
-        cards.forEach(c => {
-          if (c.dataset.group && c.dataset.group.trim()) {
-            groupsSet.add(c.dataset.group.trim());
-          }
-        });
-
-        const sortedGroups = Array.from(groupsSet).sort((a, b) => a.localeCompare(b));
-
-        sortedGroups.forEach(gName => {
-          const matching = cards.filter(c => (c.dataset.group || '').trim() === gName);
-          const safeId = 'custom_' + encodeURIComponent(gName).replace(/%/g, '_');
-          const icon = '<svg style="width: 14px; height: 14px; color: #d8b4fe;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>';
-          const section = createGroupSection(safeId, gName, icon, matching.length, gName);
-          const dropzone = section.querySelector('.session-group-dropzone');
-          if (matching.length === 0) {
-            const emptyEl = document.createElement('div');
-            emptyEl.className = 'empty-group-dropzone';
-            emptyEl.textContent = 'Drop sessions here to add to ' + gName;
-            dropzone.appendChild(emptyEl);
-          } else {
-            matching.forEach(c => dropzone.appendChild(c));
-          }
-          container.appendChild(section);
-        });
-
-        const ungrouped = cards.filter(c => !(c.dataset.group && c.dataset.group.trim()));
-        if (ungrouped.length > 0 || sortedGroups.length === 0) {
-          const icon = '<svg style="width: 14px; height: 14px; color: #94a3b8;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>';
-          const section = createGroupSection('ungrouped', 'Ungrouped Devices', icon, ungrouped.length, '');
-          const dropzone = section.querySelector('.session-group-dropzone');
-          ungrouped.forEach(c => dropzone.appendChild(c));
-          container.appendChild(section);
+      const typeDefs = [
+        {
+          id: 'approver',
+          title: 'Approver Devices',
+          icon: '<svg style="width: 14px; height: 14px; color: #fbbf24;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>'
+        },
+        {
+          id: 'trusted',
+          title: 'Trusted Sessions',
+          icon: '<svg style="width: 14px; height: 14px; color: #38bdf8;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>'
+        },
+        {
+          id: 'temporary',
+          title: 'Temporary Sessions',
+          icon: '<svg style="width: 14px; height: 14px; color: #94a3b8;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>'
         }
-      }
+      ];
+
+      typeDefs.forEach(def => {
+        const matching = cards.filter(c => c.dataset.type === def.id);
+        if (matching.length === 0) return;
+
+        const section = createGroupSection(def.id, def.title, def.icon, matching.length);
+        const dropzone = section.querySelector('.session-group-dropzone');
+        matching.forEach(c => dropzone.appendChild(c));
+        container.appendChild(section);
+      });
 
       setupDragAndDrop();
       updateReorderButtons();
     }
 
-    function createGroupSection(safeId, title, iconHtml, count, rawGroupName) {
+    function createGroupSection(safeId, title, iconHtml, count) {
       const section = document.createElement('div');
       section.className = 'session-group-section';
       section.id = 'group-section-' + safeId;
@@ -934,7 +799,7 @@
 
       const dropzone = document.createElement('div');
       dropzone.className = 'session-group-dropzone';
-      dropzone.dataset.groupId = typeof rawGroupName !== 'undefined' ? rawGroupName : safeId;
+      dropzone.dataset.groupId = safeId;
 
       section.appendChild(header);
       section.appendChild(dropzone);
@@ -948,20 +813,16 @@
         const cards = sec.querySelectorAll('.session-card');
         const countBadge = document.getElementById('group-count-' + safeId);
         if (countBadge) countBadge.textContent = cards.length;
-        if (cards.length === 0 && currentGroupMode === 'type') {
+        if (cards.length === 0) {
           sec.style.display = 'none';
         }
       });
     }
 
     function updateReorderButtons() {
-      const containers = currentGroupMode === 'none'
-        ? [document.getElementById('mainSessionList')]
-        : Array.from(document.querySelectorAll('.session-group-dropzone'));
-
-      containers.forEach(cont => {
-        if (!cont) return;
-        const cards = Array.from(cont.querySelectorAll('.session-card'));
+      const dropzones = Array.from(document.querySelectorAll('.session-group-dropzone'));
+      dropzones.forEach(dz => {
+        const cards = Array.from(dz.querySelectorAll('.session-card'));
         cards.forEach((card, idx) => {
           const upBtn = card.querySelector('.btn-reorder-up');
           const downBtn = card.querySelector('.btn-reorder-down');
@@ -1006,8 +867,7 @@
         const allCards = Array.from(document.querySelectorAll('.session-card'));
         const order = allCards.map((card, idx) => ({
           id: card.dataset.sessionId,
-          sortOrder: idx,
-          group: card.dataset.group || null
+          sortOrder: idx
         }));
 
         try {
@@ -1028,7 +888,7 @@
     function setupDragAndDrop() {
       const cards = document.querySelectorAll('.session-card');
       const handles = document.querySelectorAll('.session-drag-handle');
-      const dropzones = document.querySelectorAll('.session-group-dropzone, #mainSessionList');
+      const dropzones = document.querySelectorAll('.session-group-dropzone');
 
       handles.forEach(h => {
         const card = h.closest('.session-card');
@@ -1061,6 +921,9 @@
         card.ondragover = (e) => {
           e.preventDefault();
           if (!draggedCard || draggedCard === card) return;
+          // Only reorder within the same type group
+          if (draggedCard.dataset.type !== card.dataset.type) return;
+
           const rect = card.getBoundingClientRect();
           const midY = rect.top + rect.height / 2;
           const parent = card.parentNode;
@@ -1075,19 +938,11 @@
       dropzones.forEach(dz => {
         dz.ondragover = (e) => {
           e.preventDefault();
-          dz.classList.add('drop-target-active');
           if (!draggedCard) return;
-
-          const emptyPlaceholder = dz.querySelector('.empty-group-dropzone');
-          if (emptyPlaceholder) emptyPlaceholder.remove();
-
+          if (draggedCard.dataset.type !== dz.dataset.groupId) return;
+          dz.classList.add('drop-target-active');
           if (!dz.contains(draggedCard)) {
             dz.appendChild(draggedCard);
-            if (currentGroupMode === 'custom') {
-              const newGroup = dz.dataset.groupId || '';
-              draggedCard.dataset.group = newGroup;
-              updateCardGroupChip(draggedCard, newGroup);
-            }
           }
         };
 
@@ -1100,11 +955,6 @@
         dz.ondrop = (e) => {
           e.preventDefault();
           dz.classList.remove('drop-target-active');
-          if (draggedCard && currentGroupMode === 'custom') {
-            const newGroup = dz.dataset.groupId || '';
-            draggedCard.dataset.group = newGroup;
-            updateCardGroupChip(draggedCard, newGroup);
-          }
         };
       });
     }
@@ -1128,7 +978,7 @@
         if (!elUnder) return;
 
         const targetCard = elUnder.closest('.session-card');
-        if (targetCard && targetCard !== card) {
+        if (targetCard && targetCard !== card && targetCard.dataset.type === card.dataset.type) {
           const rect = targetCard.getBoundingClientRect();
           if (touch.clientY < rect.top + rect.height / 2) {
             targetCard.parentNode.insertBefore(card, targetCard);
@@ -1148,138 +998,7 @@
       };
     }
 
-    function updateCardGroupChip(card, groupName) {
-      const chipText = card.querySelector('.group-chip-text');
-      const chipBtn = card.querySelector('.btn-group-chip');
-      if (chipText) {
-        chipText.textContent = groupName || 'Group';
-      }
-      if (chipBtn) {
-        chipBtn.classList.toggle('has-group', Boolean(groupName));
-      }
-    }
-
-    function openGroupModal(sessionId, currentGroup) {
-      const modal = document.getElementById('groupModal');
-      const idInput = document.getElementById('groupSessionId');
-      const groupInput = document.getElementById('groupInput');
-      const devNameEl = document.getElementById('groupModalDeviceName');
-      const card = document.getElementById('session-card-' + sessionId);
-
-      if (!modal || !idInput || !groupInput) return;
-
-      idInput.value = sessionId;
-      groupInput.value = currentGroup || (card ? (card.dataset.group || '') : '');
-      if (devNameEl && card) {
-        devNameEl.textContent = card.dataset.deviceName || 'Device';
-      }
-
-      const pillsContainer = document.getElementById('groupPresetPills');
-      if (pillsContainer) {
-        pillsContainer.innerHTML = '';
-        const groupOptions = new Set(['Work', 'Home', 'Personal', 'Mobile', 'Servers']);
-        document.querySelectorAll('.session-card').forEach(c => {
-          if (c.dataset.group && c.dataset.group.trim()) {
-            groupOptions.add(c.dataset.group.trim());
-          }
-        });
-        customGroupsList.forEach(g => groupOptions.add(g));
-
-        groupOptions.forEach(opt => {
-          const pill = document.createElement('button');
-          pill.type = 'button';
-          pill.className = 'preset-pill';
-          pill.textContent = opt;
-          pill.onclick = () => {
-            groupInput.value = opt;
-            groupInput.focus();
-          };
-          pillsContainer.appendChild(pill);
-        });
-      }
-
-      modal.style.display = 'flex';
-      setTimeout(() => groupInput.focus(), 100);
-    }
-
-    function closeGroupModal() {
-      const modal = document.getElementById('groupModal');
-      if (modal) modal.style.display = 'none';
-    }
-
-    async function handleGroupSubmit(e) {
-      if (e) e.preventDefault();
-      const idInput = document.getElementById('groupSessionId');
-      const groupInput = document.getElementById('groupInput');
-      const saveBtn = document.getElementById('btnSaveGroup');
-      if (!idInput || !groupInput) return;
-
-      const sessionId = idInput.value;
-      const newGroup = groupInput.value.trim();
-
-      if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Saving...';
-      }
-
-      try {
-        const res = await fetch('/auth/sessions/group', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ sessionId, group: newGroup })
-        });
-        if (!res.ok) {
-          throw new Error('Failed to update group.');
-        }
-
-        const card = document.getElementById('session-card-' + sessionId);
-        if (card) {
-          card.dataset.group = newGroup;
-          updateCardGroupChip(card, newGroup);
-        }
-
-        if (newGroup && !customGroupsList.includes(newGroup)) {
-          customGroupsList.push(newGroup);
-        }
-
-        closeGroupModal();
-        if (currentGroupMode === 'custom') {
-          applyGrouping();
-        }
-      } catch (err) {
-        alert('Could not update group: ' + err.message);
-      } finally {
-        if (saveBtn) {
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Save Group';
-        }
-      }
-    }
-
-    function promptNewGroup() {
-      const name = prompt('Enter new group name (e.g. Office, Labs, Family):');
-      if (!name || !name.trim()) return;
-      const trimmed = name.trim().slice(0, 35);
-      if (!customGroupsList.includes(trimmed)) {
-        customGroupsList.push(trimmed);
-      }
-      if (currentGroupMode !== 'custom') {
-        setGroupMode('custom');
-      } else {
-        applyGrouping();
-      }
-    }
-
     window.addEventListener('DOMContentLoaded', () => {
-      const buttons = document.querySelectorAll('#groupSegmentedControl .segment-btn');
-      buttons.forEach(b => {
-        b.classList.toggle('active', b.dataset.mode === currentGroupMode);
-      });
-      const customActions = document.getElementById('toolbarCustomActions');
-      if (customActions) {
-        customActions.style.display = currentGroupMode === 'custom' ? 'block' : 'none';
-      }
       applyGrouping();
     });
 
@@ -1626,7 +1345,6 @@
 
     window.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
-        closeGroupModal();
         closeRevokeAllModal();
         closePermissionsModal();
         closePairCodeModal();
