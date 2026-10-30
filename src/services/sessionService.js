@@ -396,4 +396,5 @@ module.exports = {
   isSessionAllowedForService,
   getTargetServiceForRequest,
   mintApproverSession,
+  parseUserAgent,
 };
