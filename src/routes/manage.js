@@ -257,10 +257,6 @@ router.post('/sessions/reorder', (req, res) => {
     const session = sessionsById.get(sessionId);
     if (session) {
       session.sortOrder = typeof (item && item.sortOrder) === 'number' ? item.sortOrder : index;
-      if (item && typeof item.group !== 'undefined') {
-        const trimmed = typeof item.group === 'string' ? item.group.trim().slice(0, 40) : '';
-        session.group = trimmed || null;
-      }
     }
   });
 
@@ -270,48 +266,6 @@ router.post('/sessions/reorder', (req, res) => {
     return res.json({ success: true, count: order.length });
   }
   return res.redirect('/auth/sessions');
-});
-
-// Update session group
-router.post('/sessions/group', (req, res) => {
-  if (!sessionService.isApprover(req)) {
-    if (req.accepts('json') && !req.accepts('html')) {
-      return res.status(401).json({ error: 'Unauthorized.' });
-    }
-    return res.status(401).send('Unauthorized.');
-  }
-
-  const { sessionId, group } = req.body;
-  if (!sessionId || typeof sessionId !== 'string') {
-    if (req.accepts('json') && !req.accepts('html')) {
-      return res.status(400).json({ error: 'Invalid session ID.' });
-    }
-    return res.status(400).send('Invalid session ID.');
-  }
-
-  let targetSession = null;
-  for (const session of sessionService.activeSessions.values()) {
-    if (session.id === sessionId) {
-      targetSession = session;
-      break;
-    }
-  }
-
-  if (!targetSession) {
-    if (req.accepts('json') && !req.accepts('html')) {
-      return res.status(404).json({ error: 'Session not found.' });
-    }
-    return res.redirect('/auth/sessions');
-  }
-
-  const trimmed = typeof group === 'string' ? group.trim().slice(0, 40) : '';
-  targetSession.group = trimmed || null;
-  sessionService.savePersistedSessions();
-
-  if (req.accepts('json') && !req.accepts('html')) {
-    return res.json({ success: true, sessionId, group: targetSession.group });
-  }
-  return res.redirect('/auth/sessions?notice=' + encodeURIComponent(trimmed ? `Moved to group "${trimmed}".` : 'Removed from group.'));
 });
 
 // Update session service permissions

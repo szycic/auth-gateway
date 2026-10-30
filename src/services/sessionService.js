@@ -135,7 +135,6 @@ function loadPersistedSessions() {
             type: 'approver',
             allowedServices: null,
             sortOrder: typeof a.sortOrder === 'number' ? a.sortOrder : 0,
-            group: a.group || null,
           };
           activeSessions.set(sessionToken, sessionObj);
           a.sessionId = sessionId;
@@ -336,7 +335,6 @@ function mintApproverSession(req, res, approverTokenExplicit) {
     type: 'approver',
     allowedServices: null,
     sortOrder: 0,
-    group: null,
   };
 
   if (approverToken && approverSessions.has(approverToken)) {
