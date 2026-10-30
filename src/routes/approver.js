@@ -111,12 +111,86 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
     const cred = await webauthnService.verifyLoginResponse(challengeId, response, req);
 
     authService.clearFailedLogins(clientIp);
+
+    const sessionType = req.body.sessionType || 'approver';
+    const ua = (req && req.headers && req.headers['user-agent']) || 'Unknown';
+    const finalDeviceName = (req.body.customName && typeof req.body.customName === 'string' && req.body.customName.trim())
+      ? req.body.customName.trim().slice(0, 50)
+      : sessionService.parseUserAgent(ua);
+
+    // Optional: cleanup pending login session if this login occurred on a QR screen
+    if (req.body.loginSessionId) {
+      const pending = sessionService.pendingLoginSessions.get(req.body.loginSessionId);
+      if (pending && pending.pairCode) {
+        authService.pairingCodes.delete(pending.pairCode);
+      }
+      sessionService.pendingLoginSessions.delete(req.body.loginSessionId);
+    }
+
+    if (sessionType === 'user') {
+      // Standard limited-time user session (No approver privileges)
+      let ttlHours = config.SESSION_TTL_HOURS;
+      if (req.body.ttlHours) {
+        const parsed = parseFloat(req.body.ttlHours);
+        if (!isNaN(parsed) && parsed > 0) {
+          ttlHours = parsed;
+        }
+      }
+      const maxAgeMs = Math.round(ttlHours * 3600 * 1000);
+      const sessionToken = crypto.randomBytes(48).toString('base64url');
+      const sessionId = crypto.randomUUID();
+
+      // Clean up old active session on this client to prevent duplicate cards
+      const oldAuthToken = req && req.cookies && (req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token']);
+      if (oldAuthToken && sessionService.activeSessions.has(oldAuthToken)) {
+        sessionService.activeSessions.delete(oldAuthToken);
+      }
+
+      sessionService.activeSessions.set(sessionToken, {
+        id: sessionId,
+        token: sessionToken,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + maxAgeMs,
+        isTrusted: false,
+        isApprover: false,
+        ip: clientIp,
+        userAgent: ua,
+        friendlyDevice: finalDeviceName,
+        service: null,
+        type: 'desktop_guest',
+        allowedServices: null,
+        sortOrder: null,
+      });
+
+      // Clear approver cookie if client had one
+      if (req.cookies && req.cookies[config.APPROVER_COOKIE_NAME]) {
+        res.cookie(config.APPROVER_COOKIE_NAME, '', getCookieOptions(req, 0));
+      }
+
+      // Set user session cookie
+      res.cookie(config.AUTH_COOKIE_NAME, sessionToken, getCookieOptions(req, maxAgeMs));
+      sessionService.savePersistedSessions();
+
+      auditLog('USER_FIDO_LOGIN_SUCCESS', {
+        ip: clientIp,
+        sessionId,
+        device: finalDeviceName,
+        ttlHours,
+        keyName: cred.name,
+        keyId: cred.id,
+        userAgent: ua,
+      });
+
+      return res.json({ success: true, redirect: redirectTarget });
+    }
+
+    // Default: Master Approver session
     auditLog('APPROVER_LOGIN_SUCCESS', {
       ip: clientIp,
       method: 'fido',
       keyName: cred.name,
       keyId: cred.id,
-      userAgent: req.headers['user-agent'] || 'Unknown',
+      userAgent: ua,
     });
 
     // Issue Approver session token (30 days)
@@ -132,13 +206,14 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       authMethod: 'fido',
       keyId: cred.id,
       ip: req.ip || req.headers['x-forwarded-for'],
-      userAgent: req.headers['user-agent'],
+      userAgent: ua,
     };
     sessionService.approverSessions.set(approverToken, appObj);
 
     res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
     const activeSess = sessionService.mintApproverSession(req, res, approverToken);
     if (activeSess) {
+      if (finalDeviceName) activeSess.friendlyDevice = finalDeviceName;
       appObj.sessionId = activeSess.id;
       appObj.activeSessionToken = activeSess.token;
     }
