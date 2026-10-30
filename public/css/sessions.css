@@ -695,3 +695,39 @@ body {
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
 }
+
+/* Revoke All Confirmation Modal */
+.confirm-modal-card {
+  max-width: 440px;
+}
+
+.confirm-modal-footer {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.btn-modal-danger {
+  flex: 1;
+  padding: 0.85rem 1rem;
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-modal-danger:hover {
+  background: #ef4444;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px -5px rgba(220, 38, 38, 0.4);
+}
+
+.btn-modal-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
