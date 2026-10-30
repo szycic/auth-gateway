@@ -46,7 +46,100 @@ function loadPersistedSessions() {
         }
       }
 
+      // Link approver sessions to active manage sessions (and heal missing links)
+      let sessionsModified = false;
+
+      // 1. Link active sessions with their matching approver session
+      for (const s of activeSessions.values()) {
+        if (s.approverToken && approverSessions.has(s.approverToken)) {
+          s.isApprover = true;
+          s.type = 'approver';
+          const a = approverSessions.get(s.approverToken);
+          if (!a.sessionId) {
+            a.sessionId = s.id;
+            sessionsModified = true;
+          }
+          if (!a.activeSessionToken) {
+            a.activeSessionToken = s.token;
+            sessionsModified = true;
+          }
+        } else if (!s.approverToken) {
+          const isApproverDevice = s.type === 'approver' || s.isApprover || (typeof s.friendlyDevice === 'string' && s.friendlyDevice.startsWith('Approver'));
+          if (isApproverDevice) {
+            let bestMatch = null;
+            let minDiff = Infinity;
+            for (const a of approverSessions.values()) {
+              if (a.activeSessionToken && a.activeSessionToken !== s.token) continue;
+              if (a.sessionId && a.sessionId !== s.id) continue;
+              if (a.ip && s.ip && a.ip === s.ip) {
+                const diff = Math.abs((a.createdAt || 0) - (s.createdAt || 0));
+                if (diff < minDiff) {
+                  minDiff = diff;
+                  bestMatch = a;
+                }
+              }
+            }
+            if (bestMatch) {
+              s.approverToken = bestMatch.token;
+              s.isApprover = true;
+              s.type = 'approver';
+              bestMatch.sessionId = s.id;
+              bestMatch.activeSessionToken = s.token;
+              sessionsModified = true;
+            }
+          }
+        }
+      }
+
+      // 2. Ensure every approver session is linked to an active session in manage sessions
+      for (const a of approverSessions.values()) {
+        let hasActiveSession = false;
+        if (a.activeSessionToken && activeSessions.has(a.activeSessionToken)) {
+          hasActiveSession = true;
+        } else {
+          for (const s of activeSessions.values()) {
+            if (s.approverToken === a.token || (a.sessionId && s.id === a.sessionId)) {
+              hasActiveSession = true;
+              a.activeSessionToken = s.token;
+              a.sessionId = s.id;
+              break;
+            }
+          }
+        }
+
+        if (!hasActiveSession) {
+          const sessionId = a.sessionId || crypto.randomUUID();
+          const sessionToken = a.activeSessionToken || crypto.randomBytes(48).toString('base64url');
+          const ua = a.userAgent || '';
+          const friendlyDevice = `Approver (${parseUserAgent(ua)})`;
+          const maxAgeMs = 10 * 365 * 24 * 3600 * 1000;
+          const sessionObj = {
+            id: sessionId,
+            token: sessionToken,
+            approverToken: a.token,
+            createdAt: a.createdAt || Date.now(),
+            expiresAt: a.expiresAt || (Date.now() + maxAgeMs),
+            isTrusted: true,
+            isApprover: true,
+            ip: a.ip || 'Unknown',
+            userAgent: ua,
+            friendlyDevice,
+            service: null,
+            type: 'approver',
+            allowedServices: null,
+          };
+          activeSessions.set(sessionToken, sessionObj);
+          a.sessionId = sessionId;
+          a.activeSessionToken = sessionToken;
+          sessionsModified = true;
+        }
+      }
+
       console.log(`[auth-gateway] Loaded ${activeSessions.size} active sessions and ${approverSessions.size} approver sessions from disk.`);
+
+      if (sessionsModified) {
+        savePersistedSessions();
+      }
 
       if (prevActiveCount > 0 && activeSessions.size === 0) {
         try {
@@ -204,14 +297,20 @@ function getTargetServiceForRequest(req) {
   return null;
 }
 
-function mintApproverSession(req, res) {
+function mintApproverSession(req, res, approverTokenExplicit) {
   const sessionToken = crypto.randomBytes(48).toString('base64url');
   const sessionId = crypto.randomUUID();
   const maxAgeMs = 10 * 365 * 24 * 3600 * 1000; // 10 years permanent
   const clientIp = authService.getClientIp(req);
-  const ua = req.headers['user-agent'] || 'Unknown';
+  const ua = (req && req.headers && req.headers['user-agent']) || 'Unknown';
   const friendlyDevice = `Approver (${parseUserAgent(ua)})`;
-  const approverToken = req.cookies[config.APPROVER_COOKIE_NAME] || null;
+  const approverToken = approverTokenExplicit || (req && req.cookies && req.cookies[config.APPROVER_COOKIE_NAME]) || null;
+
+  // Clean up any old active session on this client to prevent duplicate cards
+  const oldAuthToken = req && req.cookies && (req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token']);
+  if (oldAuthToken && activeSessions.has(oldAuthToken)) {
+    activeSessions.delete(oldAuthToken);
+  }
 
   const sessionObj = {
     id: sessionId,
@@ -220,12 +319,20 @@ function mintApproverSession(req, res) {
     createdAt: Date.now(),
     expiresAt: Date.now() + maxAgeMs,
     isTrusted: true,
+    isApprover: true,
     ip: clientIp,
     userAgent: ua,
     friendlyDevice,
     service: null,
-    type: 'trusted_device',
+    type: 'approver',
+    allowedServices: null,
   };
+
+  if (approverToken && approverSessions.has(approverToken)) {
+    const a = approverSessions.get(approverToken);
+    a.sessionId = sessionId;
+    a.activeSessionToken = sessionToken;
+  }
 
   activeSessions.set(sessionToken, sessionObj);
   savePersistedSessions();

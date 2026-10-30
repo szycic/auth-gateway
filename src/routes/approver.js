@@ -124,7 +124,7 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
     const maxAgeMs = config.APPROVER_TTL_DAYS * 24 * 3600 * 1000;
     const currentHash = authService.getApproverPasswordHash() || 'fido-auth';
 
-    sessionService.approverSessions.set(approverToken, {
+    const appObj = {
       token: approverToken,
       createdAt: Date.now(),
       expiresAt: Date.now() + maxAgeMs,
@@ -133,11 +133,16 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       keyId: cred.id,
       ip: req.ip || req.headers['x-forwarded-for'],
       userAgent: req.headers['user-agent'],
-    });
+    };
+    sessionService.approverSessions.set(approverToken, appObj);
 
-    sessionService.savePersistedSessions();
     res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
-    sessionService.mintApproverSession(req, res);
+    const activeSess = sessionService.mintApproverSession(req, res, approverToken);
+    if (activeSess) {
+      appObj.sessionId = activeSess.id;
+      appObj.activeSessionToken = activeSess.token;
+    }
+    sessionService.savePersistedSessions();
 
     return res.json({ success: true, redirect: redirectTarget });
   } catch (err) {
@@ -254,7 +259,7 @@ router.post('/approver/login', (req, res) => {
   // Issue Approver session token (30 days)
   const approverToken = crypto.randomBytes(48).toString('base64url');
   const maxAgeMs = config.APPROVER_TTL_DAYS * 24 * 3600 * 1000;
-  sessionService.approverSessions.set(approverToken, {
+  const appObj = {
     token: approverToken,
     createdAt: Date.now(),
     expiresAt: Date.now() + maxAgeMs,
@@ -262,11 +267,16 @@ router.post('/approver/login', (req, res) => {
     authMethod: 'password',
     ip: req.ip || req.headers['x-forwarded-for'],
     userAgent: req.headers['user-agent'],
-  });
+  };
+  sessionService.approverSessions.set(approverToken, appObj);
 
-  sessionService.savePersistedSessions();
   res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
-  sessionService.mintApproverSession(req, res);
+  const activeSess = sessionService.mintApproverSession(req, res, approverToken);
+  if (activeSess) {
+    appObj.sessionId = activeSess.id;
+    appObj.activeSessionToken = activeSess.token;
+  }
+  sessionService.savePersistedSessions();
   return res.redirect(redirectTarget);
 });
 
@@ -276,6 +286,11 @@ router.get('/approver/logout', (req, res) => {
   const token = req.cookies[config.APPROVER_COOKIE_NAME];
   if (token) {
     sessionService.approverSessions.delete(token);
+    for (const [sTok, s] of sessionService.activeSessions.entries()) {
+      if (s.approverToken === token) {
+        sessionService.activeSessions.delete(sTok);
+      }
+    }
   }
   const sessionToken = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (sessionToken) {
