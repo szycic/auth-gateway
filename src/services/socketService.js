@@ -30,6 +30,13 @@ function initSocketIO(server) {
       }
       socket.join('active-desktops');
     });
+
+    socket.on('register-approver', (approverToken) => {
+      if (typeof approverToken === 'string' && approverToken.trim().length > 0) {
+        socket.join('approver:' + approverToken.trim());
+      }
+      socket.join('active-approvers');
+    });
   });
 
   ioInstance = io;
@@ -52,10 +59,16 @@ function notifySessionRejected(loginSessionId, payload) {
   }
 }
 
-function notifySessionRevoked(sessionId, token) {
+function notifySessionRevoked(sessionId, token, approverToken) {
   if (ioInstance) {
-    ioInstance.to('session:' + sessionId).emit('session-revoked', { sessionId, token });
-    ioInstance.emit('session-revoked', { sessionId, token });
+    const payload = { sessionId, token, approverToken };
+    if (sessionId) {
+      ioInstance.to('session:' + sessionId).emit('session-revoked', payload);
+    }
+    if (approverToken) {
+      ioInstance.to('approver:' + approverToken).emit('session-revoked', payload);
+    }
+    ioInstance.emit('session-revoked', payload);
   }
 }
 

@@ -28,6 +28,7 @@
       const ip = (session && session.ip) || 'Unknown IP';
       const sessionId = (session && (session.id || session.token)) || '';
       const sessionToken = (session && session.token) || '';
+      const approverToken = (session && session.approverToken) || '';
       const activeServices = (services || []).filter(s => !s.disableService);
       const isRestrictedSession = Array.isArray(session && session.allowedServices) &&
         session.allowedServices.length > 0 &&
@@ -111,7 +112,12 @@
     const socket = typeof io !== 'undefined' ? io() : null;
     if (socket) {
       function registerDesktop() {
-        socket.emit('register-desktop', '<%= sessionId %>');
+        if ('<%= sessionId %>') {
+          socket.emit('register-desktop', '<%= sessionId %>');
+        }
+        if ('<%= approverToken %>') {
+          socket.emit('register-approver', '<%= approverToken %>');
+        }
       }
       socket.on('connect', registerDesktop);
       registerDesktop();
@@ -123,7 +129,12 @@
       });
 
       socket.on('session-revoked', function(data) {
-        if (data && (data.all || data.sessionId === '<%= sessionId %>' || (data.token && data.token === '<%= sessionToken %>'))) {
+        if (data && (
+          data.all ||
+          (data.sessionId && data.sessionId === '<%= sessionId %>') ||
+          (data.token && data.token === '<%= sessionToken %>') ||
+          (data.approverToken && data.approverToken === '<%= approverToken %>')
+        )) {
           lockCurrentSession();
         } else {
           fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
