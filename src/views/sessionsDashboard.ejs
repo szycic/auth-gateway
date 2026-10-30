@@ -77,10 +77,13 @@
                 initialAllowed = s.allowedServices;
               }
             %>
+            <% const isThisDevice = (typeof currentSessionId !== 'undefined' && currentSessionId && s.id === currentSessionId) ||
+                                   (typeof currentSessionToken !== 'undefined' && currentSessionToken && s.token === currentSessionToken) ||
+                                   (typeof currentApproverToken !== 'undefined' && currentApproverToken && s.approverToken === currentApproverToken); %>
             <div class="session-card" id="session-card-<%= s.id %>" data-session-id="<%= s.id %>" data-device-name="<%= deviceName %>" data-allowed-services="<%- JSON.stringify(initialAllowed || []).replace(/"/g, '&quot;') %>">
               <div class="session-info">
                 <div class="session-header" id="header-<%= s.id %>">
-                  <span class="session-name" id="name-<%= s.id %>"><%= deviceName %></span>
+                  <span class="session-name" id="name-<%= s.id %>"><%= deviceName %><%= isThisDevice ? ' (This Device)' : '' %></span>
                   <button type="button" class="btn-rename-trigger" onclick="openRename('<%= s.id %>')" title="Rename device" aria-label="Rename device">
                     <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -500,21 +503,90 @@
       }
     }
 
+    let isLocked = false;
+    function lockCurrentSession() {
+      if (isLocked) return;
+      isLocked = true;
+      if (socket) {
+        try { socket.disconnect(); } catch (e) {}
+      }
+      document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: inherit; padding: 1.5rem; box-sizing: border-box;">' +
+        '<div style="background: rgba(15, 23, 42, 0.94); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 24px; padding: 2.25rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); box-sizing: border-box;">' +
+          '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">' +
+            '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />' +
+            '</svg>' +
+          '</div>' +
+          '<h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h1>' +
+          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>' +
+          '<div style="width: 24px; height: 24px; border: 2.5px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto;"></div>' +
+        '</div>' +
+      '</div>';
+      setTimeout(function() {
+        window.location.href = '/auth/logout?redirect=/auth/approver/login&notice=' + encodeURIComponent('Your session was revoked.');
+      }, 1000);
+    }
+
     const socket = typeof io !== 'undefined' ? io() : null;
     if (socket) {
+      function registerSessionsSocket() {
+        const mySid = '<%= (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "" %>';
+        const myAppTok = '<%= (typeof currentApproverToken !== "undefined" && currentApproverToken) ? currentApproverToken : "" %>';
+        if (mySid) {
+          socket.emit('register-desktop', mySid);
+        }
+        if (myAppTok) {
+          socket.emit('register-approver', myAppTok);
+        }
+      }
+      socket.on('connect', registerSessionsSocket);
+      registerSessionsSocket();
+
       socket.on('session-revoked', function(data) {
+        const mySid = '<%= (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "" %>';
+        const myToken = '<%= (typeof currentSessionToken !== "undefined" && currentSessionToken) ? currentSessionToken : "" %>';
+        const myAppTok = '<%= (typeof currentApproverToken !== "undefined" && currentApproverToken) ? currentApproverToken : "" %>';
+
+        if (data && (
+          data.all ||
+          (mySid && data.sessionId === mySid) ||
+          (myToken && data.token === myToken) ||
+          (myAppTok && data.approverToken === myAppTok)
+        )) {
+          lockCurrentSession();
+          return;
+        }
+
+        // Verify with server if this approver session is still valid
+        fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+          if (r.status === 401) {
+            lockCurrentSession();
+          }
+        }).catch(function() {});
+
         if (data && data.all) {
           removeAllSessionCards('All sessions revoked.');
         } else if (data && data.sessionId) {
           removeSessionCard(data.sessionId, 'Session revoked.');
         }
       });
+
       socket.on('session-permissions-updated', function(data) {
         if (data && data.sessionId) {
           updateCardPermissions(data.sessionId, data.allowedServices);
         }
       });
     }
+
+    // Periodic heartbeat to guarantee immediate lockout even if socket disconnects
+    setInterval(function() {
+      if (isLocked) return;
+      fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
+        if (r.status === 401) {
+          lockCurrentSession();
+        }
+      }).catch(function() {});
+    }, 2000);
 
     function showNotice(msg) {
       let noticeEl = document.getElementById('dashboard-notice');
@@ -582,6 +654,10 @@
           throw new Error(errData.error || ('Revocation failed (' + res.status + ')'));
         }
         const data = await res.json();
+        if (data.isCurrentSession || sessionId === '<%= (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "" %>') {
+          lockCurrentSession();
+          return;
+        }
         removeSessionCard(sessionId, data.message || 'Session revoked.');
       } catch (err) {
         console.error(err);

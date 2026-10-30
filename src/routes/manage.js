@@ -17,9 +17,30 @@ router.get('/sessions', (req, res) => {
     return res.redirect('/auth/approver/login?returnTo=/auth/sessions');
   }
 
+  const currentApproverToken = req.cookies[config.APPROVER_COOKIE_NAME] || null;
+  const currentAuthToken = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'] || null;
+  let currentSession = null;
+  if (currentAuthToken) {
+    currentSession = sessionService.activeSessions.get(currentAuthToken);
+  }
+  if (!currentSession && currentApproverToken) {
+    for (const s of sessionService.activeSessions.values()) {
+      if (s.approverToken === currentApproverToken) {
+        currentSession = s;
+        break;
+      }
+    }
+  }
+
+  const currentSessionId = currentSession ? currentSession.id : null;
+  const currentSessionToken = currentSession ? currentSession.token : currentAuthToken;
+
   return res.render('sessionsDashboard', {
     activeSessionsList: Array.from(sessionService.activeSessions.values()),
     notice: req.query.notice,
+    currentSessionId,
+    currentSessionToken,
+    currentApproverToken,
   });
 });
 
@@ -91,7 +112,7 @@ router.post('/sessions/revoke', (req, res) => {
 
       sessionService.activeSessions.delete(targetToken);
       sessionService.savePersistedSessions();
-      socketService.notifySessionRevoked(sid, targetToken);
+      socketService.notifySessionRevoked(sid, targetToken, appToken);
 
       const isApproverDevice = !!(targetSession.isApprover || targetSession.type === 'approver' || appToken);
 
@@ -103,9 +124,15 @@ router.post('/sessions/revoke', (req, res) => {
         revokedByIp: authService.getClientIp(req),
       });
 
-      // If the current caller revoked their own approver session, clear cookie immediately
+      // If the current caller revoked their own session or approver token, clear cookies immediately
       const currentAppTok = req.cookies[config.APPROVER_COOKIE_NAME];
-      if (currentAppTok && (currentAppTok === appToken || !sessionService.approverSessions.has(currentAppTok))) {
+      const currentAuthTok = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+      const isCurrentSession = !!(
+        (currentAppTok && (currentAppTok === appToken || !sessionService.approverSessions.has(currentAppTok))) ||
+        (currentAuthTok && currentAuthTok === targetToken)
+      );
+
+      if (isCurrentSession) {
         const cookieOpts = getCookieOptions(req);
         delete cookieOpts.maxAge;
         res.clearCookie(config.APPROVER_COOKIE_NAME, cookieOpts);
@@ -123,7 +150,7 @@ router.post('/sessions/revoke', (req, res) => {
         : `Session for ${targetSession.friendlyDevice} was revoked.`;
 
       if (req.accepts('json') && !req.accepts('html')) {
-        return res.json({ success: true, sessionId: sid, message: msg });
+        return res.json({ success: true, sessionId: sid, isCurrentSession, message: msg });
       }
       return res.redirect('/auth/sessions?notice=' + encodeURIComponent(msg));
     }
@@ -136,13 +163,22 @@ router.post('/sessions/revoke', (req, res) => {
           sessionService.activeSessions.delete(aSess.activeSessionToken);
         }
         sessionService.savePersistedSessions();
+        socketService.notifySessionRevoked(aSess.sessionId || sessionId, aSess.activeSessionToken, aTok);
         auditLog('APPROVER_SESSION_REVOKED', {
           token: aTok,
           revokedByIp: authService.getClientIp(req),
         });
 
+        const currentAppTok = req.cookies[config.APPROVER_COOKIE_NAME];
+        const isCurrentSession = (currentAppTok && currentAppTok === aTok);
+        if (isCurrentSession) {
+          const cookieOpts = getCookieOptions(req);
+          delete cookieOpts.maxAge;
+          res.clearCookie(config.APPROVER_COOKIE_NAME, cookieOpts);
+        }
+
         if (req.accepts('json') && !req.accepts('html')) {
-          return res.json({ success: true, sessionId, message: 'Approver session was revoked.' });
+          return res.json({ success: true, sessionId, isCurrentSession, message: 'Approver session was revoked.' });
         }
         return res.redirect('/auth/sessions?notice=' + encodeURIComponent('Approver session was revoked.'));
       }
