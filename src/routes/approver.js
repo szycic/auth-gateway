@@ -6,8 +6,10 @@ const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const webauthnService = require('../services/webauthnService');
 const { auditLog } = require('../utils/auditLogger');
+const { verifySameOrigin } = require('../utils/csrfHelper');
 
 const router = express.Router();
+router.use(verifySameOrigin);
 
 router.get(['/approver', '/approver/'], (req, res) => {
   const returnTo = req.query.returnTo || req.query.redirect || '/';

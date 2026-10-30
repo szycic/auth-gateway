@@ -6,8 +6,10 @@ const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const socketService = require('../services/socketService');
 const { auditLog } = require('../utils/auditLogger');
+const { verifySameOrigin } = require('../utils/csrfHelper');
 
 const router = express.Router();
+router.use(verifySameOrigin);
 
 // Session management dashboard
 router.get('/sessions', (req, res) => {

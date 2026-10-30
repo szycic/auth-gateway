@@ -21,10 +21,11 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Robots-Tag "noindex, nofollow, noarchive"
 	}
-	# Prevent untrusted clients from spoofing internal authentication headers
+	# Prevent untrusted clients from spoofing internal authentication and proxy headers
 	request_header -X-Auth-Status
 	request_header -X-Auth-Role
 	request_header -X-Auth-User
+	request_header -X-Forwarded-Method
 }
 
 # ==============================================================================

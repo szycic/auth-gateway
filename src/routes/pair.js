@@ -2,8 +2,10 @@ const express = require('express');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const { auditLog } = require('../utils/auditLogger');
+const { verifySameOrigin } = require('../utils/csrfHelper');
 
 const router = express.Router();
+router.use(verifySameOrigin);
 
 router.post('/code/verify', (req, res) => {
   if (!sessionService.isApprover(req)) {

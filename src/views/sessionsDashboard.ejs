@@ -79,7 +79,7 @@
                 initialAllowed = s.allowedServices;
               }
             %>
-            <div class="session-card" id="session-card-<%= s.id %>" data-session-id="<%= s.id %>" data-device-name="<%= deviceName %>" data-allowed-services='<%- JSON.stringify(initialAllowed) %>'>
+            <div class="session-card" id="session-card-<%= s.id %>" data-session-id="<%= s.id %>" data-device-name="<%= deviceName %>" data-allowed-services="<%- JSON.stringify(initialAllowed || []).replace(/"/g, '&quot;') %>">
               <div class="session-info">
                 <div class="session-header" id="header-<%= s.id %>">
                   <span class="session-name" id="name-<%= s.id %>"><%= deviceName %></span>
@@ -277,7 +277,7 @@
     </div>
   </div>
 
-  <script id="known-services-data" type="application/json"><%- JSON.stringify(((config.getActiveServices ? config.getActiveServices() : config.services) || []).map(s => ({ id: (s.id || '').toLowerCase(), name: s.name }))) %></script>
+  <script id="known-services-data" type="application/json"><%- JSON.stringify(((config.getActiveServices ? config.getActiveServices() : config.services) || []).map(s => ({ id: (s.id || '').toLowerCase(), name: s.name }))).replace(/</g, '\\u003c') %></script>
   <script>
     function openRename(id) {
       const form = document.getElementById('rename-form-' + id);
