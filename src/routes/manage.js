@@ -35,8 +35,15 @@ router.get('/sessions', (req, res) => {
   const currentSessionId = currentSession ? currentSession.id : null;
   const currentSessionToken = currentSession ? currentSession.token : currentAuthToken;
 
+  const activeSessionsList = Array.from(sessionService.activeSessions.values()).sort((a, b) => {
+    const orderA = typeof a.sortOrder === 'number' ? a.sortOrder : 999999;
+    const orderB = typeof b.sortOrder === 'number' ? b.sortOrder : 999999;
+    if (orderA !== orderB) return orderA - orderB;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
+
   return res.render('sessionsDashboard', {
-    activeSessionsList: Array.from(sessionService.activeSessions.values()),
+    activeSessionsList,
     notice: req.query.notice,
     currentSessionId,
     currentSessionToken,
@@ -219,6 +226,92 @@ router.post('/sessions/rename', (req, res) => {
   }
 
   return res.redirect('/auth/sessions');
+});
+
+// Reorder active sessions
+router.post('/sessions/reorder', (req, res) => {
+  if (!sessionService.isApprover(req)) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
+    return res.status(401).send('Unauthorized.');
+  }
+
+  const { order } = req.body;
+  if (!Array.isArray(order)) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(400).json({ error: 'Invalid order list.' });
+    }
+    return res.status(400).send('Invalid order list.');
+  }
+
+  const sessionsById = new Map();
+  for (const session of sessionService.activeSessions.values()) {
+    if (session.id) {
+      sessionsById.set(session.id, session);
+    }
+  }
+
+  order.forEach((item, index) => {
+    const sessionId = typeof item === 'string' ? item : (item && item.id);
+    const session = sessionsById.get(sessionId);
+    if (session) {
+      session.sortOrder = typeof (item && item.sortOrder) === 'number' ? item.sortOrder : index;
+      if (item && typeof item.group !== 'undefined') {
+        const trimmed = typeof item.group === 'string' ? item.group.trim().slice(0, 40) : '';
+        session.group = trimmed || null;
+      }
+    }
+  });
+
+  sessionService.savePersistedSessions();
+
+  if (req.accepts('json') && !req.accepts('html')) {
+    return res.json({ success: true, count: order.length });
+  }
+  return res.redirect('/auth/sessions');
+});
+
+// Update session group
+router.post('/sessions/group', (req, res) => {
+  if (!sessionService.isApprover(req)) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
+    return res.status(401).send('Unauthorized.');
+  }
+
+  const { sessionId, group } = req.body;
+  if (!sessionId || typeof sessionId !== 'string') {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(400).json({ error: 'Invalid session ID.' });
+    }
+    return res.status(400).send('Invalid session ID.');
+  }
+
+  let targetSession = null;
+  for (const session of sessionService.activeSessions.values()) {
+    if (session.id === sessionId) {
+      targetSession = session;
+      break;
+    }
+  }
+
+  if (!targetSession) {
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(404).json({ error: 'Session not found.' });
+    }
+    return res.redirect('/auth/sessions');
+  }
+
+  const trimmed = typeof group === 'string' ? group.trim().slice(0, 40) : '';
+  targetSession.group = trimmed || null;
+  sessionService.savePersistedSessions();
+
+  if (req.accepts('json') && !req.accepts('html')) {
+    return res.json({ success: true, sessionId, group: targetSession.group });
+  }
+  return res.redirect('/auth/sessions?notice=' + encodeURIComponent(trimmed ? `Moved to group "${trimmed}".` : 'Removed from group.'));
 });
 
 // Update session service permissions
