@@ -105,7 +105,7 @@
 
       <% if (typeof hasFidoKeys !== 'undefined' && hasFidoKeys && typeof authMethod !== 'undefined' && authMethod === 'fido') { %>
         <div class="fido-quick-auth" id="fidoQuickAuth">
-          <button type="button" class="btn-fido-direct" id="btnFidoDirect" onclick="startDirectFidoLogin()">
+          <button type="button" class="btn-fido-direct" id="btnFidoDirect" onclick="openFidoMonit()">
             <svg style="width: 18px; height: 18px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
@@ -120,6 +120,113 @@
       <%= config.app.footerText %>
     </div>
   </div>
+
+  <% if (typeof hasFidoKeys !== 'undefined' && hasFidoKeys && typeof authMethod !== 'undefined' && authMethod === 'fido') { %>
+  <!-- FIDO Security Key Monit Modal -->
+  <div class="fido-modal-overlay" id="fidoAuthModal" style="display: none;" onclick="if(event.target===this)closeFidoMonit()">
+    <div class="fido-modal-card">
+      <div class="fido-modal-header">
+        <div class="fido-modal-title">
+          <svg style="width: 20px; height: 20px; flex-shrink: 0; color: #38bdf8;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+          <span>Authorize with Security Key</span>
+        </div>
+        <button type="button" class="btn-close-fido-modal" onclick="closeFidoMonit()" aria-label="Close">
+          <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Device Info (matching approval style) -->
+      <div class="fido-device-info">
+        <div class="fido-info-row">
+          <span class="fido-info-label">Detected Device</span>
+          <span class="fido-info-val"><%= typeof friendlyDevice !== 'undefined' ? friendlyDevice : 'This Computer' %></span>
+        </div>
+        <% if (typeof clientIp !== 'undefined' && clientIp) { %>
+        <div class="fido-info-row">
+          <span class="fido-info-label">IP Address</span>
+          <span class="fido-info-val"><%= clientIp %></span>
+        </div>
+        <% } %>
+        <% if (matchedService) { %>
+        <div class="fido-info-row">
+          <span class="fido-info-label">Target Platform</span>
+          <span class="fido-info-val" style="color: #38bdf8; font-weight: 700;"><%= matchedService.name %></span>
+        </div>
+        <% } %>
+      </div>
+
+      <div class="fido-section-label">Choose Session Type</div>
+
+      <div class="fido-options-group">
+        <!-- Option 1: Master Approver -->
+        <label class="fido-option-card selected" id="optCardApprover" onclick="selectFidoType('approver')">
+          <div class="fido-option-radio-wrap">
+            <input type="radio" name="fidoSessionType" id="radioApprover" value="approver" checked>
+          </div>
+          <div class="fido-option-content">
+            <div class="fido-option-title-row">
+              <span class="fido-option-name">Master Approver</span>
+              <span class="badge-chip badge-approver">
+                <svg style="width: 10px; height: 10px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                Approver
+              </span>
+            </div>
+            <p class="fido-option-desc">Full administrative privileges. Can approve new devices, manage active sessions, and configure security.</p>
+          </div>
+        </label>
+
+        <!-- Option 2: User Session (Limited Time) -->
+        <label class="fido-option-card" id="optCardUser" onclick="selectFidoType('user')">
+          <div class="fido-option-radio-wrap">
+            <input type="radio" name="fidoSessionType" id="radioUser" value="user">
+          </div>
+          <div class="fido-option-content">
+            <div class="fido-option-title-row">
+              <span class="fido-option-name">User Session</span>
+              <span class="badge-chip badge-temp">Limited Time</span>
+            </div>
+            <p class="fido-option-desc">Standard access to services only. No device approval or administrative privileges on this device.</p>
+            
+            <div class="fido-duration-wrap" id="fidoDurationWrap" style="display: none;" onclick="event.stopPropagation()">
+              <label for="fidoTtlSelect" class="fido-duration-label">Session Duration:</label>
+              <select id="fidoTtlSelect" class="fido-select">
+                <option value="1">1 hour</option>
+                <option value="8">8 hours</option>
+                <option value="24">24 hours (1 day)</option>
+                <option value="72" selected>72 hours (3 days - default)</option>
+                <option value="168">7 days (1 week)</option>
+                <option value="720">30 days (1 month)</option>
+              </select>
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <div class="fido-name-box">
+        <label for="fidoCustomName" class="fido-duration-label">Device Name (Optional)</label>
+        <input type="text" id="fidoCustomName" class="fido-input" value="<%= typeof friendlyDevice !== 'undefined' ? friendlyDevice : '' %>" placeholder="e.g. Work Laptop, Living Room PC" maxlength="40" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="fido-monit-status" id="fidoMonitStatus" style="display: none;"></div>
+
+      <div class="fido-monit-footer">
+        <button type="button" class="btn-fido-cancel" onclick="closeFidoMonit()">Cancel</button>
+        <button type="button" class="btn-fido-confirm" id="btnConfirmFido" onclick="executeFidoAuth()">
+          <svg style="width: 17px; height: 17px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span>Authorize Access</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <% } %>
 
   <script id="auth-config" type="application/json"><%- JSON.stringify({
     redirectTarget: redirectTarget || '',
@@ -310,14 +417,81 @@
       return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
-    async function startDirectFidoLogin() {
-      const btn = document.getElementById('btnFidoDirect');
-      const status = document.getElementById('fidoDirectStatus');
+    function openFidoMonit() {
+      const modal = document.getElementById('fidoAuthModal');
+      const status = document.getElementById('fidoMonitStatus');
+      const confirmBtn = document.getElementById('btnConfirmFido');
       if (status) {
         status.style.display = 'none';
         status.textContent = '';
       }
-      if (btn) btn.disabled = true;
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = `
+          <svg style="width: 17px; height: 17px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span>Authorize Access</span>
+        `;
+      }
+      selectFidoType('approver');
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closeFidoMonit() {
+      const modal = document.getElementById('fidoAuthModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function selectFidoType(type) {
+      const radioApprover = document.getElementById('radioApprover');
+      const radioUser = document.getElementById('radioUser');
+      const cardApprover = document.getElementById('optCardApprover');
+      const cardUser = document.getElementById('optCardUser');
+      const durationWrap = document.getElementById('fidoDurationWrap');
+
+      if (type === 'user') {
+        if (radioUser) radioUser.checked = true;
+        if (cardApprover) cardApprover.classList.remove('selected');
+        if (cardUser) cardUser.classList.add('selected');
+        if (durationWrap) durationWrap.style.display = 'block';
+      } else {
+        if (radioApprover) radioApprover.checked = true;
+        if (cardApprover) cardApprover.classList.add('selected');
+        if (cardUser) cardUser.classList.remove('selected');
+        if (durationWrap) durationWrap.style.display = 'none';
+      }
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeFidoMonit();
+      }
+    });
+
+    function startDirectFidoLogin() {
+      openFidoMonit();
+    }
+
+    async function executeFidoAuth() {
+      const btn = document.getElementById('btnConfirmFido');
+      const status = document.getElementById('fidoMonitStatus');
+      const radioUser = document.getElementById('radioUser');
+      const isUser = radioUser && radioUser.checked;
+      const ttlSelect = document.getElementById('fidoTtlSelect');
+      const ttlHours = (isUser && ttlSelect) ? ttlSelect.value : null;
+      const sessionType = isUser ? 'user' : 'approver';
+      const customNameInp = document.getElementById('fidoCustomName');
+      const customName = customNameInp ? customNameInp.value : '';
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner" style="width: 15px; height: 15px; border-width: 2px; margin: 0; display: inline-block;"></span><span>Touch key...</span>`;
+      }
+      if (status) {
+        status.style.display = 'block';
+        status.innerHTML = '<span style="color: #38bdf8; font-weight: 500;">Please touch your security key or confirm biometric prompt...</span>';
+      }
 
       try {
         if (!window.PublicKeyCredential) {
@@ -359,7 +533,11 @@
           body: JSON.stringify({
             challengeId,
             returnTo: redirectTarget,
-            response: assertionJSON
+            response: assertionJSON,
+            sessionType,
+            ttlHours,
+            customName,
+            loginSessionId: currentSessionId
           })
         });
 
@@ -368,15 +546,36 @@
           throw new Error(verifyData.error || 'Security key authentication failed.');
         }
 
-        window.location.href = verifyData.redirect || redirectTarget || '/';
+        if (status) {
+          status.innerHTML = '<span style="color: #34d399; font-weight: 600;">Authorized successfully! Redirecting...</span>';
+        }
+        if (btn) {
+          btn.innerHTML = `
+            <svg style="width: 17px; height: 17px; color: #34d399;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <span>Authorized!</span>
+          `;
+        }
+
+        setTimeout(() => {
+          window.location.href = verifyData.redirect || redirectTarget || '/';
+        }, 400);
       } catch (err) {
         console.error(err);
-        if (btn) btn.disabled = false;
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `
+            <svg style="width: 17px; height: 17px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <span>Authorize Access</span>
+          `;
+        }
         if (status) {
-          status.textContent = err.name === 'NotAllowedError'
-            ? 'Security key request cancelled or timed out.'
-            : (err.message || 'Authentication failed.');
-          status.style.display = 'block';
+          status.innerHTML = '<span style="color: #f87171;">' + (err.name === 'NotAllowedError'
+            ? 'Security key request was cancelled or timed out.'
+            : (err.message || 'Authentication failed.')) + '</span>';
         }
       }
     }

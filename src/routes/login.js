@@ -98,6 +98,8 @@ router.get('/login', (req, res) => {
     notice: req.query.notice || '',
     authMethod: webauthnService.getActiveAuthMethod(),
     hasFidoKeys: webauthnService.hasEnrolledKeys(),
+    clientIp: authService.getClientIp(req),
+    friendlyDevice: sessionService.parseUserAgent(req.headers['user-agent'] || ''),
   });
 });
 
