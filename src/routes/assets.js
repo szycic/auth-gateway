@@ -30,6 +30,12 @@ const servePwaStatic = express.static(path.join(config.ROOT_DIR, 'public'), {
   },
 });
 
+router.use('/auth/assets', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+});
+
 router.use('/auth/assets/css', express.static(path.join(config.ROOT_DIR, 'public/css'), {
   maxAge: '7d',
 }));
@@ -240,6 +246,7 @@ function getAuthWatchdogScript() {
 router.get('/auth/assets/auth-watchdog.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   return res.send(getAuthWatchdogScript());
 });
@@ -351,6 +358,7 @@ function getAuthPublicGuardScript() {
 router.get('/auth/assets/auth-public-guard.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   return res.send(getAuthPublicGuardScript());
 });

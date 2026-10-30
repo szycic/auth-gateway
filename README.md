@@ -348,6 +348,8 @@ uptime.example.com {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
 			copy_headers X-Auth-Status X-Auth-Role
+			header_up -Upgrade
+			header_up Connection close
 			@unauthorized status 401
 			handle_response @unauthorized {
 				error 401
