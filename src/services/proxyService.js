@@ -188,7 +188,7 @@ function proxyToTargetApp(req, res) {
       headers: proxyHeaders,
     },
     (proxyRes) => {
-      const contentType = proxyRes.headers['content-type'] || '';
+      const contentType = (proxyRes.headers['content-type'] || '').toLowerCase();
       const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300;
 
       if (!isGatewayTokenAuth && isHtml && req.method === 'GET') {
@@ -197,7 +197,7 @@ function proxyToTargetApp(req, res) {
         proxyRes.on('data', (chunk) => { body += chunk; });
         proxyRes.on('end', () => {
           const scriptName = isSessionValid ? 'auth-watchdog.js' : 'auth-public-guard.js';
-          const injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}"></script>`;
+          const injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}" crossorigin="anonymous"></script>`;
 
           if (body.includes('</body>')) {
             body = body.replace('</body>', `${injectionScript}</body>`);

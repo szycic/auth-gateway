@@ -1,5 +1,8 @@
+<%
+  const authOrigin = (config && config.server && config.server.baseUrl) ? new URL(config.server.baseUrl).origin : 'https://auth.szycic.com';
+%>
 <script>
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && window.location.origin === '<%= authOrigin %>') {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js', { scope: '/' })
         .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));

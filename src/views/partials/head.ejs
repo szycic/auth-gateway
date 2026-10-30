@@ -1,25 +1,29 @@
+<%
+  const authBase = (config && config.server && config.server.baseUrl) ? config.server.baseUrl.replace(/\/+$/, '') : 'https://auth.szycic.com';
+  const toAuthAsset = (p) => (p && typeof p === 'string' && p.startsWith('/') ? `${authBase}${p}` : p);
+%>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="manifest" href="/manifest.webmanifest">
+<link rel="manifest" href="<%= toAuthAsset('/manifest.webmanifest') %>">
 <meta name="theme-color" content="#090d16">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="<%= config.app.name || 'Auth Gateway' %>">
-<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-<link rel="icon" type="image/svg+xml" href="/assets/icon.svg">
-<link rel="icon" type="image/png" sizes="192x192" href="/assets/icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="/assets/icon-512.png">
+<link rel="apple-touch-icon" href="<%= toAuthAsset('/assets/apple-touch-icon.png') %>">
+<link rel="icon" type="image/svg+xml" href="<%= toAuthAsset('/assets/icon.svg') %>">
+<link rel="icon" type="image/png" sizes="192x192" href="<%= toAuthAsset('/assets/icon-192.png') %>">
+<link rel="icon" type="image/png" sizes="512x512" href="<%= toAuthAsset('/assets/icon-512.png') %>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/base.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
+<link rel="stylesheet" href="<%= toAuthAsset('/css/base.css') %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
 <% if (typeof extraCss !== 'undefined' && extraCss) { %>
   <% if (Array.isArray(extraCss)) { %>
     <% extraCss.forEach(function(href) { %>
-      <link rel="stylesheet" href="<%= href %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
+      <link rel="stylesheet" href="<%= toAuthAsset(href) %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
     <% }); %>
   <% } else { %>
-    <link rel="stylesheet" href="<%= extraCss %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
+    <link rel="stylesheet" href="<%= toAuthAsset(extraCss) %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
   <% } %>
 <% } %>
