@@ -94,12 +94,6 @@
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                     </svg>
                   </button>
-                  <% if (isThisDevice) { %>
-                    <span class="badge-this-device">
-                      <span class="this-device-dot"></span>
-                      This device
-                    </span>
-                  <% } %>
                   <% if (s.isApprover || s.type === 'approver' || s.approverToken) { %>
                     <span class="badge-approver">
                       <svg style="width: 12px; height: 12px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -116,6 +110,12 @@
                     </span>
                   <% } else { %>
                     <span class="badge-temp">Temporary</span>
+                  <% } %>
+                  <% if (isThisDevice) { %>
+                    <span class="badge-this-device">
+                      <span class="this-device-dot"></span>
+                      This Device
+                    </span>
                   <% } %>
                 </div>
                 <form method="POST" action="/auth/sessions/rename" class="rename-form" id="rename-form-<%= s.id %>" style="display: none;">
