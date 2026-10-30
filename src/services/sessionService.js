@@ -54,6 +54,10 @@ function loadPersistedSessions() {
         if (s.approverToken && approverSessions.has(s.approverToken)) {
           s.isApprover = true;
           s.type = 'approver';
+          if (s.friendlyDevice && s.friendlyDevice.startsWith('Approver (')) {
+            s.friendlyDevice = parseUserAgent(s.userAgent);
+            sessionsModified = true;
+          }
           const a = approverSessions.get(s.approverToken);
           if (!a.sessionId) {
             a.sessionId = s.id;
@@ -83,6 +87,9 @@ function loadPersistedSessions() {
               s.approverToken = bestMatch.token;
               s.isApprover = true;
               s.type = 'approver';
+              if (s.friendlyDevice && s.friendlyDevice.startsWith('Approver (')) {
+                s.friendlyDevice = parseUserAgent(s.userAgent);
+              }
               bestMatch.sessionId = s.id;
               bestMatch.activeSessionToken = s.token;
               sessionsModified = true;
@@ -111,7 +118,7 @@ function loadPersistedSessions() {
           const sessionId = a.sessionId || crypto.randomUUID();
           const sessionToken = a.activeSessionToken || crypto.randomBytes(48).toString('base64url');
           const ua = a.userAgent || '';
-          const friendlyDevice = `Approver (${parseUserAgent(ua)})`;
+          const friendlyDevice = parseUserAgent(ua);
           const maxAgeMs = 10 * 365 * 24 * 3600 * 1000;
           const sessionObj = {
             id: sessionId,
@@ -303,7 +310,7 @@ function mintApproverSession(req, res, approverTokenExplicit) {
   const maxAgeMs = 10 * 365 * 24 * 3600 * 1000; // 10 years permanent
   const clientIp = authService.getClientIp(req);
   const ua = (req && req.headers && req.headers['user-agent']) || 'Unknown';
-  const friendlyDevice = `Approver (${parseUserAgent(ua)})`;
+  const friendlyDevice = parseUserAgent(ua);
   const approverToken = approverTokenExplicit || (req && req.cookies && req.cookies[config.APPROVER_COOKIE_NAME]) || null;
 
   // Clean up any old active session on this client to prevent duplicate cards
