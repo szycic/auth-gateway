@@ -202,6 +202,8 @@ router.post('/approve/action', (req, res) => {
     service: session.serviceName || null,
     type: isTrusted ? 'trusted_device' : 'desktop_guest',
     allowedServices,
+    sortOrder: typeof session.sortOrder === 'number' ? session.sortOrder : null,
+    group: session.group || null,
   });
 
   sessionService.savePersistedSessions();
