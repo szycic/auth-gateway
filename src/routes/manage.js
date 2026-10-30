@@ -37,13 +37,19 @@ router.post('/sessions/revoke', (req, res) => {
 
   if (isAll) {
     const currentApproverToken = req.cookies[config.APPROVER_COOKIE_NAME];
+    const currentAuthToken = req.cookies[config.AUTH_COOKIE_NAME];
     for (const [appTok] of sessionService.approverSessions.entries()) {
       if (appTok !== currentApproverToken) {
         sessionService.approverSessions.delete(appTok);
       }
     }
-    const count = sessionService.activeSessions.size;
-    sessionService.activeSessions.clear();
+    let count = 0;
+    for (const [tok, session] of sessionService.activeSessions.entries()) {
+      if (tok !== currentAuthToken && session.approverToken !== currentApproverToken) {
+        sessionService.activeSessions.delete(tok);
+        count++;
+      }
+    }
     sessionService.savePersistedSessions();
     socketService.notifyAllSessionsRevoked();
     auditLog('ALL_SESSIONS_REVOKED', {
@@ -52,32 +58,93 @@ router.post('/sessions/revoke', (req, res) => {
     });
 
     if (req.accepts('json') && !req.accepts('html')) {
-      return res.json({ success: true, all: true, count, message: `Revoked all ${count} active sessions.` });
+      return res.json({ success: true, all: true, count, message: `Revoked ${count} active sessions.` });
     }
-    return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Revoked all ${count} active sessions.`));
+    return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Revoked ${count} active sessions.`));
   }
 
   if (sessionId) {
+    let targetSession = null;
+    let targetToken = null;
+
     for (const [token, session] of sessionService.activeSessions.entries()) {
       if (session.id === sessionId || session.token === sessionId || token === sessionId) {
-        const sid = session.id || sessionId;
-        if (session.approverToken) {
-          sessionService.approverSessions.delete(session.approverToken);
+        targetSession = session;
+        targetToken = token;
+        break;
+      }
+    }
+
+    if (targetSession) {
+      const sid = targetSession.id || sessionId;
+      const appToken = targetSession.approverToken;
+
+      // Revoke the approver session completely if this device is an approver!
+      if (appToken) {
+        sessionService.approverSessions.delete(appToken);
+      }
+      for (const [aTok, aSess] of sessionService.approverSessions.entries()) {
+        if (aSess.sessionId === sid || aSess.activeSessionToken === targetToken || (appToken && aTok === appToken)) {
+          sessionService.approverSessions.delete(aTok);
         }
-        sessionService.activeSessions.delete(token);
+      }
+
+      sessionService.activeSessions.delete(targetToken);
+      sessionService.savePersistedSessions();
+      socketService.notifySessionRevoked(sid, targetToken);
+
+      const isApproverDevice = !!(targetSession.isApprover || targetSession.type === 'approver' || appToken);
+
+      auditLog('SESSION_REVOKED', {
+        sessionId: sid,
+        device: targetSession.friendlyDevice,
+        deviceIp: targetSession.ip,
+        isApprover: isApproverDevice,
+        revokedByIp: authService.getClientIp(req),
+      });
+
+      // If the current caller revoked their own approver session, clear cookie immediately
+      const currentAppTok = req.cookies[config.APPROVER_COOKIE_NAME];
+      if (currentAppTok && (currentAppTok === appToken || !sessionService.approverSessions.has(currentAppTok))) {
+        const cookieOpts = getCookieOptions(req);
+        delete cookieOpts.maxAge;
+        res.clearCookie(config.APPROVER_COOKIE_NAME, cookieOpts);
+        res.clearCookie(config.AUTH_COOKIE_NAME, cookieOpts);
+        if (cookieOpts.domain) {
+          const hostOnly = { ...cookieOpts };
+          delete hostOnly.domain;
+          res.clearCookie(config.APPROVER_COOKIE_NAME, hostOnly);
+          res.clearCookie(config.AUTH_COOKIE_NAME, hostOnly);
+        }
+      }
+
+      const msg = isApproverDevice
+        ? `Approver session for ${targetSession.friendlyDevice} was completely revoked.`
+        : `Session for ${targetSession.friendlyDevice} was revoked.`;
+
+      if (req.accepts('json') && !req.accepts('html')) {
+        return res.json({ success: true, sessionId: sid, message: msg });
+      }
+      return res.redirect('/auth/sessions?notice=' + encodeURIComponent(msg));
+    }
+
+    // Direct check in approverSessions (fallback if not in activeSessions)
+    for (const [aTok, aSess] of sessionService.approverSessions.entries()) {
+      if (aTok === sessionId || aSess.sessionId === sessionId) {
+        sessionService.approverSessions.delete(aTok);
+        if (aSess.activeSessionToken) {
+          sessionService.activeSessions.delete(aSess.activeSessionToken);
+        }
         sessionService.savePersistedSessions();
-        socketService.notifySessionRevoked(sid, token);
-        auditLog('SESSION_REVOKED', {
-          sessionId: sid,
-          device: session.friendlyDevice,
-          deviceIp: session.ip,
+        auditLog('APPROVER_SESSION_REVOKED', {
+          token: aTok,
           revokedByIp: authService.getClientIp(req),
         });
 
         if (req.accepts('json') && !req.accepts('html')) {
-          return res.json({ success: true, sessionId: sid, message: `Session for ${session.friendlyDevice} was revoked.` });
+          return res.json({ success: true, sessionId, message: 'Approver session was revoked.' });
         }
-        return res.redirect('/auth/sessions?notice=' + encodeURIComponent(`Session for ${session.friendlyDevice} was revoked.`));
+        return res.redirect('/auth/sessions?notice=' + encodeURIComponent('Approver session was revoked.'));
       }
     }
   }

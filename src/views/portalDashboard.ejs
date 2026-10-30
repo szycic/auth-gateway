@@ -59,8 +59,9 @@
         <div class="device-title"><%= friendlyDevice %></div>
         <div class="device-sub"><%= ip %></div>
       </div>
-      <span class="status-tag <%= isTrusted ? 'status-trusted' : 'status-guest' %>">
-        <%= isTrusted ? 'Trusted Device' : 'Active Session' %>
+      <% const isApproverDevice = isApproverUser || (session && (session.isApprover || session.type === 'approver' || session.approverToken)); %>
+      <span class="status-tag <%= isApproverDevice ? 'status-approver' : (isTrusted ? 'status-trusted' : 'status-guest') %>">
+        <%= isApproverDevice ? 'Approver Device' : (isTrusted ? 'Trusted Device' : 'Active Session') %>
       </span>
     </div>
 

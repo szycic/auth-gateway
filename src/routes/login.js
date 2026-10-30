@@ -151,18 +151,23 @@ router.post('/login', (req, res) => {
 
   const approverToken = crypto.randomBytes(48).toString('base64url');
   const maxAgeMs = config.APPROVER_TTL_DAYS * 24 * 3600 * 1000;
-  sessionService.approverSessions.set(approverToken, {
+  const appObj = {
     token: approverToken,
     createdAt: Date.now(),
     expiresAt: Date.now() + maxAgeMs,
     passwordHash: currentHash,
     ip: req.ip || req.headers['x-forwarded-for'],
     userAgent: req.headers['user-agent'],
-  });
-  sessionService.savePersistedSessions();
+  };
+  sessionService.approverSessions.set(approverToken, appObj);
 
   res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
-  sessionService.mintApproverSession(req, res);
+  const activeSess = sessionService.mintApproverSession(req, res, approverToken);
+  if (activeSess) {
+    appObj.sessionId = activeSess.id;
+    appObj.activeSessionToken = activeSess.token;
+  }
+  sessionService.savePersistedSessions();
 
   return res.redirect(redirectTarget);
 });
