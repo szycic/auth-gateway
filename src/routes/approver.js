@@ -102,7 +102,6 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
 
   const { challengeId, response, returnTo } = req.body;
   const rawTarget = returnTo || req.query.returnTo || req.query.redirect || '';
-  const redirectTarget = config.normalizeRedirect(rawTarget, '/');
 
   try {
     if (!challengeId || !response) {
@@ -113,8 +112,15 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
 
     authService.clearFailedLogins(clientIp);
 
-    const isApproverLogin = (req.body.loginAsApprover === true || req.body.loginAsApprover === 'true') ||
-      (req.body.sessionType === 'approver' && req.body.loginAsApprover !== false && req.body.loginAsApprover !== 'false');
+    let isApproverLogin = true;
+    if (typeof req.body.loginAsApprover !== 'undefined') {
+      isApproverLogin = (req.body.loginAsApprover === true || req.body.loginAsApprover === 'true');
+    } else if (typeof req.body.sessionType !== 'undefined') {
+      isApproverLogin = (req.body.sessionType === 'approver');
+    }
+
+    const defaultFallback = isApproverLogin ? '/auth/sessions' : '/';
+    const redirectTarget = config.normalizeRedirect(rawTarget, defaultFallback);
     const ua = (req && req.headers && req.headers['user-agent']) || 'Unknown';
     const finalDeviceName = (req.body.customName && typeof req.body.customName === 'string' && req.body.customName.trim())
       ? req.body.customName.trim().slice(0, 50)
@@ -281,9 +287,9 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
 
 // Approver Login page (exclusive: either FIDO or Password)
 router.get('/approver/login', (req, res) => {
-  const returnTo = req.query.returnTo || req.query.redirect || '/';
+  const returnTo = req.query.returnTo || req.query.redirect || '/auth/sessions';
   if (sessionService.isApprover(req)) {
-    return res.redirect(config.normalizeRedirect(returnTo, '/'));
+    return res.redirect(config.normalizeRedirect(returnTo, '/auth/sessions'));
   }
 
   const activeMethod = webauthnService.getActiveAuthMethod();
@@ -304,8 +310,8 @@ router.get('/approver/login', (req, res) => {
 router.post('/approver/login', (req, res) => {
   const activeMethod = webauthnService.getActiveAuthMethod();
   const { password, returnTo } = req.body;
-  const rawTarget = returnTo || req.query.returnTo || req.query.redirect || '';
-  const redirectTarget = config.normalizeRedirect(rawTarget, '/');
+  const rawTarget = returnTo || req.query.returnTo || req.query.redirect || '/auth/sessions';
+  const redirectTarget = config.normalizeRedirect(rawTarget, '/auth/sessions');
 
   if (activeMethod !== 'password') {
     return res.status(400).render('approverLogin', {
