@@ -1,5 +1,5 @@
 <%
-  const authBase = (config && config.server && config.server.baseUrl) ? config.server.baseUrl.replace(/\/+$/, '') : 'https://auth.szycic.com';
+  const authBase = (config && config.server && config.server.baseUrl) ? config.server.baseUrl.replace(/\/+$/, '') : '';
   const toAuthAsset = (p) => (p && typeof p === 'string' && p.startsWith('/') ? `${authBase}${p}` : p);
 %>
 <meta charset="UTF-8">

@@ -36,6 +36,10 @@
 # ==============================================================================
 auth.example.com {
 	import security_headers
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' wss://auth.example.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=()"
+	}
 	reverse_proxy auth-gateway:3000
 }
 
@@ -108,6 +112,7 @@ share.example.com {
 		forward_auth auth-gateway:3000 {
 			uri /auth/verify
 			copy_headers X-Auth-Status X-Auth-Role
+			header_up X-Forwarded-Method {method}
 			@unauthorized status 401
 			handle_response @unauthorized {
 				error 401
