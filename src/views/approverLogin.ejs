@@ -88,12 +88,12 @@
       </div>
 
       <script id="fido-config" type="application/json"><%- JSON.stringify({
-        returnTo: returnTo || '/'
+        returnTo: returnTo || '/auth/sessions'
       }) %></script>
 
       <script>
         const configData = JSON.parse(document.getElementById('fido-config').textContent || '{}');
-        const returnTo = configData.returnTo || '/';
+        const returnTo = configData.returnTo || '/auth/sessions';
 
         function base64UrlToUint8Array(base64url) {
           const padding = '='.repeat((4 - (base64url.length % 4)) % 4);
@@ -169,6 +169,8 @@
               body: JSON.stringify({
                 challengeId,
                 returnTo,
+                loginAsApprover: true,
+                sessionType: 'approver',
                 response: assertionJSON
               })
             });
@@ -180,7 +182,7 @@
 
             status.innerHTML = '<span style="color: #4ade80; font-weight: 600;">Authenticated! Redirecting...</span>';
             setTimeout(() => {
-              window.location.href = verifyData.redirect || returnTo || '/';
+              window.location.href = verifyData.redirect || returnTo || '/auth/sessions';
             }, 400);
 
           } catch (err) {
