@@ -101,7 +101,7 @@ Create your `config.json` based on [config.sample.json](/config.sample.json):
 {
   "app": {
     "name": "Auth Gateway",
-    "subtitle": "Scan the QR code or enter the PIN on the authenticated mobile device to approve access.",
+    "subtitle": "Scan the QR code or enter the PIN on the authenticated device to approve access.",
     "footerText": "auth.example.com",
     "showRestricted": false
   },
