@@ -9,20 +9,21 @@ const sessionService = require('../services/sessionService');
 const router = express.Router();
 
 const initRequests = new Map(); // ip -> { count, resetAt }
-const MAX_INIT_PER_MINUTE = 20;
+const MAX_INIT_PER_MINUTE = 30;
 
 function checkInitRateLimit(ip) {
   const now = Date.now();
   const entry = initRequests.get(ip);
   if (!entry || now > entry.resetAt) {
     initRequests.set(ip, { count: 1, resetAt: now + 60000 });
-    return true;
+    return { allowed: true };
   }
   if (entry.count >= MAX_INIT_PER_MINUTE) {
-    return false;
+    const retryAfterSec = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+    return { allowed: false, retryAfter: retryAfterSec };
   }
   entry.count += 1;
-  return true;
+  return { allowed: true };
 }
 
 setInterval(() => {
@@ -36,8 +37,14 @@ setInterval(() => {
 
 router.get('/init', async (req, res) => {
   const clientIp = authService.getClientIp(req);
-  if (!checkInitRateLimit(clientIp)) {
-    return res.status(429).json({ error: 'Too many requests. Please wait before refreshing.' });
+  const rateCheck = checkInitRateLimit(clientIp);
+  if (!rateCheck.allowed) {
+    res.set('Retry-After', String(rateCheck.retryAfter));
+    return res.status(429).json({
+      error: 'Rate limit active',
+      message: `Too many QR code requests. Please wait ${rateCheck.retryAfter} second(s) before trying again.`,
+      retryAfter: rateCheck.retryAfter,
+    });
   }
 
   try {

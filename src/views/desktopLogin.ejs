@@ -77,6 +77,11 @@
     <% } %>
 
     <div id="qrAuthSection" <%- isFromOpenHandle ? 'style="display: none;"' : '' %>>
+      <div id="initErrorMonit" class="error-box" style="display: none; margin-bottom: 1.25rem; text-align: center;">
+        <div style="font-weight: 600; margin-bottom: 0.25rem;" id="initErrorTitle">Rate Limit Active</div>
+        <div id="initErrorMsg" style="font-size: 0.825rem; color: #fca5a5;">Too many QR code requests. Please wait before refreshing.</div>
+      </div>
+
       <div class="qr-frame" id="qrContainer">
         <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
 
@@ -91,6 +96,15 @@
           </svg>
           <p style="font-size: 0.875rem; color: #e2e8f0; margin-bottom: 0.75rem;">Session Expired</p>
           <button class="btn-refresh" onclick="initQrSession()">Refresh Session</button>
+        </div>
+
+        <div class="overlay" id="errorOverlay">
+          <svg style="width: 36px; height: 36px; color: #ef4444; margin-bottom: 0.5rem;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <p id="errorOverlayTitle" style="font-size: 0.925rem; font-weight: 700; color: #ffffff; margin-bottom: 0.35rem;">Rate Limit Active</p>
+          <p id="errorOverlayMsg" style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 0.85rem; text-align: center; max-width: 220px; line-height: 1.4;">Too many requests. Please wait a moment.</p>
+          <button class="btn-refresh" id="btnRetryInit" onclick="initQrSession()">Try Again</button>
         </div>
       </div>
 
@@ -317,6 +331,7 @@
     const socket = io();
     let currentSessionId = null;
     let timerInterval = null;
+    let retryCountdownInterval = null;
     let secondsLeft = 120;
 
     const authConfigEl = document.getElementById('auth-config');
@@ -330,7 +345,16 @@
     const qrImage = document.getElementById('qrImage');
     const loadingOverlay = document.getElementById('loadingOverlay');
     const expiredOverlay = document.getElementById('expiredOverlay');
+    const errorOverlay = document.getElementById('errorOverlay');
+    const errorOverlayTitle = document.getElementById('errorOverlayTitle');
+    const errorOverlayMsg = document.getElementById('errorOverlayMsg');
+    const btnRetryInit = document.getElementById('btnRetryInit');
+    const initErrorMonit = document.getElementById('initErrorMonit');
+    const initErrorTitle = document.getElementById('initErrorTitle');
+    const initErrorMsg = document.getElementById('initErrorMsg');
     const statusText = document.getElementById('statusText');
+    const statusDot = document.querySelector('.status-dot');
+    const pairCodeCard = document.getElementById('pairCodeCard');
     const mainCard = document.getElementById('mainCard');
 
     function startTimer(durationMs) {
@@ -355,14 +379,71 @@
     function onSessionExpired() {
       expiredOverlay.classList.add('active');
       statusText.textContent = 'Session timed out';
-      const pairCodeCard = document.getElementById('pairCodeCard');
       if (pairCodeCard) pairCodeCard.style.opacity = '0.35';
+    }
+
+    function showInitError(title, message, isRateLimit, retryAfterSec) {
+      loadingOverlay.classList.remove('active');
+      expiredOverlay.classList.remove('active');
+
+      if (pairCodeCard) pairCodeCard.style.opacity = '0.35';
+      if (statusDot) statusDot.classList.add('error');
+
+      if (initErrorTitle) initErrorTitle.textContent = title;
+      if (initErrorMsg) initErrorMsg.textContent = message;
+      if (initErrorMonit) initErrorMonit.style.display = 'block';
+
+      if (errorOverlayTitle) errorOverlayTitle.textContent = title;
+      if (errorOverlayMsg) errorOverlayMsg.textContent = message;
+      if (errorOverlay) errorOverlay.classList.add('active');
+
+      clearInterval(retryCountdownInterval);
+
+      if (isRateLimit && retryAfterSec && retryAfterSec > 0) {
+        let waitSec = retryAfterSec;
+        if (btnRetryInit) {
+          btnRetryInit.disabled = true;
+          btnRetryInit.textContent = 'Wait (' + waitSec + 's)';
+        }
+        statusText.innerHTML = '<span style="color: #ef4444; font-weight: 600;">Rate limit active (wait ' + waitSec + 's)</span>';
+
+        retryCountdownInterval = setInterval(() => {
+          waitSec--;
+          if (waitSec > 0) {
+            if (btnRetryInit) btnRetryInit.textContent = 'Wait (' + waitSec + 's)';
+            if (errorOverlayMsg) errorOverlayMsg.textContent = 'Too many requests. Please wait ' + waitSec + 's before retrying.';
+            statusText.innerHTML = '<span style="color: #ef4444; font-weight: 600;">Rate limit active (wait ' + waitSec + 's)</span>';
+          } else {
+            clearInterval(retryCountdownInterval);
+            if (btnRetryInit) {
+              btnRetryInit.disabled = false;
+              btnRetryInit.textContent = 'Try Again';
+            }
+            if (errorOverlayMsg) errorOverlayMsg.textContent = 'Rate limit window passed. You can now try again.';
+            statusText.innerHTML = '<span style="color: #38bdf8; font-weight: 600;">Ready to retry</span>';
+          }
+        }, 1000);
+      } else {
+        if (btnRetryInit) {
+          btnRetryInit.disabled = false;
+          btnRetryInit.textContent = 'Try Again';
+        }
+        statusText.innerHTML = '<span style="color: #ef4444; font-weight: 600;">Failed to load QR code</span>';
+      }
     }
 
     async function initQrSession() {
       try {
+        clearInterval(retryCountdownInterval);
+        clearInterval(timerInterval);
+
+        if (initErrorMonit) initErrorMonit.style.display = 'none';
+        if (errorOverlay) errorOverlay.classList.remove('active');
+        if (expiredOverlay) expiredOverlay.classList.remove('active');
+        if (statusDot) statusDot.classList.remove('error');
+
         loadingOverlay.classList.add('active');
-        expiredOverlay.classList.remove('active');
+        statusText.textContent = 'Generating secure QR...';
 
         const params = new URLSearchParams();
         if (redirectTarget) params.append('redirect', redirectTarget);
@@ -370,7 +451,29 @@
 
         const url = '/auth/init' + (params.toString() ? '?' + params.toString() : '');
         const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error('Failed to fetch session init');
+
+        if (!res.ok) {
+          let errData = null;
+          try {
+            errData = await res.json();
+          } catch (_) {}
+
+          if (res.status === 429) {
+            const retrySec = (errData && errData.retryAfter)
+              ? Number(errData.retryAfter)
+              : (parseInt(res.headers.get('Retry-After'), 10) || 30);
+            const msg = (errData && errData.message)
+              ? errData.message
+              : `Too many QR code requests. Please wait ${retrySec} second(s) before trying again.`;
+            showInitError('Rate Limit Active', msg, true, retrySec);
+            return;
+          }
+
+          const msg = (errData && (errData.message || errData.error)) || ('Server returned HTTP ' + res.status);
+          showInitError('Connection Error', msg, false);
+          return;
+        }
+
         const data = await res.json();
 
         currentSessionId = data.loginSessionId;
@@ -381,7 +484,6 @@
         if (pairCodeDigits && data.pairCodeFormatted) {
           pairCodeDigits.textContent = data.pairCodeFormatted;
         }
-        const pairCodeCard = document.getElementById('pairCodeCard');
         if (pairCodeCard) pairCodeCard.style.opacity = '1';
 
         socket.emit('join-session', currentSessionId);
@@ -390,8 +492,8 @@
 
         startTimer(data.ttlMs || 120000);
       } catch (err) {
-        console.error(err);
-        statusText.textContent = 'Failed to load QR code';
+        console.error('initQrSession error:', err);
+        showInitError('Network Error', err.message || 'Unable to communicate with auth gateway.', false);
       }
     }
 
