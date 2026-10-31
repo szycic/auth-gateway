@@ -113,7 +113,8 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
 
     authService.clearFailedLogins(clientIp);
 
-    const sessionType = req.body.sessionType || 'approver';
+    const isApproverLogin = (req.body.loginAsApprover === true || req.body.loginAsApprover === 'true') ||
+      (req.body.sessionType === 'approver' && req.body.loginAsApprover !== false && req.body.loginAsApprover !== 'false');
     const ua = (req && req.headers && req.headers['user-agent']) || 'Unknown';
     const finalDeviceName = (req.body.customName && typeof req.body.customName === 'string' && req.body.customName.trim())
       ? req.body.customName.trim().slice(0, 50)
@@ -128,16 +129,51 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       sessionService.pendingLoginSessions.delete(req.body.loginSessionId);
     }
 
-    if (sessionType === 'user') {
-      // Standard limited-time user session (No approver privileges)
+    if (!isApproverLogin) {
+      // Standard user session (matching desktop approval options)
+      const isTrusted = req.body.trusted === true || req.body.trusted === 'true';
+
       let ttlHours = config.SESSION_TTL_HOURS;
-      if (req.body.ttlHours) {
+      const rawTtl = req.body.sessionTtl;
+      const rawCustomTtl = req.body.customTtlHours;
+
+      if (rawTtl === 'custom' && rawCustomTtl) {
+        const parsed = parseFloat(rawCustomTtl);
+        if (!isNaN(parsed) && parsed > 0) ttlHours = parsed;
+      } else if (rawTtl && rawTtl !== 'default' && rawTtl !== '72') {
+        const parsed = parseFloat(rawTtl);
+        if (!isNaN(parsed) && parsed > 0) ttlHours = parsed;
+      } else if (req.body.ttlHours) {
         const parsed = parseFloat(req.body.ttlHours);
-        if (!isNaN(parsed) && parsed > 0) {
-          ttlHours = parsed;
+        if (!isNaN(parsed) && parsed > 0) ttlHours = parsed;
+      }
+
+      let tokenExpiresAt;
+      let cookieMaxAgeMs;
+      if (isTrusted) {
+        tokenExpiresAt = Date.now() + 10 * 365 * 24 * 3600 * 1000;
+        cookieMaxAgeMs = 10 * 365 * 24 * 3600 * 1000;
+      } else {
+        tokenExpiresAt = Date.now() + Math.round(ttlHours * 3600 * 1000);
+        cookieMaxAgeMs = Math.round(ttlHours * 3600 * 1000);
+      }
+
+      // Parse allowed services
+      let allowedServices = null;
+      if (req.body.services) {
+        let rawServices = [];
+        if (Array.isArray(req.body.services)) {
+          rawServices = req.body.services.map(s => String(s).trim()).filter(Boolean);
+        } else if (typeof req.body.services === 'string' && req.body.services.trim()) {
+          rawServices = [req.body.services.trim()];
+        }
+
+        const allConfiguredServices = (config.services || []).filter(s => !s.disableService && !s.disableAuth);
+        if (rawServices.length > 0 && rawServices.length < allConfiguredServices.length) {
+          allowedServices = rawServices;
         }
       }
-      const maxAgeMs = Math.round(ttlHours * 3600 * 1000);
+
       const sessionToken = crypto.randomBytes(48).toString('base64url');
       const sessionId = crypto.randomUUID();
 
@@ -151,15 +187,15 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
         id: sessionId,
         token: sessionToken,
         createdAt: Date.now(),
-        expiresAt: Date.now() + maxAgeMs,
-        isTrusted: false,
+        expiresAt: tokenExpiresAt,
+        isTrusted,
         isApprover: false,
         ip: clientIp,
         userAgent: ua,
         friendlyDevice: finalDeviceName,
         service: null,
-        type: 'desktop_guest',
-        allowedServices: null,
+        type: isTrusted ? 'trusted_device' : 'desktop_guest',
+        allowedServices,
         sortOrder: null,
       });
 
@@ -169,14 +205,16 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       }
 
       // Set user session cookie
-      res.cookie(config.AUTH_COOKIE_NAME, sessionToken, getCookieOptions(req, maxAgeMs));
+      res.cookie(config.AUTH_COOKIE_NAME, sessionToken, getCookieOptions(req, cookieMaxAgeMs));
       sessionService.savePersistedSessions();
 
       auditLog('USER_FIDO_LOGIN_SUCCESS', {
         ip: clientIp,
         sessionId,
         device: finalDeviceName,
-        ttlHours,
+        trusted: isTrusted,
+        ttlHours: isTrusted ? 'permanent' : ttlHours,
+        services: allowedServices ? allowedServices.join(',') : 'all',
         keyName: cred.name,
         keyId: cred.id,
         userAgent: ua,

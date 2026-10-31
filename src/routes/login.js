@@ -101,6 +101,7 @@ router.get('/login', (req, res) => {
     hasFidoKeys: webauthnService.hasEnrolledKeys(),
     clientIp: authService.getClientIp(req),
     friendlyDevice: parseUserAgent(req.headers['user-agent'] || ''),
+    services: (config.getActiveServices ? config.getActiveServices() : config.services) || [],
   });
 });
 
