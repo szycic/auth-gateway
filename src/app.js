@@ -18,7 +18,7 @@ const { isAuthDomain } = require('./utils/originHelper');
 
 app.use(cookieParser());
 app.use((req, res, next) => {
-  if (req.path.startsWith('/auth/') || req.path === '/login' || isAuthDomain(req)) {
+  if (req.path.startsWith('/auth/') || isAuthDomain(req)) {
     return express.json()(req, res, (err) => {
       if (err) return next(err);
       express.urlencoded({ extended: true })(req, res, next);
