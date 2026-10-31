@@ -23,6 +23,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
   - [Pattern C: App with WebSocket Connections (e.g. Uptime Kuma)](#pattern-c-app-with-websocket-connections-eg-uptime-kuma)
   - [Pattern D: SPAs with Mixed Public & Protected Routes (e.g. ByteStash)](#pattern-d-spas-with-mixed-public--protected-routes-eg-bytestash)
 - [Automated & API Access (Gateway Token)](#automated--api-access-gateway-token)
+- [Health Check & Monitoring (`/auth/health`)](#health-check--monitoring-authhealth)
 - [Session Management & Revocation Portal](#session-management--revocation-portal)
 - [Adding and Configuring a New Service](#adding-and-configuring-a-new-service)
 - [Configuration Reference (`config.json`)](#configuration-reference-configjson)
@@ -45,6 +46,9 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 - **PWA & Shortcuts**: Installable Progressive Web App (PWA) with native mobile shortcuts (`Scan QR`, `Enter PIN`).
 - **Hardware-backed FIDO2 / WebAuthn & Password 2FA**: First-class support for physical security keys (YubiKey, Titan, TouchID, FaceID, Windows Hello) with strict origin phishing protections, or scrypt-hashed passwords.
 - **CSRF & Origin Isolation**: Built-in strict origin and Fetch-Metadata validation on all state-changing approver endpoints to prevent cross-site and cross-subdomain request forgery.
+- **Strict Cookie & Subdomain Isolation**: User session cookies share the configured root domain (`.example.com`), whereas administrative approver session cookies are strictly host-only (`auth.example.com`) to prevent cross-subdomain cookie theft or subdomain takeover risks.
+- **Rate Limiting & Brute-Force Protection**: Enforces rate limiting on QR session initialization (`/auth/init`) with dynamic client countdowns, and progressive lockout protections on password attempts (`/auth/login`).
+- **Memory-Safe HTML Streaming**: Reverse proxy incorporates a buffer cap to prevent memory exhaustion / denial-of-service when proxying large upstream HTML responses.
 - **Zero External Databases**: Lightweight Node.js + Express with JSON storage for sessions and configuration.
 
 ---
@@ -118,7 +122,7 @@ Create your `config.json` based on [config.sample.json](/config.sample.json):
 }
 ```
 
-> **Important**: Ensure `cookieDomain` matches your root domain prefixed with a dot (e.g., `.example.com`) so cookies are shared across all subdomains.
+> **Important**: Ensure `cookieDomain` matches your root domain prefixed with a dot (e.g., `.example.com`) so user authentication cookies (`gateway_auth_token`) are shared across all subdomains. The administrative approver cookie (`gateway_approver_session`) always remains strictly **host-only** (locked to `auth.example.com`) for security.
 
 Create an `.env` file based on `.env.example`:
 
@@ -226,6 +230,7 @@ Define a reusable snippet in your `Caddyfile` that sets standard security header
 	request_header -X-Auth-Role
 	request_header -X-Auth-User
 	request_header -X-Forwarded-Method
+	request_header -X-Service-Host
 }
 ```
 
@@ -545,6 +550,60 @@ Any request sent with a matching token is immediately authenticated by Auth Gate
 
 ```bash
 curl -H "X-Gateway-Token: your-random-secret-token-here" https://myapp.example.com/api/data
+```
+
+---
+
+## Health Check & Monitoring (`/auth/health`)
+
+Auth Gateway provides an endpoint at `/auth/health` designed for homelab uptime monitors (e.g. Uptime Kuma, Beszel) and administrative status checks.
+
+### 1. Unprivileged Public Monitoring
+When requested without credentials, the endpoint returns a minimal status payload to verify gateway availability without disclosing internal infrastructure details:
+
+```bash
+curl -s https://auth.example.com/auth/health
+```
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-10-31T10:00:00.000Z"
+}
+```
+
+### 2. Privileged Metrics & Service Status
+When requested with your **`GATEWAY_TOKEN`** (or by an authenticated approver browser), the endpoint exposes full runtime statistics, active user sessions, approver sessions, memory usage, and configured service statuses:
+
+```bash
+# Using X-Gateway-Token
+curl -s -H "X-Gateway-Token: your-random-secret-token-here" https://auth.example.com/auth/health
+
+# Or using Bearer Authorization
+curl -s -H "Authorization: Bearer your-random-secret-token-here" https://auth.example.com/auth/health
+```
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-10-31T10:00:00.000Z",
+  "uptime": 3600.5,
+  "metrics": {
+    "activeSessions": 8,
+    "approverSessions": 2,
+    "pendingLogins": 0,
+    "memoryRssMb": 71.2
+  },
+  "services": [
+    {
+      "id": "tools",
+      "name": "IT Tools",
+      "url": "https://tools.example.com",
+      "disableService": false,
+      "disableAuth": false
+    }
+  ]
+}
 ```
 
 ---
