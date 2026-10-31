@@ -113,7 +113,7 @@ function getExpectedOrigins() {
     } catch (_) {}
   }
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'prod') {
     origins.add(`http://localhost:${config.PORT || 3000}`);
     origins.add(`http://127.0.0.1:${config.PORT || 3000}`);
   }
