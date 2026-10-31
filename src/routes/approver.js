@@ -223,7 +223,7 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       return res.json({ success: true, redirect: redirectTarget });
     }
 
-    // Default: Master Approver session
+    // Default: Approver session
     auditLog('APPROVER_LOGIN_SUCCESS', {
       ip: clientIp,
       method: 'fido',
