@@ -8,7 +8,7 @@ const { generatePwaManifest } = require('../utils/pwaHelper');
 const router = express.Router();
 
 // Dynamic PWA manifest route (only on Auth Gateway domain)
-router.get(['/manifest.json', '/manifest.webmanifest'], (req, res, next) => {
+router.get('/manifest.webmanifest', (req, res, next) => {
   if (!isAuthDomain(req)) return next();
   res.setHeader('Content-Type', 'application/manifest+json');
   res.setHeader('Cache-Control', 'public, max-age=86400');
