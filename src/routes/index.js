@@ -1,6 +1,7 @@
 const express = require('express');
 const config = require('../config');
 const proxyService = require('../services/proxyService');
+const { isAuthDomain } = require('../utils/originHelper');
 
 const assetsRoutes = require('./assets');
 const healthRoutes = require('./health');
@@ -27,17 +28,11 @@ router.use('/auth', manageRoutes);
 
 // Downstream reverse proxy (handles non-auth domains)
 router.use((req, res, next) => {
-  const host = (req.headers.host || '').split(':')[0].toLowerCase();
-  let authHost = '';
-  try {
-    authHost = new URL(config.BASE_URL).hostname.toLowerCase();
-  } catch (e) {}
-
-  if (req.path.startsWith('/auth/') || req.path === '/login') {
+  if (req.path.startsWith('/auth/')) {
     return next();
   }
 
-  if (host && host !== authHost && host !== 'localhost') {
+  if (!isAuthDomain(req)) {
     return proxyService.proxyToTargetApp(req, res);
   }
   next();
