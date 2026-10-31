@@ -219,7 +219,11 @@ function proxyToTargetApp(req, res) {
             return res.end(body);
           }
           const scriptName = isSessionValid ? 'auth-watchdog.js' : 'auth-public-guard.js';
-          const injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}" crossorigin="anonymous"></script>`;
+          let injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}" crossorigin="anonymous"></script>`;
+
+          if (matchedService && matchedService.id === 'pdf') {
+            injectionScript += `<script src="${config.BASE_URL}/auth/assets/stirling-guest-banner.js" crossorigin="anonymous"></script>`;
+          }
 
           if (body.includes('</body>')) {
             body = body.replace('</body>', `${injectionScript}</body>`);
