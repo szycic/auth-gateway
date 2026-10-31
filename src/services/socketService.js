@@ -61,7 +61,7 @@ function notifySessionRejected(loginSessionId, payload) {
 
 function notifySessionRevoked(sessionId, token, approverToken) {
   if (ioInstance) {
-    const payload = { sessionId, token, approverToken };
+    const payload = { sessionId };
     if (sessionId) {
       ioInstance.to('session:' + sessionId).emit('session-revoked', payload);
     }

@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const config = require('../config');
-const { getCookieOptions } = require('../utils/cookieHelper');
+const { getCookieOptions, getApproverCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const webauthnService = require('../services/webauthnService');
@@ -207,7 +207,7 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
 
       // Clear approver cookie if client had one
       if (req.cookies && req.cookies[config.APPROVER_COOKIE_NAME]) {
-        res.cookie(config.APPROVER_COOKIE_NAME, '', getCookieOptions(req, 0));
+        res.cookie(config.APPROVER_COOKIE_NAME, '', getApproverCookieOptions(req, 0));
       }
 
       // Set user session cookie
@@ -255,7 +255,7 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
     };
     sessionService.approverSessions.set(approverToken, appObj);
 
-    res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
+    res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getApproverCookieOptions(req, maxAgeMs));
     const activeSess = sessionService.mintApproverSession(req, res, approverToken);
     if (activeSess) {
       if (finalDeviceName) activeSess.friendlyDevice = finalDeviceName;
@@ -390,7 +390,7 @@ router.post('/approver/login', (req, res) => {
   };
   sessionService.approverSessions.set(approverToken, appObj);
 
-  res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
+  res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getApproverCookieOptions(req, maxAgeMs));
   const activeSess = sessionService.mintApproverSession(req, res, approverToken);
   if (activeSess) {
     appObj.sessionId = activeSess.id;

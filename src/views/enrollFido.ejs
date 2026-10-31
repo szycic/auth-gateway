@@ -93,7 +93,7 @@
 
   <script id="enroll-config" type="application/json"><%- JSON.stringify({
     token: token || ''
-  }) %></script>
+  }).replace(/</g, '\\u003c') %></script>
 
   <script>
     const enrollConfig = JSON.parse(document.getElementById('enroll-config').textContent || '{}');

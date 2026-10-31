@@ -8,7 +8,38 @@ const sessionService = require('../services/sessionService');
 
 const router = express.Router();
 
+const initRequests = new Map(); // ip -> { count, resetAt }
+const MAX_INIT_PER_MINUTE = 20;
+
+function checkInitRateLimit(ip) {
+  const now = Date.now();
+  const entry = initRequests.get(ip);
+  if (!entry || now > entry.resetAt) {
+    initRequests.set(ip, { count: 1, resetAt: now + 60000 });
+    return true;
+  }
+  if (entry.count >= MAX_INIT_PER_MINUTE) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of initRequests.entries()) {
+    if (now > entry.resetAt) {
+      initRequests.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000).unref();
+
 router.get('/init', async (req, res) => {
+  const clientIp = authService.getClientIp(req);
+  if (!checkInitRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Too many requests. Please wait before refreshing.' });
+  }
+
   try {
     const loginSessionId = crypto.randomUUID();
     const key = crypto.randomBytes(32).toString('hex');

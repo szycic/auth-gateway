@@ -311,7 +311,7 @@
     isFromOpenHandle: Boolean(isFromOpenHandle),
     defaultTitle: config.app.name,
     defaultSubtitle: config.app.subtitle
-  }) %></script>
+  }).replace(/</g, '\\u003c') %></script>
 
   <script>
     const socket = io();

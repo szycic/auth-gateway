@@ -9,13 +9,6 @@ function isAllowedOrigin(origin) {
   if (!origin) return true;
   try {
     const u = new URL(origin);
-    if (
-      u.protocol === 'moz-extension:' ||
-      u.protocol === 'chrome-extension:' ||
-      u.protocol === 'safari-web-extension:'
-    ) {
-      return true;
-    }
 
     const host = u.hostname.toLowerCase();
     let baseHost = '';
