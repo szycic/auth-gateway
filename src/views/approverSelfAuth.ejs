@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <%- include('partials/head', { extraCss: '/css/approver.css' }) %>
-  <title>Master Approver - Self Authorization</title>
+  <title>Approver - Self Authorization</title>
 </head>
 <body>
   <div class="ambient-glow"></div>
@@ -12,7 +12,7 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
       </svg>
     </div>
-    <h1>Master Approver Device</h1>
+    <h1>Approver Device</h1>
     <% 
       const noticeText = notice === 'revoked'
         ? 'Your device session was revoked from the management dashboard.'
@@ -21,7 +21,7 @@
           : (notice ? String(notice) : 'Your device session is no longer active.'));
     %>
     <div class="notice-box"><%= noticeText %></div>
-    <p class="desc">As the Master Approver, you can instantly authorize access to all protected services on this device.</p>
+    <p class="desc">As the Approver, you can instantly authorize access to all protected services on this device.</p>
     <form method="POST" action="/auth/approver/self-authorize">
       <input type="hidden" name="redirect" value="<%= redirect %>">
       <button type="submit" class="btn-auth">Authorize This Device</button>
