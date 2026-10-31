@@ -42,15 +42,15 @@ html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
   color-scheme: dark;
-  background-color: #090d16;
-  background: var(--bg-gradient);
+  background-color: #1e293b;
+  background: var(--bg-gradient) no-repeat center top fixed;
+  background-size: cover;
   min-height: 100%;
 }
 
 body {
   font-family: var(--font-sans);
-  background: var(--bg-gradient);
-  background-color: #090d16;
+  background: transparent;
   color: var(--text-main);
   min-height: 100vh;
   display: flex;
