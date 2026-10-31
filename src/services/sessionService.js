@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const config = require('../config');
 const { getCookieOptions } = require('../utils/cookieHelper');
 const { parseUserAgent } = require('../utils/deviceDetector');
+const { isAuthDomain } = require('../utils/originHelper');
 const authService = require('./authService');
 
 const SESSIONS_FILE = path.join(config.DATA_DIR, 'sessions.json');
@@ -265,7 +266,7 @@ function isSessionAllowedForService(session, service) {
 }
 
 function getTargetServiceForRequest(req) {
-  if (req.query && req.query.service) {
+  if (isAuthDomain(req) && req.query && req.query.service) {
     const svc = config.getService(req.query.service);
     if (svc) return svc;
   }

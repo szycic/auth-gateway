@@ -16,7 +16,9 @@
       <h1>Manage Sessions</h1>
       <div style="display: flex; gap: 0.5rem; align-items: center;">
         <a href="/" class="btn-logout" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Portal</a>
-        <a href="/auth/approver/logout" class="btn-logout">Sign Out</a>
+        <form method="POST" action="/auth/approver/logout" style="display: contents;">
+          <button type="submit" class="btn-logout" style="background: transparent; font-family: inherit; cursor: pointer;">Sign Out</button>
+        </form>
       </div>
     </div>
 

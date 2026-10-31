@@ -3,6 +3,7 @@ const config = require('../config');
 const { isAllowedOrigin } = require('../utils/originHelper');
 const sessionService = require('../services/sessionService');
 const authService = require('../services/authService');
+const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
@@ -64,6 +65,71 @@ router.all('/verify', (req, res) => {
       'X-Auth-Role': 'api_token',
       'X-Auth-User': 'api_user',
     }).send('OK: Authenticated via Gateway Token');
+  }
+
+  // Cross-Subdomain XSS & Request Isolation:
+  // Prevent malicious scripts executing on one subdomain (e.g. stash.szycic.com) from
+  // making cross-subdomain fetch/XHR API requests or state-mutating requests (POST, PUT, DELETE)
+  // to another protected service (e.g. docs.szycic.com, tools.szycic.com).
+  let baseAuthHost = '';
+  try {
+    baseAuthHost = new URL(config.BASE_URL).hostname.toLowerCase();
+  } catch {}
+
+  const forwardedHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].toLowerCase().trim();
+  const targetHost = (targetService && targetService.url)
+    ? new URL(targetService.url).hostname.toLowerCase()
+    : forwardedHost;
+
+  const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const secFetchSite = req.headers['sec-fetch-site'];
+
+  if (targetHost && targetHost !== baseAuthHost) {
+    if (origin) {
+      try {
+        const originHost = new URL(origin).hostname.toLowerCase();
+        if (originHost !== targetHost && originHost !== baseAuthHost) {
+          if (
+            ['POST', 'PUT', 'PATCH', 'DELETE'].includes(originalMethod) ||
+            secFetchMode === 'cors' ||
+            secFetchSite === 'same-site' ||
+            secFetchSite === 'cross-site'
+          ) {
+            auditLog('CROSS_SUBDOMAIN_BLOCKED', {
+              origin,
+              targetHost,
+              method: originalMethod,
+              secFetchMode,
+              ip: authService.getClientIp(req),
+            });
+            return res.status(403).set({
+              'X-Auth-Status': 'cross_subdomain_blocked',
+              'X-Auth-Reason': 'cross_subdomain_forbidden',
+            }).send('Forbidden: Cross-subdomain request blocked');
+          }
+        }
+      } catch (_) {}
+    }
+
+    const referer = req.headers['referer'];
+    if (referer && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(originalMethod)) {
+      try {
+        const refHost = new URL(referer).hostname.toLowerCase();
+        if (refHost !== targetHost && refHost !== baseAuthHost) {
+          auditLog('CROSS_SUBDOMAIN_BLOCKED', {
+            referer,
+            targetHost,
+            method: originalMethod,
+            ip: authService.getClientIp(req),
+          });
+          return res.status(403).set({
+            'X-Auth-Status': 'cross_subdomain_blocked',
+            'X-Auth-Reason': 'cross_subdomain_forbidden',
+          }).send('Forbidden: Cross-subdomain request blocked');
+        }
+      } catch (_) {}
+    }
   }
 
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];

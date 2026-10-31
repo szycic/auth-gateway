@@ -372,8 +372,7 @@ router.get('/exchange', (req, res) => {
   return res.redirect('/login');
 });
 
-// Logout
-router.get('/logout', (req, res) => {
+function handleUserLogout(req, res) {
   auditLog('USER_LOGOUT', { ip: authService.getClientIp(req) });
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (token) {
@@ -401,6 +400,53 @@ router.get('/logout', (req, res) => {
   const noticeParam = req.query.notice ? ('?notice=' + encodeURIComponent(req.query.notice)) : '';
   const redirectTarget = config.normalizeRedirect(req.query.redirect || req.query.returnTo, '/login' + noticeParam);
   return res.redirect(redirectTarget);
+}
+
+// User logout: POST is protected by verifySameOrigin CSRF middleware
+router.post('/logout', (req, res) => handleUserLogout(req, res));
+
+// User logout: GET protected against cross-site CSRF (<img>, <iframe>, cross-site links)
+router.get('/logout', (req, res) => {
+  if (authService.isGatewayTokenValid(req)) {
+    return handleUserLogout(req, res);
+  }
+
+  const dest = req.headers['sec-fetch-dest'];
+  if (dest && ['image', 'script', 'style', 'font', 'audio', 'video', 'track', 'object', 'embed', 'iframe', 'empty'].includes(dest)) {
+    auditLog('CSRF_LOGOUT_BLOCKED', { path: req.originalUrl || req.path, dest, ip: authService.getClientIp(req) });
+    return res.status(403).send('Forbidden: Cross-site logout blocked');
+  }
+
+  const site = req.headers['sec-fetch-site'];
+  if (site === 'cross-site') {
+    auditLog('CSRF_LOGOUT_BLOCKED', { path: req.originalUrl || req.path, site, ip: authService.getClientIp(req) });
+    return res.status(403).send('Forbidden: Cross-site logout blocked');
+  }
+
+  const referer = req.headers.referer;
+  if (referer) {
+    try {
+      const refOrigin = new URL(referer).origin.toLowerCase();
+      let expectedOrigin = '';
+      try {
+        expectedOrigin = new URL(config.server.baseUrl || config.BASE_URL).origin.toLowerCase();
+      } catch {}
+      const cookieDomain = (config.session.cookieDomain || '').replace(/^\./, '').toLowerCase();
+      const refHostname = new URL(referer).hostname.toLowerCase();
+      const isAllowedRef = (expectedOrigin && refOrigin === expectedOrigin) ||
+        refHostname === 'localhost' ||
+        refHostname === '127.0.0.1' ||
+        (cookieDomain && (refHostname === cookieDomain || refHostname.endsWith('.' + cookieDomain)));
+      if (!isAllowedRef) {
+        auditLog('CSRF_LOGOUT_BLOCKED', { path: req.originalUrl || req.path, referer, ip: authService.getClientIp(req) });
+        return res.status(403).send('Forbidden: Cross-site logout blocked');
+      }
+    } catch {
+      return res.status(403).send('Forbidden: Malformed referer');
+    }
+  }
+
+  return handleUserLogout(req, res);
 });
 
 // Rename current device

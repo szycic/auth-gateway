@@ -1,6 +1,6 @@
 {
   "name": "auth-gateway",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "Secure, lightweight custom Forward Auth Gateway with QR code and PIN approval homelabs",
   "main": "server.js",
   "scripts": {

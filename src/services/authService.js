@@ -92,7 +92,9 @@ try {
 }
 
 function getClientIp(req) {
-  return req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+  const rawXff = req && req.headers && req.headers['x-forwarded-for'];
+  const firstXff = typeof rawXff === 'string' ? rawXff.split(',')[0].trim() : null;
+  return (req && req.ip) || firstXff || (req && req.socket && req.socket.remoteAddress) || '127.0.0.1';
 }
 
 function checkLoginLockout(clientIp) {
