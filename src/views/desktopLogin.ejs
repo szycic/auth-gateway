@@ -142,7 +142,7 @@
         <h1>Authorize Desktop Access?</h1>
       </div>
 
-      <form id="fidoApprovalForm" onsubmit="return handleFidoApprovalSubmit(event)">
+      <form id="fidoApprovalForm" autocomplete="off" onsubmit="return handleFidoApprovalSubmit(event)">
         <div class="device-info">
           <div class="info-row">
             <span class="info-label">Detected Device</span>
@@ -715,10 +715,67 @@
       updatePlatformToggleState();
     }
 
-    function openFidoMonit() {
-      const modal = document.getElementById('fidoAuthModal');
-      const errBox = document.getElementById('fidoApprovalError');
-      const btn = document.getElementById('btnApproveFido');
+    function resetFidoMonitForm() {
+      var approverToggle = document.getElementById('loginAsApproverToggle');
+      var onlyToggle = document.getElementById('onlyPlatformToggle');
+      var trustedCb = document.getElementById('trustedCheckbox');
+      var ttlSelect = document.getElementById('sessionTtl');
+      var customTtlInput = document.getElementById('customTtlHours');
+      var customTtlWrap = document.getElementById('customTtlWrap');
+      var ttlBadge = document.getElementById('ttlTrustBadge');
+      var ttlNotice = document.getElementById('ttlTrustNotice');
+      var expGroup = document.getElementById('expirationGroup');
+      var platformWrap = document.getElementById('platformPickerWrap');
+      var advBox = document.getElementById('advancedBox');
+      var errBox = document.getElementById('fidoApprovalError');
+      var btn = document.getElementById('btnApproveFido');
+
+      // 1. All option checkboxes unchecked by default (matching QR approval)
+      if (approverToggle) {
+        approverToggle.checked = false;
+        approverToggle.disabled = false;
+      }
+      if (onlyToggle) {
+        onlyToggle.checked = false;
+        onlyToggle.disabled = false;
+      }
+      if (trustedCb) {
+        trustedCb.checked = false;
+        trustedCb.disabled = false;
+      }
+
+      // 2. Default expiration time to 72 hours (3 days)
+      if (ttlSelect) {
+        ttlSelect.value = '72';
+        ttlSelect.disabled = false;
+      }
+      if (customTtlInput) {
+        customTtlInput.value = '';
+        customTtlInput.disabled = false;
+      }
+      if (customTtlWrap) customTtlWrap.style.display = 'none';
+      if (ttlBadge) {
+        ttlBadge.style.display = 'none';
+        ttlBadge.textContent = 'Permanent (Trusted)';
+      }
+      if (ttlNotice) {
+        ttlNotice.style.display = 'none';
+        ttlNotice.textContent = 'Trusted devices never expire automatically. Expiration time cannot be changed while trusted.';
+      }
+      if (expGroup) expGroup.classList.remove('adv-group-disabled');
+
+      // 3. Reset individual service checkboxes to checked (full access by default)
+      var boxes = document.querySelectorAll('.service-checkbox');
+      boxes.forEach(function(b) {
+        b.checked = true;
+        b.disabled = false;
+      });
+
+      // 4. Hide platform picker and collapse advanced drawer
+      if (platformWrap) platformWrap.style.display = 'none';
+      if (advBox) advBox.removeAttribute('open');
+
+      // 5. Reset error box and approve button
       if (errBox) {
         errBox.style.display = 'none';
         errBox.textContent = '';
@@ -729,16 +786,22 @@
         btn.style.background = '';
       }
 
+      // 6. Synchronize styling for all trust boxes (removes .is-checked)
       document.querySelectorAll('.trust-box input[type="checkbox"]').forEach(function(inp) {
         syncToggleBoxStyle(inp);
       });
+    }
 
+    function openFidoMonit() {
+      resetFidoMonitForm();
+      const modal = document.getElementById('fidoAuthModal');
       if (modal) modal.style.display = 'flex';
     }
 
     function closeFidoMonit() {
       const modal = document.getElementById('fidoAuthModal');
       if (modal) modal.style.display = 'none';
+      resetFidoMonitForm();
       storedAssertionJSON = null;
       storedChallengeId = null;
     }
@@ -924,6 +987,10 @@
         }
       }
       return false;
+    }
+
+    if (typeof resetFidoMonitForm === 'function') {
+      resetFidoMonitForm();
     }
 
     if (isFromOpenHandle && window.location.hash !== '#auth') {
