@@ -178,15 +178,6 @@
           </div>
         </div>
 
-        <!-- Option to login as Approver -->
-        <label class="trust-box approver-box" id="approverToggleBox">
-          <input type="checkbox" id="loginAsApproverToggle" name="loginAsApprover" value="true" onchange="handleApproverToggle(this)">
-          <div class="trust-text">
-            <span class="trust-title">Login as Approver</span>
-            <span class="trust-desc">Grant full administrative privileges and device approval on this browser.</span>
-          </div>
-        </label>
-
         <!-- Service Access Restriction Toggle -->
         <% if (targetService) { %>
         <label class="trust-box" id="onlyPlatformBox">
@@ -288,6 +279,17 @@
                   </label>
                 <% }); %>
               </div>
+            </div>
+
+            <!-- 3. Option to login as Approver -->
+            <div class="adv-group" style="margin-top: 1rem;">
+              <label class="trust-box approver-box" id="approverToggleBox" style="margin-bottom: 0;">
+                <input type="checkbox" id="loginAsApproverToggle" name="loginAsApprover" value="true" onchange="handleApproverToggle(this)">
+                <div class="trust-text">
+                  <span class="trust-title">Login as Approver</span>
+                  <span class="trust-desc">Grant full administrative privileges and device approval on this browser.</span>
+                </div>
+              </label>
             </div>
           </div>
         </details>
