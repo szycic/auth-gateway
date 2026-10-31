@@ -45,7 +45,6 @@ html {
   background-color: #090d16;
   background: var(--bg-gradient);
   min-height: 100%;
-  overscroll-behavior-y: none;
 }
 
 body {
@@ -60,7 +59,6 @@ body {
   justify-content: center;
   padding: 1.5rem;
   overflow-x: hidden;
-  overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
