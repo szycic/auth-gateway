@@ -189,13 +189,27 @@ function proxyToTargetApp(req, res) {
     },
     (proxyRes) => {
       const contentType = (proxyRes.headers['content-type'] || '').toLowerCase();
-      const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300;
+      const rawContentLength = proxyRes.headers['content-length'];
+      const contentLength = rawContentLength ? parseInt(rawContentLength, 10) : null;
+      const MAX_INJECT_BYTES = 2 * 1024 * 1024; // 2MB max for HTML injection
+      const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300 && (!contentLength || contentLength <= MAX_INJECT_BYTES);
 
       if (!isGatewayTokenAuth && isHtml && req.method === 'GET') {
         let body = '';
+        let exceeded = false;
         proxyRes.setEncoding('utf8');
-        proxyRes.on('data', (chunk) => { body += chunk; });
+        proxyRes.on('data', (chunk) => {
+          if (exceeded) return;
+          body += chunk;
+          if (body.length > MAX_INJECT_BYTES) {
+            exceeded = true;
+          }
+        });
         proxyRes.on('end', () => {
+          if (exceeded) {
+            res.writeHead(proxyRes.statusCode, proxyRes.headers);
+            return res.end(body);
+          }
           const scriptName = isSessionValid ? 'auth-watchdog.js' : 'auth-public-guard.js';
           const injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}" crossorigin="anonymous"></script>`;
 

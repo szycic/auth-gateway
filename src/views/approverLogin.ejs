@@ -89,7 +89,7 @@
 
       <script id="fido-config" type="application/json"><%- JSON.stringify({
         returnTo: returnTo || '/auth/sessions'
-      }) %></script>
+      }).replace(/</g, '\\u003c') %></script>
 
       <script>
         const configData = JSON.parse(document.getElementById('fido-config').textContent || '{}');

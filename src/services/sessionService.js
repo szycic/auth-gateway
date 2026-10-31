@@ -68,7 +68,7 @@ function loadPersistedSessions() {
             sessionsModified = true;
           }
         } else if (!s.approverToken) {
-          const isApproverDevice = s.type === 'approver' || s.isApprover || (typeof s.friendlyDevice === 'string' && s.friendlyDevice.startsWith('Approver'));
+          const isApproverDevice = s.type === 'approver' || s.isApprover;
           if (isApproverDevice) {
             let bestMatch = null;
             let minDiff = Infinity;
@@ -270,7 +270,7 @@ function getTargetServiceForRequest(req) {
     if (svc) return svc;
   }
 
-  let rawHost = req.headers['x-service-host'] || req.headers['x-forwarded-host'] || req.headers.host || '';
+  let rawHost = req.headers['x-forwarded-host'] || req.headers.host || '';
   if (typeof rawHost === 'string' && rawHost.includes(',')) {
     const parts = rawHost.split(',').map(s => s.trim()).filter(Boolean);
     for (const part of parts) {

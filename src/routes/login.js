@@ -1,14 +1,16 @@
 const express = require('express');
 const crypto = require('crypto');
 const config = require('../config');
-const { getCookieOptions } = require('../utils/cookieHelper');
+const { getCookieOptions, getApproverCookieOptions } = require('../utils/cookieHelper');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const webauthnService = require('../services/webauthnService');
 const { auditLog } = require('../utils/auditLogger');
 const { parseUserAgent } = require('../utils/deviceDetector');
+const { verifySameOrigin } = require('../utils/csrfHelper');
 
 const router = express.Router();
+router.use(verifySameOrigin);
 
 router.get('/login', (req, res) => {
   const rawRedirect = req.query.redirect || req.query.returnTo || '';
@@ -165,7 +167,7 @@ router.post('/login', (req, res) => {
   };
   sessionService.approverSessions.set(approverToken, appObj);
 
-  res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getCookieOptions(req, maxAgeMs));
+  res.cookie(config.APPROVER_COOKIE_NAME, approverToken, getApproverCookieOptions(req, maxAgeMs));
   const activeSess = sessionService.mintApproverSession(req, res, approverToken);
   if (activeSess) {
     appObj.sessionId = activeSess.id;
