@@ -80,9 +80,7 @@
                   initialAllowed = s.allowedServices;
                 }
               %>
-              <% const isThisDevice = (typeof currentSessionId !== 'undefined' && currentSessionId && s.id === currentSessionId) ||
-                                     (typeof currentSessionToken !== 'undefined' && currentSessionToken && s.token === currentSessionToken) ||
-                                     (typeof currentApproverToken !== 'undefined' && currentApproverToken && s.approverToken === currentApproverToken); %>
+              <% const isThisDevice = (typeof currentSessionId !== 'undefined' && currentSessionId && s.id === currentSessionId); %>
               <div class="session-card <%= isThisDevice ? 'session-card-current' : '' %>"
                    id="session-card-<%= s.id %>"
                    data-session-id="<%= s.id %>"
@@ -600,12 +598,8 @@
     if (socket) {
       function registerSessionsSocket() {
         const mySid = '<%= (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "" %>';
-        const myAppTok = '<%= (typeof currentApproverToken !== "undefined" && currentApproverToken) ? currentApproverToken : "" %>';
         if (mySid) {
           socket.emit('register-desktop', mySid);
-        }
-        if (myAppTok) {
-          socket.emit('register-approver', myAppTok);
         }
       }
       socket.on('connect', registerSessionsSocket);
@@ -613,14 +607,10 @@
 
       socket.on('session-revoked', function(data) {
         const mySid = '<%= (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "" %>';
-        const myToken = '<%= (typeof currentSessionToken !== "undefined" && currentSessionToken) ? currentSessionToken : "" %>';
-        const myAppTok = '<%= (typeof currentApproverToken !== "undefined" && currentApproverToken) ? currentApproverToken : "" %>';
 
         if (data && (
           data.all ||
-          (mySid && data.sessionId === mySid) ||
-          (myToken && data.token === myToken) ||
-          (myAppTok && data.approverToken === myAppTok)
+          (mySid && data.sessionId === mySid)
         )) {
           lockCurrentSession();
           return;

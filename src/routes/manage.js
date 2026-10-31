@@ -46,8 +46,6 @@ router.get('/sessions', (req, res) => {
     activeSessionsList,
     notice: req.query.notice,
     currentSessionId,
-    currentSessionToken,
-    currentApproverToken,
   });
 });
 

@@ -1,5 +1,8 @@
 const { Server } = require('socket.io');
+const cookie = require('cookie');
+const config = require('../config');
 const { isAllowedOrigin } = require('../utils/originHelper');
+const sessionService = require('./sessionService');
 
 let ioInstance = null;
 
@@ -18,6 +21,27 @@ function initSocketIO(server) {
   });
 
   io.on('connection', (socket) => {
+    // Authenticate client directly from HttpOnly cookies during handshake
+    try {
+      const rawCookies = (socket.request && socket.request.headers && socket.request.headers.cookie) || '';
+      const parsed = cookie.parse(rawCookies);
+      const authToken = parsed[config.AUTH_COOKIE_NAME] || parsed['share_auth_token'];
+      const approverToken = parsed[config.APPROVER_COOKIE_NAME];
+
+      if (authToken && sessionService.activeSessions.has(authToken)) {
+        const s = sessionService.activeSessions.get(authToken);
+        if (s && s.id) {
+          socket.join('session:' + s.id);
+          socket.join('active-desktops');
+        }
+      }
+
+      if (approverToken && sessionService.approverSessions.has(approverToken)) {
+        socket.join('approver:' + approverToken);
+        socket.join('active-approvers');
+      }
+    } catch (_) {}
+
     socket.on('join-session', (loginSessionId) => {
       if (typeof loginSessionId === 'string' && loginSessionId.trim().length > 0) {
         socket.join(loginSessionId.trim());

@@ -17,12 +17,13 @@ function isAllowedOrigin(origin) {
     } catch (e) {}
 
     const cookieDomain = (config.session.cookieDomain || '').replace(/^\./, '').toLowerCase();
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    const allowLocal = process.env.NODE_ENV !== 'production';
 
     if (
       origin === config.BASE_URL ||
       (baseHost && host === baseHost) ||
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
+      (isLocal && allowLocal) ||
       (cookieDomain && (host === cookieDomain || host.endsWith('.' + cookieDomain)))
     ) {
       return true;
