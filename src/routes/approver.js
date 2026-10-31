@@ -424,7 +424,8 @@ router.get('/approver/logout', (req, res) => {
     res.clearCookie(config.AUTH_COOKIE_NAME, hostOnly);
     res.clearCookie('share_auth_token', hostOnly);
   }
-  return res.redirect('/login');
+  const redirectTarget = req.query.redirect || req.query.returnTo || '/auth/approver/login';
+  return res.redirect(config.normalizeRedirect(redirectTarget, '/auth/approver/login'));
 });
 
 router.post('/approver/self-authorize', (req, res) => {
