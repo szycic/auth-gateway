@@ -77,11 +77,6 @@
     <% } %>
 
     <div id="qrAuthSection" <%- isFromOpenHandle ? 'style="display: none;"' : '' %>>
-      <div id="initErrorMonit" class="error-box" style="display: none; margin-bottom: 1.25rem; text-align: center;">
-        <div style="font-weight: 600; margin-bottom: 0.25rem;" id="initErrorTitle">Rate Limit Active</div>
-        <div id="initErrorMsg" style="font-size: 0.825rem; color: #fca5a5;">Too many QR code requests. Please wait before refreshing.</div>
-      </div>
-
       <div class="qr-frame" id="qrContainer">
         <img id="qrImage" src="" alt="QR Authorization Code" style="display: none;">
 
@@ -349,9 +344,6 @@
     const errorOverlayTitle = document.getElementById('errorOverlayTitle');
     const errorOverlayMsg = document.getElementById('errorOverlayMsg');
     const btnRetryInit = document.getElementById('btnRetryInit');
-    const initErrorMonit = document.getElementById('initErrorMonit');
-    const initErrorTitle = document.getElementById('initErrorTitle');
-    const initErrorMsg = document.getElementById('initErrorMsg');
     const statusText = document.getElementById('statusText');
     const statusDot = document.querySelector('.status-dot');
     const pairCodeCard = document.getElementById('pairCodeCard');
@@ -388,10 +380,6 @@
 
       if (pairCodeCard) pairCodeCard.style.opacity = '0.35';
       if (statusDot) statusDot.classList.add('error');
-
-      if (initErrorTitle) initErrorTitle.textContent = title;
-      if (initErrorMsg) initErrorMsg.textContent = message;
-      if (initErrorMonit) initErrorMonit.style.display = 'block';
 
       if (errorOverlayTitle) errorOverlayTitle.textContent = title;
       if (errorOverlayMsg) errorOverlayMsg.textContent = message;
@@ -437,7 +425,6 @@
         clearInterval(retryCountdownInterval);
         clearInterval(timerInterval);
 
-        if (initErrorMonit) initErrorMonit.style.display = 'none';
         if (errorOverlay) errorOverlay.classList.remove('active');
         if (expiredOverlay) expiredOverlay.classList.remove('active');
         if (statusDot) statusDot.classList.remove('error');
