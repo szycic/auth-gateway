@@ -104,7 +104,9 @@
       <% if (isApproverUser) { %>
         <a href="/auth/sessions" class="btn-action" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Manage Sessions</a>
       <% } %>
-      <a href="/auth/logout" class="btn-action btn-logout">Sign Out</a>
+      <form method="POST" action="/auth/logout" style="display: contents;">
+        <button type="submit" class="btn-action btn-logout" style="background: transparent; font-family: inherit; font-size: inherit; cursor: pointer;">Sign Out</button>
+      </form>
     </div>
   </div>
 

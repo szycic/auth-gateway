@@ -219,8 +219,13 @@ const config = {
     if (!redirectUrl || typeof redirectUrl !== 'string') return false;
     const trimmed = redirectUrl.trim();
 
-    // Relative path starting with single slash (reject protocol-relative // and backslash bypasses /\ or /\\)
-    if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.startsWith('/\\')) return true;
+    // Relative path starting with single slash (reject protocol-relative //, backslash bypasses /\ or /\\, and urlencoded variants)
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+      if (trimmed.includes('\\') || /%2f|%5c/i.test(trimmed)) {
+        return false;
+      }
+      return true;
+    }
 
     try {
       const parsed = new URL(trimmed);
@@ -248,6 +253,13 @@ const config = {
             const p = pattern.trim();
             if (p === '*') return true;
             if (p.includes('*')) {
+              try {
+                const patBase = p.split('*')[0];
+                const patUrl = new URL(patBase);
+                if (parsed.hostname.toLowerCase() !== patUrl.hostname.toLowerCase()) {
+                  continue;
+                }
+              } catch (_) {}
               const escaped = p.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
               if (new RegExp(`^${escaped}$`, 'i').test(trimmed)) {
                 return true;

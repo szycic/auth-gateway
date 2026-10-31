@@ -100,15 +100,22 @@ function relaxCspHeader(val, authBaseUrl) {
 function proxyToTargetApp(req, res) {
   if (req.method === 'OPTIONS') {
     const origin = req.headers.origin;
-    if (origin && isAllowedOrigin(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
-      const reqHeaders = req.headers['access-control-request-headers'];
-      res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
-      res.setHeader('Access-Control-Max-Age', '86400');
+    const targetHost = req.headers.host ? req.headers.host.split(':')[0].toLowerCase() : '';
+    if (origin) {
+      try {
+        const originHost = new URL(origin).hostname.toLowerCase();
+        if (originHost === targetHost) {
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Access-Control-Allow-Credentials', 'true');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
+          const reqHeaders = req.headers['access-control-request-headers'];
+          res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
+          res.setHeader('Access-Control-Max-Age', '86400');
+          return res.status(204).end();
+        }
+      } catch (_) {}
     }
-    return res.status(204).end();
+    return res.status(403).send('Forbidden: Cross-subdomain CORS not permitted');
   }
 
   const matchedService = sessionService.getTargetServiceForRequest(req) || config.getService(req.headers.host);
@@ -176,8 +183,7 @@ function proxyToTargetApp(req, res) {
     'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'https',
   };
 
-  const isHtmlExpected = (req.headers.accept || '').includes('text/html');
-  if (!isGatewayTokenAuth && isHtmlExpected && req.method === 'GET') {
+  if (!isGatewayTokenAuth && req.method === 'GET') {
     delete proxyHeaders['accept-encoding'];
   }
 
@@ -192,7 +198,9 @@ function proxyToTargetApp(req, res) {
       const rawContentLength = proxyRes.headers['content-length'];
       const contentLength = rawContentLength ? parseInt(rawContentLength, 10) : null;
       const MAX_INJECT_BYTES = 2 * 1024 * 1024; // 2MB max for HTML injection
-      const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300 && (!contentLength || contentLength <= MAX_INJECT_BYTES);
+      const contentEncoding = (proxyRes.headers['content-encoding'] || '').toLowerCase();
+      const isCompressed = contentEncoding && contentEncoding !== 'identity';
+      const isHtml = contentType.includes('text/html') && proxyRes.statusCode < 300 && (!contentLength || contentLength <= MAX_INJECT_BYTES) && !isCompressed;
 
       if (!isGatewayTokenAuth && isHtml && req.method === 'GET') {
         let body = '';
@@ -233,11 +241,6 @@ function proxyToTargetApp(req, res) {
         });
       } else {
         const headers = { ...proxyRes.headers };
-        const origin = req.headers.origin;
-        if (origin && isAllowedOrigin(origin)) {
-          headers['access-control-allow-origin'] = origin;
-          headers['access-control-allow-credentials'] = 'true';
-        }
         res.writeHead(proxyRes.statusCode, headers);
         proxyRes.pipe(res);
       }

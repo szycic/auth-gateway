@@ -85,6 +85,23 @@ function verifySameOrigin(req, res, next) {
     }
   }
 
+  // Fail-closed defense-in-depth: If all origin metadata headers (Origin, Sec-Fetch-Site, Referer) are absent on state-changing requests, reject
+  if (!origin && !secFetchSite && !referer) {
+    auditLog('CSRF_BLOCKED', {
+      path: req.originalUrl || req.path,
+      reason: 'missing_origin_metadata',
+      ip: authService.getClientIp(req),
+    });
+    if (req.accepts('json') && !req.accepts('html')) {
+      return res.status(403).json({ error: 'Forbidden: Missing request origin metadata' });
+    }
+    return res.status(403).render('statusNotice', {
+      title: '403 - Forbidden',
+      message: 'Cross-site request blocked: Missing origin metadata.',
+      type: 'error',
+    });
+  }
+
   next();
 }
 

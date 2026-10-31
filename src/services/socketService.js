@@ -79,9 +79,8 @@ function notifyAllSessionsRevoked() {
 }
 
 function notifySessionPermissionsUpdated(sessionId, allowedServices) {
-  if (ioInstance) {
+  if (ioInstance && sessionId) {
     ioInstance.to('session:' + sessionId).emit('session-permissions-updated', { sessionId, allowedServices });
-    ioInstance.emit('session-permissions-updated', { sessionId, allowedServices });
   }
 }
 
