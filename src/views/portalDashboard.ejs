@@ -110,8 +110,9 @@
       </form>
     </div>
 
-    <div style="text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: #64748b;">
-      <%= config.app.footerText %> <span style="opacity: 0.7;">v<%= typeof appVersion !== 'undefined' ? appVersion : '1.0.0' %></span>
+    <div style="text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: #64748b; line-height: 1.5;">
+      <div><%= config.app.footerText %></div>
+      <div style="opacity: 0.7; font-size: 0.85em;">v<%= typeof appVersion !== 'undefined' ? appVersion : '1.0.0' %></div>
     </div>
   </div>
 
