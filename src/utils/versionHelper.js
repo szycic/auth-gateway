@@ -1,41 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
 const config = require('../config');
 
 class VersionHelper {
   constructor() {
     this.packagePath = path.join(config.ROOT_DIR, 'package.json');
     this.publicDir = path.join(config.ROOT_DIR, 'public');
-    this.cachedCommit = null;
     this.cachedVersion = null;
     this.cachedHashes = null;
     this.cachedAssetVersion = null;
     this.buildTime = new Date().toISOString();
-    this.init();
-  }
-
-  init() {
-    this.cachedCommit = this.resolveGitCommit();
     this.refresh();
-  }
-
-  /**
-   * Resolve git commit short hash if available.
-   */
-  resolveGitCommit() {
-    if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT.slice(0, 7);
-    if (process.env.COMMIT_SHA) return process.env.COMMIT_SHA.slice(0, 7);
-    try {
-      const commit = execSync('git rev-parse --short HEAD', {
-        cwd: config.ROOT_DIR,
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 1000,
-      }).toString().trim();
-      if (commit && /^[0-9a-f]+$/i.test(commit)) return commit;
-    } catch (_) {}
-    return null;
   }
 
   /**
@@ -112,9 +88,8 @@ class VersionHelper {
       combined: combinedHash,
     };
 
-    // Semantic asset version: <semver>.<commit>.<contentHash>
+    // Semantic asset version: <semver>.<contentHash>
     const parts = [this.cachedVersion];
-    if (this.cachedCommit) parts.push(this.cachedCommit);
     if (combinedHash) parts.push(combinedHash);
 
     this.cachedAssetVersion = parts.join('.');
@@ -123,10 +98,6 @@ class VersionHelper {
 
   get version() {
     return this.cachedVersion || this.getPackageVersion();
-  }
-
-  get commit() {
-    return this.cachedCommit;
   }
 
   get assetVersion() {
@@ -155,7 +126,6 @@ class VersionHelper {
   getMetadata() {
     return {
       version: this.version,
-      commit: this.commit,
       assetVersion: this.assetVersion,
       cacheName: this.cacheName,
       buildTime: this.buildTime,

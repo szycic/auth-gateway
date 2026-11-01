@@ -15,7 +15,6 @@ router.get('/health', (req, res) => {
     status: 'ok',
     version: versionHelper.version,
     assetVersion: versionHelper.assetVersion,
-    commit: versionHelper.commit,
     timestamp: new Date().toISOString(),
   };
 
