@@ -22,20 +22,20 @@
 
     <!-- 24-Hour Metric Stat Cards -->
     <div class="stats-grid">
-      <div class="stat-card stat-card-logins">
-        <span class="stat-label">Logins (24h)</span>
-        <span class="stat-value" id="statLogins"><%= stats.logins24h %></span>
-        <span class="stat-subtext">Successful user &amp; approver logins</span>
-      </div>
       <div class="stat-card stat-card-alerts">
         <span class="stat-label">Security Alerts (24h)</span>
         <span class="stat-value" id="statAlerts"><%= stats.securityAlerts24h %></span>
         <span class="stat-subtext">CSRF &amp; cross-domain blocks</span>
       </div>
-      <div class="stat-card stat-card-lockouts">
-        <span class="stat-label">Lockouts &amp; Fails (24h)</span>
-        <span class="stat-value" id="statLockouts"><%= stats.lockouts24h %></span>
-        <span class="stat-subtext">Anti-brute-force rate limits</span>
+      <div class="stat-card stat-card-warnings">
+        <span class="stat-label">Warnings (24h)</span>
+        <span class="stat-value" id="statWarnings"><%= stats.warnings24h !== undefined ? stats.warnings24h : (stats.lockouts24h || 0) %></span>
+        <span class="stat-subtext">Rate limits &amp; scanner probes</span>
+      </div>
+      <div class="stat-card stat-card-logins">
+        <span class="stat-label">Logins (24h)</span>
+        <span class="stat-value" id="statLogins"><%= stats.logins24h %></span>
+        <span class="stat-subtext">Successful user &amp; approver logins</span>
       </div>
       <div class="stat-card stat-card-events">
         <span class="stat-label">Tracked Events (24h)</span>
@@ -731,11 +731,13 @@
       tbody.innerHTML = '';
 
       if (data.stats) {
-        document.getElementById('statLogins').textContent = data.stats.logins24h || 0;
-        document.getElementById('statAlerts').textContent = data.stats.securityAlerts24h || 0;
-        document.getElementById('statLockouts').textContent = data.stats.lockouts24h || 0;
-        document.getElementById('statTotal').textContent = data.stats.total24h || 0;
-        document.getElementById('statIps').textContent = data.stats.uniqueIps24h || 0;
+        if (document.getElementById('statAlerts')) document.getElementById('statAlerts').textContent = data.stats.securityAlerts24h || 0;
+        const warningsVal = (data.stats.warnings24h !== undefined ? data.stats.warnings24h : data.stats.lockouts24h) || 0;
+        if (document.getElementById('statWarnings')) document.getElementById('statWarnings').textContent = warningsVal;
+        if (document.getElementById('statLockouts')) document.getElementById('statLockouts').textContent = warningsVal;
+        if (document.getElementById('statLogins')) document.getElementById('statLogins').textContent = data.stats.logins24h || 0;
+        if (document.getElementById('statTotal')) document.getElementById('statTotal').textContent = data.stats.total24h || 0;
+        if (document.getElementById('statIps')) document.getElementById('statIps').textContent = data.stats.uniqueIps24h || 0;
       }
 
       const logs = data.logs || [];

@@ -102,9 +102,16 @@ body {
 /* --- Stats Cards Grid --- */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   margin-bottom: 1.5rem;
+}
+
+@media (max-width: 960px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
 }
 
 .stat-card {
@@ -140,9 +147,10 @@ body {
   color: #64748b;
 }
 
-.stat-card-logins .stat-value { color: #34d399; }
 .stat-card-alerts .stat-value { color: #f43f5e; }
+.stat-card-warnings .stat-value,
 .stat-card-lockouts .stat-value { color: #fbbf24; }
+.stat-card-logins .stat-value { color: #34d399; }
 .stat-card-events .stat-value { color: #38bdf8; }
 
 /* --- Controls & Filter Bar --- */

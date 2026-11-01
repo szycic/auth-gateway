@@ -325,7 +325,7 @@ function getAuditStats() {
   let total24h = 0;
   let logins24h = 0;
   let securityAlerts24h = 0;
-  let lockouts24h = 0;
+  let warnings24h = 0;
   const uniqueIps = new Set();
 
   for (const entry of inMemoryLogs) {
@@ -337,12 +337,15 @@ function getAuditStats() {
       uniqueIps.add(entry.details.ip);
     }
 
+    const evClass = getEventClass(entry.event);
+    if (evClass === 'danger') {
+      securityAlerts24h++;
+    } else if (evClass === 'warning') {
+      warnings24h++;
+    }
+
     if (entry.event === 'LOGIN_SUCCESS' || entry.event === 'APPROVER_LOGIN_SUCCESS' || entry.event === 'USER_FIDO_LOGIN_SUCCESS') {
       logins24h++;
-    } else if (entry.event.startsWith('CSRF_') || entry.event.startsWith('CROSS_SUBDOMAIN_') || entry.event.startsWith('SCANNER_')) {
-      securityAlerts24h++;
-    } else if (entry.event === 'LOCKOUT_TRIGGERED' || entry.event === 'RATE_LIMIT_TRIGGERED' || entry.event === 'LOGIN_FAILED' || entry.event === 'APPROVER_LOGIN_FAILED') {
-      lockouts24h++;
     }
   }
 
@@ -351,7 +354,8 @@ function getAuditStats() {
     total24h,
     logins24h,
     securityAlerts24h,
-    lockouts24h,
+    warnings24h,
+    lockouts24h: warnings24h,
     uniqueIps24h: uniqueIps.size,
   };
 }
