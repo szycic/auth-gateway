@@ -162,6 +162,11 @@ const EVENT_CATEGORIES = {
     'SESSION_PERMISSIONS_UPDATED',
     'DEVICE_RENAMED',
   ],
+  access: [
+    'SERVICE_ACCESS',
+    'SERVICE_REDIRECT',
+    'SERVICE_AUTH_REQUIRED',
+  ],
 };
 
 /**

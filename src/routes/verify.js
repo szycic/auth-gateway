@@ -4,8 +4,88 @@ const { isAllowedOrigin } = require('../utils/originHelper');
 const sessionService = require('../services/sessionService');
 const authService = require('../services/authService');
 const { auditLog } = require('../utils/auditLogger');
+const { parseUserAgent } = require('../utils/deviceDetector');
 
 const router = express.Router();
+
+// Debounce map: sessionId:serviceId -> timestamp
+const accessDebounceMap = new Map();
+
+function logServiceAccess(req, session, targetService, isApprover = false) {
+  // If watchdog query param is present or request is on auth domain directly, it's not a service page navigation
+  if (req.query && req.query.service) return;
+
+  let authHost = '';
+  try {
+    authHost = new URL(config.BASE_URL).hostname.toLowerCase();
+  } catch {}
+
+  const forwardedHost = ((req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0]).toLowerCase().trim();
+  if (!forwardedHost || forwardedHost === authHost) return;
+
+  const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
+  if (originalMethod !== 'GET') return;
+
+  const secFetchDest = req.headers['sec-fetch-dest'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const accept = req.headers['accept'] || '';
+  const forwardedUri = req.headers['x-forwarded-uri'] || req.url || '';
+
+  // Filter out static subresources
+  if (/\.(css|js|png|jpe?g|gif|svg|ico|woff2?|ttf|eot|otf|map|webmanifest|json|txt|xml)($|\?)/i.test(forwardedUri)) {
+    return;
+  }
+
+  // Filter out internal/streaming APIs and WebSockets
+  if (
+    forwardedUri.startsWith('/api/') ||
+    forwardedUri.startsWith('/ws') ||
+    forwardedUri.startsWith('/socket.io/') ||
+    forwardedUri.startsWith('/hubs/') ||
+    forwardedUri.startsWith('/System/')
+  ) {
+    return;
+  }
+
+  // Must be a top-level page navigation (document request)
+  const isDocument = (secFetchDest === 'document') ||
+                     (secFetchMode === 'navigate') ||
+                     (!secFetchDest && accept.includes('text/html'));
+  if (!isDocument) return;
+
+  const serviceId = targetService ? targetService.id : forwardedHost;
+  const sessionId = (session && session.id) || (session && session.sessionId) || authService.getClientIp(req);
+  const debounceKey = `${sessionId}:${serviceId}`;
+  const now = Date.now();
+  const lastTime = accessDebounceMap.get(debounceKey) || 0;
+
+  // Debounce window of 15 seconds per session per service to avoid duplicate logs on redirects/page loads
+  if (now - lastTime < 15000) return;
+  accessDebounceMap.set(debounceKey, now);
+
+  // Prune map if large
+  if (accessDebounceMap.size > 5000) {
+    for (const [k, t] of accessDebounceMap) {
+      if (now - t > 60000) accessDebounceMap.delete(k);
+    }
+  }
+
+  const serviceName = targetService ? targetService.name : forwardedHost;
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const fullUrl = `${proto}://${forwardedHost}${forwardedUri}`;
+
+  auditLog('SERVICE_ACCESS', {
+    service: serviceName,
+    serviceId: targetService ? targetService.id : null,
+    site: forwardedHost,
+    url: fullUrl,
+    ip: authService.getClientIp(req),
+    device: (session && session.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || '') || (isApprover ? 'Approver Device' : 'Desktop Browser'),
+    sessionId: (session && session.id) || undefined,
+    trusted: session ? session.isTrusted : false,
+    ...(isApprover ? { isApprover: true } : {}),
+  });
+}
 
 // CORS Preflight handler - strictly for authentic OPTIONS requests
 router.options('/verify', (req, res) => {
@@ -159,6 +239,8 @@ router.all('/verify', (req, res) => {
       }
     }
 
+    logServiceAccess(req, session, targetService, false);
+
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',
       'X-Auth-Role': session && session.isTrusted ? 'trusted_device' : 'guest',
@@ -168,6 +250,10 @@ router.all('/verify', (req, res) => {
 
   // Authorize approver without redirect
   if (sessionService.isApprover(req)) {
+    const approverToken = req.cookies[config.APPROVER_COOKIE_NAME];
+    const approverSession = approverToken ? sessionService.approverSessions.get(approverToken) : null;
+    logServiceAccess(req, approverSession, targetService, true);
+
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',
       'X-Auth-Role': 'trusted_device',
