@@ -17,6 +17,7 @@ router.get('/login', (req, res) => {
   const clientIp = authService.getClientIp(req);
   const jailStatus = securityService.isIpJailed(clientIp);
   if (jailStatus.jailed) {
+    securityService.recordJailedHit(clientIp);
     return res.status(403).send(`Forbidden: IP temporarily banned (${jailStatus.remainingSeconds}s remaining)`);
   }
 
@@ -31,12 +32,7 @@ router.get('/login', (req, res) => {
   // Rate limit unauthenticated access to login page
   const rateCheck = securityService.checkUnauthRateLimit(clientIp);
   if (!rateCheck.allowed) {
-    auditLog('RATE_LIMIT_TRIGGERED', {
-      ip: clientIp,
-      endpoint: '/auth/login',
-      count: securityService.UNAUTH_RATE_LIMIT_PER_MINUTE,
-      device: parseUserAgent(req.headers['user-agent'] || ''),
-    });
+    securityService.recordRateLimitHit(clientIp, '/auth/login', req);
     return res.status(429).send('Too Many Requests: Please slow down.');
   }
 
@@ -149,16 +145,8 @@ router.get('/login', (req, res) => {
   // Log unauthenticated access attempt to a protected service (redirected to auth gateway)
   if ((matchedService || redirectTarget) && !req.query.error && !req.query.notice) {
     const targetService = matchedService || config.getService(redirectTarget);
-    const serviceId = targetService ? targetService.id : null;
-
-    if (!scannerCheck.isScanner && securityService.shouldLogAuthRequired(clientIp, serviceId)) {
-      auditLog('SERVICE_AUTH_REQUIRED', {
-        service: targetService ? targetService.name : 'Unknown Service',
-        serviceId,
-        url: redirectTarget || (targetService ? targetService.url : ''),
-        ip: clientIp,
-        device: parseUserAgent(req.headers['user-agent'] || '') || 'Desktop Browser',
-      });
+    if (!scannerCheck.isScanner) {
+      securityService.recordAuthRequired(clientIp, targetService, redirectTarget, req);
     }
   }
 

@@ -110,6 +110,7 @@ router.all('/verify', (req, res) => {
   const clientIp = authService.getClientIp(req);
   const jailStatus = securityService.isIpJailed(clientIp);
   if (jailStatus.jailed) {
+    securityService.recordJailedHit(clientIp);
     return res.status(403).set({
       'X-Auth-Status': 'blocked',
       'X-Auth-Reason': 'ip_jailed',
@@ -285,12 +286,7 @@ router.all('/verify', (req, res) => {
   // Rate Limiter for Unauthenticated Traffic:
   const rateCheck = securityService.checkUnauthRateLimit(clientIp);
   if (!rateCheck.allowed) {
-    auditLog('RATE_LIMIT_TRIGGERED', {
-      ip: clientIp,
-      endpoint: fullUrl,
-      count: securityService.UNAUTH_RATE_LIMIT_PER_MINUTE,
-      device: parseUserAgent(req.headers['user-agent'] || ''),
-    });
+    securityService.recordRateLimitHit(clientIp, fullUrl, req);
     return res.status(429).set({
       'X-Auth-Status': 'rate_limited',
       'Retry-After': String(rateCheck.retryAfter),

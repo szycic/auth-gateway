@@ -1,5 +1,5 @@
 const config = require('../config');
-const { auditLog } = require('../utils/auditLogger');
+const { auditLog, updateLogAttempts } = require('../utils/auditLogger');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const authService = require('./authService');
 
@@ -142,15 +142,14 @@ function blockScannerProbe(req, res, targetUrlOrUri, reason) {
   const clientIp = authService.getClientIp(req);
   jailIp(clientIp, reason);
 
-  // Debounced audit logging: log at most once per 10 minutes per IP to avoid log spam
+  // Debounced audit logging: log at most once per 10 minutes per IP to avoid log spam, tracking attempt counts
   const debounceKey = `scanner:${clientIp}`;
   const now = Date.now();
-  const lastLogged = auditDebounceMap.get(debounceKey) || 0;
+  const entry = auditDebounceMap.get(debounceKey);
 
-  if (now - lastLogged > 10 * 60 * 1000) {
-    auditDebounceMap.set(debounceKey, now);
+  if (!entry || now - entry.lastLogged > 10 * 60 * 1000) {
     const ua = (req.headers && req.headers['user-agent']) || '';
-    auditLog('SCANNER_PROBE_BLOCKED', {
+    const logRecord = auditLog('SCANNER_PROBE_BLOCKED', {
       ip: clientIp,
       url: targetUrlOrUri || req.originalUrl || req.url,
       path: extractPathname(targetUrlOrUri || req.originalUrl || req.url),
@@ -158,13 +157,65 @@ function blockScannerProbe(req, res, targetUrlOrUri, reason) {
       device: parseUserAgent(ua) || 'Automated Scanner',
       userAgent: ua.slice(0, 150),
       jailDuration: '30m',
+      attempts: 1,
     });
+    auditDebounceMap.set(debounceKey, { lastLogged: now, count: 1, logRecord });
+  } else {
+    entry.count += 1;
+    entry.lastLogged = now;
+    updateLogAttempts(entry.logRecord, entry.count);
   }
 
   return res.status(403).set({
     'X-Auth-Status': 'blocked',
     'X-Auth-Reason': 'scanner_probe_blocked',
+    'Retry-After': '1800',
   }).send('Forbidden: Malicious scanner probe detected');
+}
+
+/**
+ * Record repeated hit from an already jailed IP, updating attempt counts on the blocked event.
+ */
+function recordJailedHit(clientIp) {
+  if (!clientIp) return;
+  const scannerEntry = auditDebounceMap.get(`scanner:${clientIp}`);
+  if (scannerEntry) {
+    scannerEntry.count += 1;
+    scannerEntry.lastLogged = Date.now();
+    updateLogAttempts(scannerEntry.logRecord, scannerEntry.count);
+    return;
+  }
+  const rateEntry = auditDebounceMap.get(`ratelimit:${clientIp}`);
+  if (rateEntry) {
+    rateEntry.count += 1;
+    rateEntry.lastLogged = Date.now();
+    updateLogAttempts(rateEntry.logRecord, rateEntry.count);
+  }
+}
+
+/**
+ * Record RATE_LIMIT_TRIGGERED with debounce and attempt tracking.
+ */
+function recordRateLimitHit(clientIp, endpoint, req) {
+  if (!clientIp) return;
+  const debounceKey = `ratelimit:${clientIp}`;
+  const now = Date.now();
+  const entry = auditDebounceMap.get(debounceKey);
+
+  if (!entry || now - entry.lastLogged > 10 * 60 * 1000) {
+    const logRecord = auditLog('RATE_LIMIT_TRIGGERED', {
+      ip: clientIp,
+      endpoint,
+      count: UNAUTH_RATE_LIMIT_PER_MINUTE,
+      device: parseUserAgent((req && req.headers && req.headers['user-agent']) || '') || 'Desktop Browser',
+      attempts: 1,
+    });
+    auditDebounceMap.set(debounceKey, { lastLogged: now, count: 1, logRecord });
+  } else {
+    entry.count += 1;
+    entry.lastLogged = now;
+    updateLogAttempts(entry.logRecord, entry.count);
+  }
 }
 
 /**
@@ -192,27 +243,60 @@ function checkUnauthRateLimit(ip) {
 }
 
 /**
+ * Record SERVICE_AUTH_REQUIRED logging per IP and service with 60-second debounce and attempt counting.
+ */
+function recordAuthRequired(clientIp, targetService, redirectTarget, req) {
+  if (!clientIp) return;
+  const serviceId = targetService ? targetService.id : null;
+  const key = `${clientIp}:${serviceId || 'unknown'}`;
+  const now = Date.now();
+  const entry = authRequiredDebounceMap.get(key);
+
+  if (!entry || now - entry.lastTime > 60000) {
+    const logRecord = auditLog('SERVICE_AUTH_REQUIRED', {
+      service: targetService ? targetService.name : 'Unknown Service',
+      serviceId,
+      url: redirectTarget || (targetService ? targetService.url : ''),
+      ip: clientIp,
+      device: parseUserAgent((req && req.headers && req.headers['user-agent']) || '') || 'Desktop Browser',
+      attempts: 1,
+    });
+    authRequiredDebounceMap.set(key, {
+      firstTime: now,
+      lastTime: now,
+      count: 1,
+      logRecord,
+    });
+    return;
+  }
+
+  // Repeat hit within 60-second debounce window
+  entry.count += 1;
+  entry.lastTime = now;
+  updateLogAttempts(entry.logRecord, entry.count);
+
+  // Prune map if large
+  if (authRequiredDebounceMap.size > 2000) {
+    for (const [k, e] of authRequiredDebounceMap) {
+      if (now - e.lastTime > 120000) authRequiredDebounceMap.delete(k);
+    }
+  }
+}
+
+/**
  * Debounce SERVICE_AUTH_REQUIRED logging per IP and service to avoid log flooding.
  */
 function shouldLogAuthRequired(clientIp, serviceId) {
   if (!clientIp) return true;
   const key = `${clientIp}:${serviceId || 'unknown'}`;
   const now = Date.now();
-  const lastTime = authRequiredDebounceMap.get(key) || 0;
+  const entry = authRequiredDebounceMap.get(key);
+  const lastTime = (entry && entry.lastTime) || (typeof entry === 'number' ? entry : 0);
 
   // Debounce window of 60 seconds per IP per service
   if (now - lastTime < 60000) {
     return false;
   }
-  authRequiredDebounceMap.set(key, now);
-
-  // Prune map if large
-  if (authRequiredDebounceMap.size > 2000) {
-    for (const [k, t] of authRequiredDebounceMap) {
-      if (now - t > 120000) authRequiredDebounceMap.delete(k);
-    }
-  }
-
   return true;
 }
 
@@ -236,7 +320,10 @@ module.exports = {
   isIpJailed,
   jailIp,
   blockScannerProbe,
+  recordJailedHit,
+  recordRateLimitHit,
   checkUnauthRateLimit,
+  recordAuthRequired,
   shouldLogAuthRequired,
   UNAUTH_RATE_LIMIT_PER_MINUTE,
 };

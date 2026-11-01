@@ -788,11 +788,22 @@
           const ip = d.ip || d.clientIp || d.approverIp || d.revokedByIp || d.deviceIp || d.desktopIp || '-';
           const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
           const uuid = d.sessionId || d.uuid || '';
+          const attempts = (typeof d.attempts === 'number' && d.attempts > 1) ? d.attempts : 1;
+          const attemptsBadge = attempts > 1
+            ? `<span class="badge-attempts ${attempts >= 10 ? 'high-intensity' : ''}" title="${attempts} total attempts (${attempts - 1} debounced / suppressed)">×${attempts}</span>`
+            : '';
 
           // Format detail chips
           const chips = [];
+          if (attempts > 1) {
+            chips.push(`<span class="detail-chip chip-attempts"><strong>attempts:</strong> ${attempts} (${attempts - 1} debounced)</span>`);
+          }
           for (const [k, v] of Object.entries(d)) {
-            if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent', 'sessionId', 'uuid'].includes(k)) continue;
+            if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent', 'sessionId', 'uuid', 'attempts'].includes(k)) continue;
+            if (k === 'lastAttempt') {
+              chips.push(`<span class="detail-chip"><strong>last:</strong> ${escapeHtml(new Date(v).toLocaleTimeString())}</span>`);
+              continue;
+            }
             const strVal = typeof v === 'object' ? JSON.stringify(v) : String(v);
             chips.push(`<span class="detail-chip"><strong>${k}:</strong> ${escapeHtml(strVal)}</span>`);
           }
@@ -803,9 +814,12 @@
               <div class="time-full">${new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
             </td>
             <td>
-              <span class="event-badge ${badgeCls}" data-event="${escapeHtml(log.event)}" onclick="event.stopPropagation(); setEventFilter(this.dataset.event)" title="Filter by '${escapeHtml(log.event)}'">
-                ${escapeHtml(log.event)}
-              </span>
+              <div class="event-cell-wrapper">
+                <span class="event-badge ${badgeCls}" data-event="${escapeHtml(log.event)}" onclick="event.stopPropagation(); setEventFilter(this.dataset.event)" title="Filter by '${escapeHtml(log.event)}'">
+                  ${escapeHtml(log.event)}
+                </span>
+                ${attemptsBadge}
+              </div>
             </td>
             <td>
               <div class="col-actor">

@@ -48,7 +48,12 @@ function loadExistingLogs() {
           if (!parsed.id) {
             parsed.id = `log-${new Date(parsed.timestamp).getTime()}-${parsed.event}`;
           }
-          inMemoryLogs.push(parsed);
+          const existing = inMemoryLogs.find(l => l.id === parsed.id);
+          if (existing) {
+            Object.assign(existing.details, parsed.details);
+          } else {
+            inMemoryLogs.push(parsed);
+          }
         }
       } catch (_) {}
     }
@@ -121,6 +126,34 @@ function auditLog(event, details = {}) {
     });
   } catch (err) {
     console.error('[auth-gateway] Error in audit file write check:', err.message);
+  }
+
+  return record;
+}
+
+/**
+ * Update attempt count on an existing log record when debouncing repeat events.
+ */
+function updateLogAttempts(record, attempts) {
+  if (!record || !record.details) return;
+  record.details.attempts = attempts;
+  record.details.lastAttempt = new Date().toISOString();
+
+  // Debounced append to file so updated attempts persist across restarts
+  if (!record._flushTimer) {
+    const timer = setTimeout(() => {
+      record._flushTimer = null;
+      try {
+        fs.appendFile(AUDIT_FILE, JSON.stringify(record) + '\n', 'utf8', () => {});
+      } catch (_) {}
+    }, 3000);
+    timer.unref();
+    Object.defineProperty(record, '_flushTimer', {
+      value: timer,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
   }
 }
 
@@ -414,6 +447,7 @@ function exportToCsv(logs) {
 
 module.exports = {
   auditLog,
+  updateLogAttempts,
   getAuditLogs,
   getAuditStats,
   getUniqueEvents,
