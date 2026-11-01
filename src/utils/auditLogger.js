@@ -1,8 +1,16 @@
-/**
- * Security Audit Logger for Auth Gateway.
- * Emits structured security events to stdout for monitoring, SIEM, and fail2ban ingestion.
- */
+const fs = require('fs');
+const path = require('path');
+const config = require('../config');
 
+const MAX_IN_MEMORY = 5000;
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB before rotation
+const AUDIT_FILE = path.join(config.DATA_DIR, 'audit.jsonl');
+
+const inMemoryLogs = [];
+
+/**
+ * Format primitive value for stdout log formatting.
+ */
 function formatValue(val) {
   if (typeof val === 'string') {
     if (val.includes(' ') || val.includes('"') || val.includes('=')) {
@@ -10,17 +18,296 @@ function formatValue(val) {
     }
     return val;
   }
+  if (typeof val === 'object' && val !== null) {
+    try {
+      return JSON.stringify(val);
+    } catch (_) {
+      return String(val);
+    }
+  }
   return String(val);
 }
 
+/**
+ * Load existing logs from disk on startup into memory buffer.
+ */
+function loadExistingLogs() {
+  try {
+    if (!fs.existsSync(AUDIT_FILE)) return;
+    const content = fs.readFileSync(AUDIT_FILE, 'utf8');
+    const lines = content.split('\n');
+    
+    // Tail up to MAX_IN_MEMORY lines
+    const startIdx = Math.max(0, lines.length - MAX_IN_MEMORY - 1);
+    for (let i = startIdx; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed && parsed.timestamp && parsed.event) {
+          inMemoryLogs.push(parsed);
+        }
+      } catch (_) {}
+    }
+    // Sort descending by timestamp (newest first)
+    inMemoryLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  } catch (err) {
+    console.error('[auth-gateway] Error reading existing audit logs from disk:', err.message);
+  }
+}
+
+// Initial load
+loadExistingLogs();
+
+/**
+ * Check if the audit file needs rotation.
+ */
+function checkRotation() {
+  try {
+    if (!fs.existsSync(AUDIT_FILE)) return;
+    const stat = fs.statSync(AUDIT_FILE);
+    if (stat.size >= MAX_FILE_SIZE_BYTES) {
+      const rotated = `${AUDIT_FILE}.1`;
+      if (fs.existsSync(rotated)) {
+        try { fs.unlinkSync(rotated); } catch (_) {}
+      }
+      fs.renameSync(AUDIT_FILE, rotated);
+    }
+  } catch (_) {}
+}
+
+/**
+ * Emit and persist a security audit log event.
+ * @param {string} event - Unique event key (e.g. 'LOGIN_SUCCESS', 'CSRF_BLOCKED')
+ * @param {Record<string, any>} details - Associated metadata
+ */
 function auditLog(event, details = {}) {
+  const timestamp = new Date().toISOString();
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const record = {
+    id,
+    timestamp,
+    event,
+    details: { ...details },
+  };
+
+  // Add to memory ring buffer (newest first)
+  inMemoryLogs.unshift(record);
+  if (inMemoryLogs.length > MAX_IN_MEMORY) {
+    inMemoryLogs.pop();
+  }
+
+  // Format details for stdout console logging
   const parts = Object.entries(details)
     .filter(([_, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${k}=${formatValue(v)}`);
   const detailsStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
   console.log(`[AUTH_AUDIT] [${event}]${detailsStr}`);
+
+  // Asynchronously append to persistent JSONL log
+  try {
+    if (!fs.existsSync(config.DATA_DIR)) {
+      fs.mkdirSync(config.DATA_DIR, { recursive: true });
+    }
+    checkRotation();
+    fs.appendFile(AUDIT_FILE, JSON.stringify(record) + '\n', 'utf8', (err) => {
+      if (err) {
+        console.error('[auth-gateway] Failed to append to audit log file:', err.message);
+      }
+    });
+  } catch (err) {
+    console.error('[auth-gateway] Error in audit file write check:', err.message);
+  }
+}
+
+/**
+ * Event categories grouping for intuitive filtering.
+ */
+const EVENT_CATEGORIES = {
+  auth: [
+    'LOGIN_SUCCESS',
+    'LOGIN_FAILED',
+    'APPROVER_LOGIN_SUCCESS',
+    'APPROVER_LOGIN_FAILED',
+    'USER_FIDO_LOGIN_SUCCESS',
+  ],
+  revocation: [
+    'SESSION_REVOKED',
+    'APPROVER_SESSION_REVOKED',
+    'ALL_SESSIONS_REVOKED',
+    'USER_LOGOUT',
+    'APPROVER_LOGOUT',
+  ],
+  security: [
+    'CSRF_BLOCKED',
+    'CSRF_LOGOUT_BLOCKED',
+    'CROSS_SUBDOMAIN_BLOCKED',
+    'LOCKOUT_TRIGGERED',
+  ],
+  approval: [
+    'SESSION_APPROVED',
+    'SESSION_REJECTED',
+    'PAIR_CODE_VERIFIED',
+  ],
+  config: [
+    'FIDO_KEY_ENROLLED',
+    'FIDO_KEY_REVOKED',
+    'PASSWORD_CHANGED',
+    'AUTH_METHOD_CHANGED',
+    'SESSION_PERMISSIONS_UPDATED',
+  ],
+};
+
+/**
+ * Query and filter audit logs.
+ */
+function getAuditLogs({
+  category = 'all',
+  event = '',
+  search = '',
+  from = '',
+  to = '',
+  limit = 50,
+  offset = 0,
+} = {}) {
+  const numLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+  const numOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+  const fromTime = from ? new Date(from).getTime() : 0;
+  const toTime = to ? new Date(to).getTime() : Infinity;
+  const searchLower = (search || '').trim().toLowerCase();
+
+  const allowedEvents = category && category !== 'all' && EVENT_CATEGORIES[category]
+    ? new Set(EVENT_CATEGORIES[category])
+    : null;
+
+  const filtered = inMemoryLogs.filter((entry) => {
+    // 1. Event / Category filter
+    if (event && entry.event !== event) return false;
+    if (allowedEvents && !allowedEvents.has(entry.event)) return false;
+
+    // 2. Timestamp range
+    const entryTime = new Date(entry.timestamp).getTime();
+    if (fromTime && entryTime < fromTime) return false;
+    if (toTime && entryTime > toTime) return false;
+
+    // 3. Search query
+    if (searchLower) {
+      if (entry.event.toLowerCase().includes(searchLower)) return true;
+      if (entry.id.toLowerCase().includes(searchLower)) return true;
+      
+      const d = entry.details || {};
+      for (const val of Object.values(d)) {
+        if (val !== undefined && val !== null && String(val).toLowerCase().includes(searchLower)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    return true;
+  });
+
+  const total = inMemoryLogs.length;
+  const filteredCount = filtered.length;
+  const paged = filtered.slice(numOffset, numOffset + numLimit);
+
+  return {
+    logs: paged,
+    total,
+    filteredCount,
+    limit: numLimit,
+    offset: numOffset,
+  };
+}
+
+/**
+ * Calculate statistical summary for dashboard cards over the last 24 hours.
+ */
+function getAuditStats() {
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  let total24h = 0;
+  let logins24h = 0;
+  let securityAlerts24h = 0;
+  let lockouts24h = 0;
+  const uniqueIps = new Set();
+
+  for (const entry of inMemoryLogs) {
+    const t = new Date(entry.timestamp).getTime();
+    if (t < oneDayAgo) continue;
+
+    total24h++;
+    if (entry.details && entry.details.ip) {
+      uniqueIps.add(entry.details.ip);
+    }
+
+    if (entry.event === 'LOGIN_SUCCESS' || entry.event === 'APPROVER_LOGIN_SUCCESS' || entry.event === 'USER_FIDO_LOGIN_SUCCESS') {
+      logins24h++;
+    } else if (entry.event.startsWith('CSRF_') || entry.event.startsWith('CROSS_SUBDOMAIN_')) {
+      securityAlerts24h++;
+    } else if (entry.event === 'LOCKOUT_TRIGGERED' || entry.event === 'LOGIN_FAILED' || entry.event === 'APPROVER_LOGIN_FAILED') {
+      lockouts24h++;
+    }
+  }
+
+  return {
+    totalEvents: inMemoryLogs.length,
+    total24h,
+    logins24h,
+    securityAlerts24h,
+    lockouts24h,
+    uniqueIps24h: uniqueIps.size,
+  };
+}
+
+/**
+ * Format audit logs as CSV.
+ */
+function exportToCsv(logs) {
+  const headers = ['Timestamp', 'Event', 'IP', 'Device', 'Service', 'Path', 'Details'];
+  const rows = [headers.join(',')];
+
+  for (const log of logs) {
+    const d = log.details || {};
+    const ip = d.ip || d.clientIp || d.approverIp || '';
+    const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
+    const service = d.service || d.targetDomain || '';
+    const path = d.path || '';
+
+    const remainingDetails = { ...d };
+    delete remainingDetails.ip;
+    delete remainingDetails.clientIp;
+    delete remainingDetails.approverIp;
+    delete remainingDetails.friendlyDevice;
+    delete remainingDetails.device;
+    delete remainingDetails.targetDevice;
+    delete remainingDetails.approverDevice;
+    delete remainingDetails.service;
+    delete remainingDetails.targetDomain;
+    delete remainingDetails.path;
+
+    const detailsStr = Object.keys(remainingDetails).length > 0 ? JSON.stringify(remainingDetails) : '';
+
+    const row = [
+      JSON.stringify(log.timestamp),
+      JSON.stringify(log.event),
+      JSON.stringify(ip),
+      JSON.stringify(device),
+      JSON.stringify(service),
+      JSON.stringify(path),
+      JSON.stringify(detailsStr),
+    ];
+    rows.push(row.join(','));
+  }
+
+  return rows.join('\n');
 }
 
 module.exports = {
   auditLog,
+  getAuditLogs,
+  getAuditStats,
+  exportToCsv,
+  EVENT_CATEGORIES,
 };

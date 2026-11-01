@@ -11,6 +11,7 @@ const pairRoutes = require('./pair');
 const approverRoutes = require('./approver');
 const approveRoutes = require('./approve');
 const manageRoutes = require('./manage');
+const auditRoutes = require('./audit');
 const loginRoutes = require('./login');
 const portalRoutes = require('./portal');
 
@@ -25,6 +26,7 @@ router.use('/auth', pairRoutes);
 router.use('/auth', approverRoutes);
 router.use('/auth', approveRoutes);
 router.use('/auth', manageRoutes);
+router.use('/auth', auditRoutes);
 
 // Downstream reverse proxy (handles non-auth domains)
 router.use((req, res, next) => {

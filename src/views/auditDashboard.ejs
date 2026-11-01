@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { extraCss: '/css/audit.css' }) %>
+  <title>Security Audit Log - <%= config.app.name %></title>
+</head>
+<body>
+  <div class="ambient-glow"></div>
+
+  <div class="audit-container">
+    <!-- Top Navigation Bar -->
+    <div class="top-bar">
+      <div class="top-bar-title">
+        <h1>Security Audit Log</h1>
+        <div class="live-indicator" id="liveIndicator">
+          <span class="live-dot"></span>
+          <span>Live</span>
+        </div>
+      </div>
+
+      <div class="nav-links">
+        <a href="/" class="btn-nav btn-nav-portal">
+          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Portal
+        </a>
+        <a href="/auth/sessions" class="btn-nav btn-nav-sessions">
+          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          Sessions
+        </a>
+        <form method="POST" action="/auth/approver/logout" style="display: contents;">
+          <button type="submit" class="btn-nav">Sign Out</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 24-Hour Metric Stat Cards -->
+    <div class="stats-grid">
+      <div class="stat-card stat-card-logins">
+        <span class="stat-label">Logins (24h)</span>
+        <span class="stat-value" id="statLogins"><%= stats.logins24h %></span>
+        <span class="stat-subtext">Successful user &amp; approver logins</span>
+      </div>
+      <div class="stat-card stat-card-alerts">
+        <span class="stat-label">Security Alerts (24h)</span>
+        <span class="stat-value" id="statAlerts"><%= stats.securityAlerts24h %></span>
+        <span class="stat-subtext">CSRF &amp; cross-domain blocks</span>
+      </div>
+      <div class="stat-card stat-card-lockouts">
+        <span class="stat-label">Lockouts &amp; Fails (24h)</span>
+        <span class="stat-value" id="statLockouts"><%= stats.lockouts24h %></span>
+        <span class="stat-subtext">Anti-brute-force rate limits</span>
+      </div>
+      <div class="stat-card stat-card-events">
+        <span class="stat-label">Tracked Events</span>
+        <span class="stat-value" id="statTotal"><%= stats.totalEvents %></span>
+        <span class="stat-subtext">Unique IPs: <strong id="statIps" style="color: #cbd5e1;"><%= stats.uniqueIps24h %></strong> (24h)</span>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls -->
+    <div class="audit-controls-card">
+      <div class="category-tabs" id="categoryTabs">
+        <button class="tab-pill active" data-category="all">All Events</button>
+        <button class="tab-pill" data-category="auth">Logins &amp; FIDO</button>
+        <button class="tab-pill" data-category="revocation">Revocations</button>
+        <button class="tab-pill" data-category="security">Security &amp; CSRF</button>
+        <button class="tab-pill" data-category="approval">Approvals</button>
+        <button class="tab-pill" data-category="config">Config &amp; Keys</button>
+      </div>
+
+      <div class="filter-inputs-row">
+        <div class="search-box-wrapper">
+          <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="Search by IP, device, path, event, or metadata..." autocomplete="off">
+        </div>
+
+        <select id="timeRangeSelect" class="select-filter">
+          <option value="">All Time</option>
+          <option value="1h">Last 1 Hour</option>
+          <option value="24h" selected>Last 24 Hours</option>
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
+        </select>
+
+        <select id="eventSelect" class="select-filter">
+          <option value="">All Event Types</option>
+          <option value="LOGIN_SUCCESS">LOGIN_SUCCESS</option>
+          <option value="LOGIN_FAILED">LOGIN_FAILED</option>
+          <option value="APPROVER_LOGIN_SUCCESS">APPROVER_LOGIN_SUCCESS</option>
+          <option value="APPROVER_LOGIN_FAILED">APPROVER_LOGIN_FAILED</option>
+          <option value="SESSION_APPROVED">SESSION_APPROVED</option>
+          <option value="SESSION_REJECTED">SESSION_REJECTED</option>
+          <option value="SESSION_REVOKED">SESSION_REVOKED</option>
+          <option value="ALL_SESSIONS_REVOKED">ALL_SESSIONS_REVOKED</option>
+          <option value="LOCKOUT_TRIGGERED">LOCKOUT_TRIGGERED</option>
+          <option value="CSRF_BLOCKED">CSRF_BLOCKED</option>
+          <option value="CROSS_SUBDOMAIN_BLOCKED">CROSS_SUBDOMAIN_BLOCKED</option>
+          <option value="FIDO_KEY_ENROLLED">FIDO_KEY_ENROLLED</option>
+          <option value="FIDO_KEY_REVOKED">FIDO_KEY_REVOKED</option>
+        </select>
+
+        <div class="export-actions">
+          <button type="button" class="btn-export" onclick="exportData('csv')">
+            <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            CSV
+          </button>
+          <button type="button" class="btn-export" onclick="exportData('json')">
+            <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            JSON
+          </button>
+          <button type="button" id="btnAutoRefresh" class="btn-export" style="color: #38bdf8;" onclick="toggleAutoRefresh()">
+            Auto: On
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit Event Log Table -->
+    <div class="audit-table-card">
+      <div class="table-header-meta">
+        <span>Showing <strong id="countFiltered" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events</span>
+        <span id="lastUpdatedText" style="color: #64748b;">Updated just now</span>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th style="width: 140px;">Time</th>
+              <th style="width: 190px;">Event</th>
+              <th style="width: 220px;">Actor / Origin</th>
+              <th>Details &amp; Context</th>
+            </tr>
+          </thead>
+          <tbody id="auditTableBody">
+            <!-- Dynamic rows populated via JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div id="auditEmptyState" class="audit-empty" style="display: none;">
+        <svg style="width: 48px; height: 48px; margin: 0 auto; color: #475569;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p>No audit events match the selected criteria.</p>
+      </div>
+
+      <div class="pagination-bar">
+        <span id="paginationInfo">Page 1</span>
+        <div class="pagination-controls">
+          <button id="btnPrevPage" class="btn-page" onclick="changePage(-1)" disabled>&larr; Prev</button>
+          <button id="btnNextPage" class="btn-page" onclick="changePage(1)" disabled>Next &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let activeCategory = 'all';
+    let currentSearch = '';
+    let currentTimeRange = '24h';
+    let currentEvent = '';
+    let currentOffset = 0;
+    const pageSize = 50;
+    let autoRefreshTimer = null;
+    let autoRefreshEnabled = true;
+
+    function getFromTimestamp(range) {
+      const now = Date.now();
+      if (range === '1h') return new Date(now - 3600 * 1000).toISOString();
+      if (range === '24h') return new Date(now - 24 * 3600 * 1000).toISOString();
+      if (range === '7d') return new Date(now - 7 * 24 * 3600 * 1000).toISOString();
+      if (range === '30d') return new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+      return '';
+    }
+
+    function formatRelativeTime(dateStr) {
+      const ms = Date.now() - new Date(dateStr).getTime();
+      const s = Math.floor(ms / 1000);
+      if (s < 10) return 'Just now';
+      if (s < 60) return `${s}s ago`;
+      const m = Math.floor(s / 60);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24);
+      return `${d}d ago`;
+    }
+
+    function getEventBadgeClass(event) {
+      if (event.includes('SUCCESS') || event.includes('APPROVED')) return 'badge-success';
+      if (event.includes('BLOCKED') || event.includes('FAILED') || event.includes('LOCKOUT') || event.includes('REJECTED')) return 'badge-danger';
+      if (event.includes('REVOKED') || event.includes('LOGOUT')) return 'badge-warning';
+      if (event.includes('FIDO') || event.includes('KEY') || event.includes('METHOD')) return 'badge-purple';
+      return 'badge-info';
+    }
+
+    async function fetchAuditLogs() {
+      const params = new URLSearchParams({
+        category: activeCategory,
+        event: currentEvent,
+        search: currentSearch,
+        from: getFromTimestamp(currentTimeRange),
+        limit: pageSize,
+        offset: currentOffset,
+      });
+
+      try {
+        const res = await fetch(`/auth/audit/api?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to load audit logs');
+        const data = await res.json();
+        renderAuditLogs(data);
+      } catch (err) {
+        console.error('Audit fetch error:', err);
+      }
+    }
+
+    function renderAuditLogs(data) {
+      const tbody = document.getElementById('auditTableBody');
+      const emptyEl = document.getElementById('auditEmptyState');
+      tbody.innerHTML = '';
+
+      if (data.stats) {
+        document.getElementById('statLogins').textContent = data.stats.logins24h || 0;
+        document.getElementById('statAlerts').textContent = data.stats.securityAlerts24h || 0;
+        document.getElementById('statLockouts').textContent = data.stats.lockouts24h || 0;
+        document.getElementById('statTotal').textContent = data.stats.totalEvents || 0;
+        document.getElementById('statIps').textContent = data.stats.uniqueIps24h || 0;
+      }
+
+      document.getElementById('countFiltered').textContent = data.filteredCount || 0;
+      document.getElementById('countTotal').textContent = data.total || 0;
+      document.getElementById('lastUpdatedText').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+      const logs = data.logs || [];
+      if (logs.length === 0) {
+        emptyEl.style.display = 'block';
+      } else {
+        emptyEl.style.display = 'none';
+
+        logs.forEach((log) => {
+          const row = document.createElement('tr');
+          row.className = 'audit-row';
+          row.onclick = () => toggleDrawer(log.id);
+
+          const badgeCls = getEventBadgeClass(log.event);
+          const d = log.details || {};
+          const ip = d.ip || d.clientIp || d.approverIp || '-';
+          const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
+
+          // Format detail chips
+          const chips = [];
+          for (const [k, v] of Object.entries(d)) {
+            if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent'].includes(k)) continue;
+            const strVal = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            chips.push(`<span class="detail-chip"><strong>${k}:</strong> ${escapeHtml(strVal)}</span>`);
+          }
+
+          row.innerHTML = `
+            <td class="col-time">
+              <div class="time-rel">${formatRelativeTime(log.timestamp)}</div>
+              <div class="time-full">${new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+            </td>
+            <td>
+              <span class="event-badge ${badgeCls}">
+                ${escapeHtml(log.event)}
+              </span>
+            </td>
+            <td>
+              <div class="col-actor">
+                <span class="ip-text">${escapeHtml(ip)}</span>
+                ${device ? `<span class="device-pill">${escapeHtml(device)}</span>` : ''}
+              </div>
+            </td>
+            <td>
+              <div class="col-details">
+                ${chips.join('') || '<span style="color: #64748b; font-size: 0.75rem;">None</span>'}
+              </div>
+            </td>
+          `;
+
+          // Hidden expandable JSON drawer row
+          const drawerRow = document.createElement('tr');
+          drawerRow.id = `drawer-${log.id}`;
+          drawerRow.className = 'audit-drawer-row';
+          drawerRow.innerHTML = `
+            <td colspan="4" class="audit-drawer-content">
+              <pre class="json-view">${escapeHtml(JSON.stringify(log, null, 2))}</pre>
+            </td>
+          `;
+
+          tbody.appendChild(row);
+          tbody.appendChild(drawerRow);
+        });
+      }
+
+      // Pagination
+      const pageNum = Math.floor(currentOffset / pageSize) + 1;
+      const totalPages = Math.ceil((data.filteredCount || 1) / pageSize) || 1;
+      document.getElementById('paginationInfo').textContent = `Page ${pageNum} of ${totalPages}`;
+      document.getElementById('btnPrevPage').disabled = currentOffset <= 0;
+      document.getElementById('btnNextPage').disabled = currentOffset + pageSize >= (data.filteredCount || 0);
+    }
+
+    function toggleDrawer(id) {
+      const el = document.getElementById(`drawer-${id}`);
+      if (el) el.classList.toggle('open');
+    }
+
+    function changePage(direction) {
+      currentOffset = Math.max(0, currentOffset + direction * pageSize);
+      fetchAuditLogs();
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function exportData(format) {
+      const params = new URLSearchParams({
+        format,
+        category: activeCategory,
+        event: currentEvent,
+        search: currentSearch,
+        from: getFromTimestamp(currentTimeRange),
+      });
+      window.location.href = `/auth/audit/export?${params.toString()}`;
+    }
+
+    function toggleAutoRefresh() {
+      autoRefreshEnabled = !autoRefreshEnabled;
+      const btn = document.getElementById('btnAutoRefresh');
+      const ind = document.getElementById('liveIndicator');
+      if (autoRefreshEnabled) {
+        btn.textContent = 'Auto: On';
+        btn.style.color = '#38bdf8';
+        ind.style.display = 'inline-flex';
+        startPolling();
+      } else {
+        btn.textContent = 'Auto: Off';
+        btn.style.color = '#94a3b8';
+        ind.style.display = 'none';
+        if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+      }
+    }
+
+    function startPolling() {
+      if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+      autoRefreshTimer = setInterval(() => {
+        if (autoRefreshEnabled && currentOffset === 0) {
+          fetchAuditLogs();
+        }
+      }, 5000);
+    }
+
+    // Category Tabs click listener
+    document.getElementById('categoryTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-pill');
+      if (!btn) return;
+      document.querySelectorAll('#categoryTabs .tab-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeCategory = btn.dataset.category || 'all';
+      currentOffset = 0;
+      fetchAuditLogs();
+    });
+
+    // Time Range listener
+    document.getElementById('timeRangeSelect').addEventListener('change', (e) => {
+      currentTimeRange = e.target.value;
+      currentOffset = 0;
+      fetchAuditLogs();
+    });
+
+    // Specific Event listener
+    document.getElementById('eventSelect').addEventListener('change', (e) => {
+      currentEvent = e.target.value;
+      currentOffset = 0;
+      fetchAuditLogs();
+    });
+
+    // Search input with 300ms debounce
+    let searchDebounce = null;
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        currentSearch = e.target.value;
+        currentOffset = 0;
+        fetchAuditLogs();
+      }, 300);
+    });
+
+    // Initial load
+    fetchAuditLogs();
+    startPolling();
+  </script>
+  <%- include('partials/pwa-sw') %>
+</body>
+</html>

@@ -26,6 +26,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 - [Health Check & Monitoring (`/auth/health`)](#health-check--monitoring-authhealth)
 - [Versioning & Asset Cache-Busting (`/auth/version`)](#versioning--asset-cache-busting-authversion)
 - [Session Management & Revocation Portal](#session-management--revocation-portal)
+- [Security Audit Dashboard (`/auth/audit`)](#security-audit-dashboard-authaudit)
 - [Adding and Configuring a New Service](#adding-and-configuring-a-new-service)
 - [Configuration Reference (`config.json`)](#configuration-reference-configjson)
 - [CLI Tools](#cli-tools)
@@ -38,6 +39,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
 - **Flexible Login Flows**:
   - **QR Code Scanning**: Scan a QR code on desktop using your authenticated mobile device to instantly approve the desktop session.
   - **PIN Authorization**: Enter an 8-digit PIN on your mobile device to authorize a pending desktop login.
+- **Interactive Security Audit Dashboard**: Dedicated visual dashboard at `/auth/audit` with live polling, category filters (logins, revocations, CSRF blocks, rate limit lockouts), search by IP/device/path, 24h metric summaries, and JSON/CSV export.
 - **Instant Revocation Watchdog**: Automatically injects a lightweight `auth-watchdog.js` script into HTML responses. If a session is revoked or expires, client browsers (including SPAs and cached tabs) immediately lock and redirect to login without needing a page refresh.
 - **Dynamic SPA Navigation Guard**: Injects `auth-public-guard.js` into public SPA routes to dynamically intercept client-side transitions to protected routes (via Caddy `HEAD` probing) with zero path hardcoding.
 - **Smart "Go Back" Navigation**: Preserves previous public or external referer (`&from=...`) so unauthenticated users who encounter a protected link can return to public content with a single click.
@@ -663,6 +665,21 @@ Authenticated mobile approvers have access to an administrative session manageme
 - **Granular Revocation**: Revoke an individual session with one click.
 - **Global Emergency Revocation**: Click **Revoke All Sessions** to immediately invalidate every active session in the homelab while maintaining your current approver credentials.
 - **Zero-Latency Client Lock**: Because `auth-watchdog.js` is active in every authenticated browser tab, revoked clients are locked and returned to the login portal within seconds via WebSockets and heartbeat polling.
+
+---
+
+## Security Audit Dashboard (`/auth/audit`)
+
+Authenticated approvers have access to an administrative security audit log dashboard at `/auth/audit` (accessible directly from the Portal and Manage Sessions navigation):
+
+- **Interactive Filtering**: Filter by category (`Logins & FIDO`, `Revocations`, `Security & CSRF`, `Approvals`, `Config & Keys`) or drill down to specific events (`LOGIN_SUCCESS`, `LOCKOUT_TRIGGERED`, `CSRF_BLOCKED`, etc.).
+- **Full-Text Live Search**: Search across actor IP addresses, client devices, service targets, and metadata.
+- **Time Window Selection**: Filter by `Last 1 Hour`, `Last 24 Hours`, `Last 7 Days`, `Last 30 Days`, or All Time.
+- **Live 24-Hour Metrics**: Real-time telemetry cards summarizing successful logins, blocked security alerts, brute-force lockouts, and unique client IPs.
+- **Auto-Refresh**: Live 5-second polling with a one-click toggle and pulsing live status indicator.
+- **Expandable Event Inspector**: Click any row to expand a raw JSON view showing all event parameters, headers, and metadata.
+- **Audit Export**: Export filtered or full audit records to `.json` or `.csv` files for offline compliance or SIEM ingestion (`GET /auth/audit/export?format=csv`).
+- **Persistent Storage**: Audit logs append to `data/audit.jsonl` with automatic file rotation (25MB cap) and an in-memory ring buffer (up to 5,000 recent events) for instant search queries.
 
 ---
 

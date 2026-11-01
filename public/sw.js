@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
   '/css/approve.css',
   '/css/approver.css',
   '/css/notice.css',
+  '/css/audit.css',
   '/assets/icon.svg',
   '/assets/icon-192.png',
   '/assets/icon-512.png',
@@ -61,6 +62,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/auth/code') ||
     url.pathname.startsWith('/auth/approve') ||
     url.pathname.startsWith('/auth/exchange') ||
+    url.pathname.startsWith('/auth/audit') ||
     url.pathname.startsWith('/auth/logout');
 
   if (isDynamicRoute) {
