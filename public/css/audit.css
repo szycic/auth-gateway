@@ -797,9 +797,8 @@ body {
 }
 
 .detail-chip.chip-attempts {
-  background: rgba(245, 158, 11, 0.12);
   border-color: rgba(245, 158, 11, 0.35);
-  color: #fde047;
+  color: #cbd5e1;
 }
 
 .detail-chip.chip-attempts strong {
@@ -807,9 +806,8 @@ body {
 }
 
 .detail-chip.chip-attempts.high-intensity {
-  background: rgba(244, 63, 94, 0.15);
   border-color: rgba(244, 63, 94, 0.4);
-  color: #fda4af;
+  color: #cbd5e1;
 }
 
 .detail-chip.chip-attempts.high-intensity strong {
