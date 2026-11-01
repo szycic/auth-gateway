@@ -48,10 +48,22 @@ function loadExistingLogs() {
           if (!parsed.id) {
             parsed.id = `log-${new Date(parsed.timestamp).getTime()}-${parsed.event}`;
           }
-          if (parsed.details && typeof parsed.details.attempts === 'number' && parsed.details.attempts <= 1) {
-            delete parsed.details.attempts;
-            delete parsed.details.firstAttempt;
-            delete parsed.details.lastAttempt;
+          if (parsed.details && typeof parsed.details.attempts === 'number') {
+            if (parsed.details.attempts <= 1) {
+              delete parsed.details.attempts;
+              delete parsed.details.firstAttempt;
+              delete parsed.details.lastAttempt;
+            } else {
+              const att = parsed.details.attempts;
+              const fa = parsed.details.firstAttempt || parsed.timestamp;
+              const la = parsed.details.lastAttempt;
+              delete parsed.details.attempts;
+              delete parsed.details.firstAttempt;
+              delete parsed.details.lastAttempt;
+              parsed.details.attempts = att;
+              if (fa) parsed.details.firstAttempt = fa;
+              if (la) parsed.details.lastAttempt = la;
+            }
           }
           const existing = inMemoryLogs.find(l => l.id === parsed.id);
           if (existing) {
@@ -154,11 +166,17 @@ function updateLogAttempts(record, attempts) {
     delete record.details.lastAttempt;
     return;
   }
-  if (!record.details.firstAttempt) {
-    record.details.firstAttempt = record.timestamp || new Date().toISOString();
-  }
+  const firstAttempt = record.details.firstAttempt || record.timestamp || new Date().toISOString();
+  const lastAttempt = new Date().toISOString();
+
+  // Enforce property order: 1. attempts, 2. firstAttempt, 3. lastAttempt
+  delete record.details.attempts;
+  delete record.details.firstAttempt;
+  delete record.details.lastAttempt;
+
   record.details.attempts = attempts;
-  record.details.lastAttempt = new Date().toISOString();
+  record.details.firstAttempt = firstAttempt;
+  record.details.lastAttempt = lastAttempt;
 
   // Debounced append to file so updated attempts persist across restarts
   if (!record._flushTimer) {

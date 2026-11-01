@@ -853,6 +853,17 @@
               delete jsonLog.details.attempts;
               delete jsonLog.details.firstAttempt;
               delete jsonLog.details.lastAttempt;
+            } else {
+              // Enforce property order in JSON: 1. attempts, 2. firstAttempt, 3. lastAttempt
+              const att = jsonLog.details.attempts;
+              const fa = jsonLog.details.firstAttempt || jsonLog.timestamp;
+              const la = jsonLog.details.lastAttempt;
+              delete jsonLog.details.attempts;
+              delete jsonLog.details.firstAttempt;
+              delete jsonLog.details.lastAttempt;
+              jsonLog.details.attempts = att;
+              if (fa) jsonLog.details.firstAttempt = fa;
+              if (la) jsonLog.details.lastAttempt = la;
             }
           }
 
