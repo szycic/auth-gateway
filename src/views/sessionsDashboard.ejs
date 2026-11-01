@@ -203,7 +203,7 @@
                     <div class="session-expiry">
                       <span style="color: #94a3b8;">Expires:</span>
                       <% if (s.expiresAt) { %>
-                        <span class="session-ttl" data-expires="<%= s.expiresAt %>"><%= ttlLabel %> (<%= expiresLabel %>)</span>
+                        <span class="session-ttl" data-expires="<%= s.expiresAt %>" title="<%= expiresLabel %>"><%= ttlLabel %></span>
                       <% } else { %>
                         <span style="color: #64748b;">Never</span>
                       <% } %>
@@ -489,7 +489,8 @@
         }
         const expDate = new Date(ts);
         const formatted = pad(expDate.getDate()) + '.' + pad(expDate.getMonth() + 1) + '.' + expDate.getFullYear() + ' ' + pad(expDate.getHours()) + ':' + pad(expDate.getMinutes());
-        el.textContent = ttlLabel + ' (' + formatted + ')';
+        el.title = formatted;
+        el.textContent = ttlLabel;
       });
 
       // 3. Last active time
