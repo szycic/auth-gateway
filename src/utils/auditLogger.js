@@ -165,6 +165,39 @@ const EVENT_CATEGORIES = {
 };
 
 /**
+ * Determine the visual/severity class for an event name.
+ */
+function getEventClass(event = '') {
+  const ev = String(event);
+  if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('REJECTED') || ev.includes('RATE_LIMIT')) {
+    return 'danger';
+  }
+  if (ev.includes('REVOKED') || ev.includes('LOGOUT')) {
+    return 'warning';
+  }
+  if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) {
+    return 'purple';
+  }
+  if (ev.includes('SUCCESS') || ev.includes('APPROVED')) {
+    return 'success';
+  }
+  return 'info';
+}
+
+const CLASS_SEVERITY_RANK = {
+  danger: 1,
+  warning: 2,
+  purple: 3,
+  info: 4,
+  success: 5,
+};
+
+function getEventClassRank(event) {
+  const cls = getEventClass(event);
+  return CLASS_SEVERITY_RANK[cls] || 99;
+}
+
+/**
  * Query and filter audit logs.
  */
 function getAuditLogs({
@@ -175,6 +208,7 @@ function getAuditLogs({
   to = '',
   limit = 50,
   offset = 0,
+  sort = 'time-desc',
 } = {}) {
   const numLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
   const numOffset = Math.max(parseInt(offset, 10) || 0, 0);
@@ -213,6 +247,30 @@ function getAuditLogs({
 
     return true;
   });
+
+  // 4. Sorting
+  if (sort === 'time-asc') {
+    filtered.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  } else if (sort === 'class-desc') {
+    filtered.sort((a, b) => {
+      const diff = getEventClassRank(a.event) - getEventClassRank(b.event);
+      if (diff !== 0) return diff;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+  } else if (sort === 'class-asc') {
+    filtered.sort((a, b) => {
+      const diff = getEventClassRank(b.event) - getEventClassRank(a.event);
+      if (diff !== 0) return diff;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+  } else if (sort === 'event-asc') {
+    filtered.sort((a, b) => a.event.localeCompare(b.event) || (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  } else if (sort === 'event-desc') {
+    filtered.sort((a, b) => b.event.localeCompare(a.event) || (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  } else {
+    // Default: time-desc
+    filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
 
   const total = inMemoryLogs.length;
   const filteredCount = filtered.length;
@@ -343,6 +401,8 @@ module.exports = {
   getAuditLogs,
   getAuditStats,
   getUniqueEvents,
+  getEventClass,
+  getEventClassRank,
   exportToCsv,
   EVENT_CATEGORIES,
 };

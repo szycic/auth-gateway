@@ -71,6 +71,15 @@
           <% } %>
         </select>
 
+        <select id="sortSelect" class="select-filter" title="Sort order">
+          <option value="time-desc" selected>Sort: Newest First</option>
+          <option value="time-asc">Sort: Oldest First</option>
+          <option value="class-desc">Sort: Event Class (High Severity First)</option>
+          <option value="class-asc">Sort: Event Class (Low Severity First)</option>
+          <option value="event-asc">Sort: Event Name (A → Z)</option>
+          <option value="event-desc">Sort: Event Name (Z → A)</option>
+        </select>
+
         <div class="export-actions">
           <button type="button" class="btn-export" onclick="exportData('csv')">
             <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -102,8 +111,12 @@
         <table class="audit-table">
           <thead>
             <tr>
-              <th style="width: 140px;">Time</th>
-              <th style="width: 190px;">Event</th>
+              <th style="width: 140px; cursor: pointer; user-select: none;" id="thTime" onclick="cycleSort('time')" title="Click to toggle Time sort">
+                Time <span id="sortIconTime" class="sort-icon active">▼</span>
+              </th>
+              <th style="width: 190px; cursor: pointer; user-select: none;" id="thEvent" onclick="cycleSort('class')" title="Click to toggle Event Class sort">
+                Event <span id="sortIconClass" class="sort-icon">↕</span>
+              </th>
               <th style="width: 220px;">Actor / Origin</th>
               <th>Details &amp; Context</th>
             </tr>
@@ -135,6 +148,7 @@
     let currentSearch = '';
     let currentTimeRange = '24h';
     let currentEvent = '';
+    let currentSort = 'time-desc';
     let currentOffset = 0;
     const pageSize = 50;
     let autoRefreshTimer = null;
@@ -172,6 +186,7 @@
 
     async function fetchAuditLogs() {
       const params = new URLSearchParams({
+        sort: currentSort,
         event: currentEvent,
         search: currentSearch,
         from: getFromTimestamp(currentTimeRange),
@@ -370,6 +385,7 @@
     function exportData(format) {
       const params = new URLSearchParams({
         format,
+        sort: currentSort,
         event: currentEvent,
         search: currentSearch,
         from: getFromTimestamp(currentTimeRange),
@@ -399,6 +415,71 @@
         }
       }, 5000);
     }
+
+    function updateSortIcons() {
+      const timeIcon = document.getElementById('sortIconTime');
+      const classIcon = document.getElementById('sortIconClass');
+      const sortSelect = document.getElementById('sortSelect');
+
+      if (sortSelect) sortSelect.value = currentSort;
+
+      if (timeIcon) {
+        timeIcon.classList.remove('active');
+        if (currentSort === 'time-desc') {
+          timeIcon.textContent = '▼';
+          timeIcon.classList.add('active');
+        } else if (currentSort === 'time-asc') {
+          timeIcon.textContent = '▲';
+          timeIcon.classList.add('active');
+        } else {
+          timeIcon.textContent = '↕';
+        }
+      }
+
+      if (classIcon) {
+        classIcon.classList.remove('active');
+        if (currentSort === 'class-desc') {
+          classIcon.textContent = '▼';
+          classIcon.classList.add('active');
+        } else if (currentSort === 'class-asc') {
+          classIcon.textContent = '▲';
+          classIcon.classList.add('active');
+        } else {
+          classIcon.textContent = '↕';
+        }
+      }
+    }
+
+    function cycleSort(type) {
+      if (type === 'class') {
+        if (currentSort === 'class-desc') {
+          currentSort = 'class-asc';
+        } else if (currentSort === 'class-asc') {
+          currentSort = 'time-desc';
+        } else {
+          currentSort = 'class-desc';
+        }
+      } else if (type === 'time') {
+        if (currentSort === 'time-desc') {
+          currentSort = 'time-asc';
+        } else {
+          currentSort = 'time-desc';
+        }
+      }
+      currentOffset = 0;
+      openDrawers.clear();
+      updateSortIcons();
+      fetchAuditLogs();
+    }
+
+    // Sort listener
+    document.getElementById('sortSelect').addEventListener('change', (e) => {
+      currentSort = e.target.value;
+      currentOffset = 0;
+      openDrawers.clear();
+      updateSortIcons();
+      fetchAuditLogs();
+    });
 
     // Time Range listener
     document.getElementById('timeRangeSelect').addEventListener('change', (e) => {

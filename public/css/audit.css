@@ -291,6 +291,28 @@ body {
   font-size: 0.7rem;
   letter-spacing: 0.05em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  transition: color 0.15s ease;
+}
+
+.audit-table th[onclick]:hover {
+  color: #ffffff;
+}
+
+.sort-icon {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.75rem;
+  opacity: 0.4;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.audit-table th:hover .sort-icon {
+  opacity: 0.8;
+}
+
+.sort-icon.active {
+  opacity: 1;
+  color: #38bdf8;
 }
 
 .audit-row {

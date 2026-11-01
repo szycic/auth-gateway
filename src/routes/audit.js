@@ -40,7 +40,7 @@ router.get('/audit', requireApprover, (req, res) => {
  * JSON query endpoint for interactive filtering, search, pagination, and live polling.
  */
 router.get('/audit/api', requireApprover, (req, res) => {
-  const { category, event, search, from, to, limit, offset } = req.query;
+  const { category, event, search, from, to, limit, offset, sort } = req.query;
 
   const result = getAuditLogs({
     category,
@@ -50,6 +50,7 @@ router.get('/audit/api', requireApprover, (req, res) => {
     to,
     limit,
     offset,
+    sort,
   });
 
   const stats = getAuditStats();
@@ -66,7 +67,7 @@ router.get('/audit/api', requireApprover, (req, res) => {
  * Download audit records as JSON or CSV.
  */
 router.get('/audit/export', requireApprover, (req, res) => {
-  const { format = 'json', category, event, search, from, to } = req.query;
+  const { format = 'json', category, event, search, from, to, sort } = req.query;
 
   // Retrieve up to 5000 matching records for export
   const { logs } = getAuditLogs({
@@ -75,6 +76,7 @@ router.get('/audit/export', requireApprover, (req, res) => {
     search,
     from,
     to,
+    sort,
     limit: 5000,
     offset: 0,
   });
