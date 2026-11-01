@@ -271,6 +271,11 @@ body {
   z-index: 100;
 }
 
+.multiselect-wrapper.wrapper-time {
+  width: 125px;
+  flex-shrink: 0;
+}
+
 .multiselect-wrapper.wrapper-class {
   width: 140px;
   flex-shrink: 0;
@@ -278,6 +283,11 @@ body {
 
 .multiselect-wrapper.wrapper-event {
   width: 160px;
+  flex-shrink: 0;
+}
+
+.multiselect-wrapper.wrapper-sort {
+  width: 130px;
   flex-shrink: 0;
 }
 
@@ -327,8 +337,20 @@ body {
   backdrop-filter: blur(20px);
 }
 
+.multiselect-menu.menu-time {
+  min-width: 150px;
+}
+
+.multiselect-menu.menu-class {
+  min-width: 200px;
+}
+
 .multiselect-menu.menu-event {
   min-width: 280px;
+}
+
+.multiselect-menu.menu-sort {
+  min-width: 180px;
 }
 
 .multiselect-menu.open {
@@ -827,8 +849,12 @@ body {
 
 .select-page-size {
   height: 32px;
-  padding: 0 0.65rem;
-  background: rgba(30, 41, 59, 0.6);
+  padding: 0 1.65rem 0 0.65rem;
+  background-color: rgba(30, 41, 59, 0.6);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2394a3b8'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.45rem center;
+  background-size: 13px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   color: #cbd5e1;
@@ -836,6 +862,8 @@ body {
   outline: none;
   font-family: inherit;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
   transition: all 0.15s ease;
 }
 
@@ -901,9 +929,8 @@ body {
     gap: 0.5rem;
     width: 100%;
   }
-  .filters-row .select-filter,
-  .multiselect-wrapper.wrapper-class,
-  .multiselect-wrapper.wrapper-event {
+  .filters-row .multiselect-wrapper,
+  .filters-row .select-filter {
     flex: 1 1 0;
     width: auto;
     min-width: 0;
@@ -944,10 +971,15 @@ body {
     gap: 0.5rem;
     width: 100%;
   }
-  .filters-row .select-filter,
-  .multiselect-wrapper.wrapper-class,
-  .multiselect-wrapper.wrapper-event {
+  .filters-row .multiselect-wrapper,
+  .filters-row .select-filter {
     width: 100%;
+  }
+  /* In 2-column grid, right column dropdowns align to the right edge */
+  .wrapper-class .multiselect-menu,
+  .wrapper-sort .multiselect-menu {
+    left: auto;
+    right: 0;
   }
 }
 

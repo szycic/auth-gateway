@@ -55,13 +55,18 @@
         </div>
 
         <div class="filters-row">
-          <select id="timeRangeSelect" class="select-filter select-time">
-            <option value="">All Time</option>
-            <option value="1h">Last 1 Hour</option>
-            <option value="24h" selected>Last 24 Hours</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-          </select>
+          <!-- Time Range Dropdown -->
+          <div class="multiselect-wrapper wrapper-time" id="timeDropdownWrapper">
+            <button type="button" class="select-filter select-time multiselect-trigger" id="timeDropdownBtn" onclick="toggleDropdown('time')" aria-haspopup="true" aria-expanded="false" title="Filter by time range">
+              <span class="multiselect-label" id="timeSelectLabel">Last 24 Hours</span>
+              <svg class="dropdown-arrow" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <div class="multiselect-menu menu-time" id="timeDropdownMenu">
+              <div class="multiselect-items" id="timeItemsContainer"></div>
+            </div>
+          </div>
 
           <!-- Class Multiselect -->
           <div class="multiselect-wrapper wrapper-class" id="classMultiselectWrapper">
@@ -97,12 +102,18 @@
             </div>
           </div>
 
-          <select id="sortSelect" class="select-filter select-sort" title="Sort order">
-            <option value="time-desc" selected>Newest First</option>
-            <option value="time-asc">Oldest First</option>
-            <option value="class-desc">Severity (High to Low)</option>
-            <option value="class-asc">Severity (Low to High)</option>
-          </select>
+          <!-- Sort Order Dropdown -->
+          <div class="multiselect-wrapper wrapper-sort" id="sortDropdownWrapper">
+            <button type="button" class="select-filter select-sort multiselect-trigger" id="sortDropdownBtn" onclick="toggleDropdown('sort')" aria-haspopup="true" aria-expanded="false" title="Sort order">
+              <span class="multiselect-label" id="sortSelectLabel">Newest First</span>
+              <svg class="dropdown-arrow" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <div class="multiselect-menu menu-sort" id="sortDropdownMenu">
+              <div class="multiselect-items" id="sortItemsContainer"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -285,6 +296,112 @@
 
     function getEventBadgeClass(event) {
       return `badge-${getEventClass(event)}`;
+    }
+
+    const TIME_RANGES = [
+      { value: '', label: 'All Time' },
+      { value: '1h', label: 'Last 1 Hour' },
+      { value: '24h', label: 'Last 24 Hours' },
+      { value: '7d', label: 'Last 7 Days' },
+      { value: '30d', label: 'Last 30 Days' },
+    ];
+
+    function renderTimeDropdown() {
+      const container = document.getElementById('timeItemsContainer');
+      const labelEl = document.getElementById('timeSelectLabel');
+      const btn = document.getElementById('timeDropdownBtn');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const found = TIME_RANGES.find(t => t.value === currentTimeRange) || TIME_RANGES[2];
+      if (labelEl) labelEl.textContent = found.label;
+      if (btn) btn.title = `Time range: ${found.label}`;
+
+      TIME_RANGES.forEach(item => {
+        const isSelected = item.value === currentTimeRange;
+        const row = document.createElement('div');
+        row.className = 'multiselect-item' + (isSelected ? ' selected' : '');
+        row.onclick = (e) => {
+          e.stopPropagation();
+          setTimeRange(item.value);
+        };
+
+        const span = document.createElement('span');
+        span.textContent = item.label;
+        row.appendChild(span);
+
+        if (isSelected) {
+          const check = document.createElement('span');
+          check.style.marginLeft = 'auto';
+          check.innerHTML = '<svg style="width: 13px; height: 13px; display: block;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>';
+          row.appendChild(check);
+        }
+
+        container.appendChild(row);
+      });
+    }
+
+    function setTimeRange(val) {
+      currentTimeRange = val;
+      renderTimeDropdown();
+      closeDropdown('time');
+      currentOffset = 0;
+      openDrawers.clear();
+      updateClearFilterState();
+      fetchAuditLogs();
+    }
+
+    const SORT_OPTIONS = [
+      { value: 'time-desc', label: 'Newest First' },
+      { value: 'time-asc', label: 'Oldest First' },
+      { value: 'class-desc', label: 'Severity (High to Low)' },
+      { value: 'class-asc', label: 'Severity (Low to High)' },
+    ];
+
+    function renderSortDropdown() {
+      const container = document.getElementById('sortItemsContainer');
+      const labelEl = document.getElementById('sortSelectLabel');
+      const btn = document.getElementById('sortDropdownBtn');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const found = SORT_OPTIONS.find(s => s.value === currentSort) || SORT_OPTIONS[0];
+      if (labelEl) labelEl.textContent = found.label;
+      if (btn) btn.title = `Sort: ${found.label}`;
+
+      SORT_OPTIONS.forEach(item => {
+        const isSelected = item.value === currentSort;
+        const row = document.createElement('div');
+        row.className = 'multiselect-item' + (isSelected ? ' selected' : '');
+        row.onclick = (e) => {
+          e.stopPropagation();
+          setSort(item.value);
+        };
+
+        const span = document.createElement('span');
+        span.textContent = item.label;
+        row.appendChild(span);
+
+        if (isSelected) {
+          const check = document.createElement('span');
+          check.style.marginLeft = 'auto';
+          check.innerHTML = '<svg style="width: 13px; height: 13px; display: block;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>';
+          row.appendChild(check);
+        }
+
+        container.appendChild(row);
+      });
+    }
+
+    function setSort(val) {
+      currentSort = val;
+      renderSortDropdown();
+      closeDropdown('sort');
+      currentOffset = 0;
+      openDrawers.clear();
+      updateSortIcons();
+      updateClearFilterState();
+      fetchAuditLogs();
     }
 
     const ALL_CLASSES = [
@@ -500,64 +617,69 @@
       toggleEvent(ev);
     }
 
-    function toggleDropdown(type) {
-      const classWrapper = document.getElementById('classMultiselectWrapper');
-      const classMenu = document.getElementById('classDropdownMenu');
-      const eventWrapper = document.getElementById('eventMultiselectWrapper');
-      const eventMenu = document.getElementById('eventDropdownMenu');
+    const DROPDOWN_KEYS = ['time', 'class', 'event', 'sort'];
 
-      if (type === 'class') {
-        const isOpen = classMenu.classList.contains('open');
-        closeEventMenu();
-        if (isOpen) {
-          closeClassMenu();
-        } else {
-          classMenu.classList.add('open');
-          classWrapper.classList.add('open');
-        }
-      } else if (type === 'event') {
-        const isOpen = eventMenu.classList.contains('open');
-        closeClassMenu();
-        if (isOpen) {
-          closeEventMenu();
-        } else {
-          eventMenu.classList.add('open');
-          eventWrapper.classList.add('open');
-          setTimeout(() => {
-            const searchInput = document.getElementById('eventFilterQuickSearch');
-            if (searchInput) searchInput.focus();
-          }, 50);
+    function getDropdownEls(type) {
+      if (type === 'time') return { wrapper: document.getElementById('timeDropdownWrapper'), menu: document.getElementById('timeDropdownMenu') };
+      if (type === 'class') return { wrapper: document.getElementById('classMultiselectWrapper'), menu: document.getElementById('classDropdownMenu') };
+      if (type === 'event') return { wrapper: document.getElementById('eventMultiselectWrapper'), menu: document.getElementById('eventDropdownMenu') };
+      if (type === 'sort') return { wrapper: document.getElementById('sortDropdownWrapper'), menu: document.getElementById('sortDropdownMenu') };
+      return {};
+    }
+
+    function toggleDropdown(type) {
+      const { wrapper, menu } = getDropdownEls(type);
+      if (!wrapper || !menu) return;
+
+      const isOpen = menu.classList.contains('open');
+
+      // Close all other dropdowns
+      DROPDOWN_KEYS.forEach(k => {
+        if (k !== type) closeDropdown(k);
+      });
+
+      if (isOpen) {
+        closeDropdown(type);
+      } else {
+        menu.classList.add('open');
+        wrapper.classList.add('open');
+
+        // Only auto-focus event quick search on desktop / non-touch
+        if (type === 'event') {
+          const isMobile = window.innerWidth <= 768 || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+          if (!isMobile) {
+            setTimeout(() => {
+              const searchInput = document.getElementById('eventFilterQuickSearch');
+              if (searchInput) searchInput.focus();
+            }, 50);
+          }
         }
       }
     }
 
-    function closeClassMenu() {
-      const wrapper = document.getElementById('classMultiselectWrapper');
-      const menu = document.getElementById('classDropdownMenu');
+    function closeDropdown(type) {
+      const { wrapper, menu } = getDropdownEls(type);
       if (menu) menu.classList.remove('open');
       if (wrapper) wrapper.classList.remove('open');
     }
 
-    function closeEventMenu() {
-      const wrapper = document.getElementById('eventMultiselectWrapper');
-      const menu = document.getElementById('eventDropdownMenu');
-      if (menu) menu.classList.remove('open');
-      if (wrapper) wrapper.classList.remove('open');
+    function closeAllDropdowns() {
+      DROPDOWN_KEYS.forEach(k => closeDropdown(k));
     }
 
     document.addEventListener('click', (e) => {
-      if (!e.target.closest('#classMultiselectWrapper')) {
-        closeClassMenu();
-      }
-      if (!e.target.closest('#eventMultiselectWrapper')) {
-        closeEventMenu();
+      const insideAny = DROPDOWN_KEYS.some(k => {
+        const { wrapper } = getDropdownEls(k);
+        return wrapper && wrapper.contains(e.target);
+      });
+      if (!insideAny) {
+        closeAllDropdowns();
       }
     });
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        closeClassMenu();
-        closeEventMenu();
+        closeAllDropdowns();
       }
     });
 
@@ -849,12 +971,8 @@
       const searchInput = document.getElementById('searchInput');
       if (searchInput) searchInput.value = '';
 
-      const timeSelect = document.getElementById('timeRangeSelect');
-      if (timeSelect) timeSelect.value = '24h';
-
-      const sortSelect = document.getElementById('sortSelect');
-      if (sortSelect) sortSelect.value = 'time-desc';
-
+      renderTimeDropdown();
+      renderSortDropdown();
       renderClassMultiselect();
       renderEventMultiselect(latestEventTypes);
 
@@ -876,9 +994,8 @@
     function updateSortIcons() {
       const timeIcon = document.getElementById('sortIconTime');
       const classIcon = document.getElementById('sortIconClass');
-      const sortSelect = document.getElementById('sortSelect');
 
-      if (sortSelect) sortSelect.value = currentSort;
+      renderSortDropdown();
 
       if (timeIcon) {
         timeIcon.classList.remove('active');
@@ -929,25 +1046,6 @@
       fetchAuditLogs();
     }
 
-    // Sort listener
-    document.getElementById('sortSelect').addEventListener('change', (e) => {
-      currentSort = e.target.value;
-      currentOffset = 0;
-      openDrawers.clear();
-      updateSortIcons();
-      updateClearFilterState();
-      fetchAuditLogs();
-    });
-
-    // Time Range listener
-    document.getElementById('timeRangeSelect').addEventListener('change', (e) => {
-      currentTimeRange = e.target.value;
-      currentOffset = 0;
-      openDrawers.clear();
-      updateClearFilterState();
-      fetchAuditLogs();
-    });
-
     // Search input with 300ms debounce
     let searchDebounce = null;
     document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -971,7 +1069,9 @@
       eventQuickSearch.addEventListener('keydown', (e) => e.stopPropagation());
     }
 
-    // Initial load & multiselect initialization
+    // Initial load & dropdowns initialization
+    renderTimeDropdown();
+    renderSortDropdown();
     renderClassMultiselect();
     renderEventMultiselect(latestEventTypes);
     fetchAuditLogs();
