@@ -227,13 +227,14 @@ function proxyToTargetApp(req, res) {
                 const resolvedUrl = scriptUrl.startsWith('http://') || scriptUrl.startsWith('https://')
                   ? scriptUrl
                   : `${config.BASE_URL}${scriptUrl.startsWith('/') ? '' : '/'}${scriptUrl}`;
-                injectionScript += `<script src="${resolvedUrl}" crossorigin="anonymous"></script>`;
+                const safeUrl = resolvedUrl.replace(/"/g, '&quot;');
+                injectionScript += `<script src="${safeUrl}" crossorigin="anonymous"></script>`;
               }
             }
           }
 
-          if (body.includes('</body>')) {
-            body = body.replace('</body>', `${injectionScript}</body>`);
+          if (/<\/body>/i.test(body)) {
+            body = body.replace(/<\/body>/i, () => `${injectionScript}</body>`);
           } else {
             body += injectionScript;
           }

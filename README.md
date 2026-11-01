@@ -670,6 +670,10 @@ Add an entry to the `"services"` array in your `config.json`:
 - `disableAuth`: _(Optional)_ If `true`, bypasses authentication verification for this service.
 - `injectScripts`: _(Optional)_ Array of custom script URLs or paths to inject into HTML pages for this service. Relative paths are resolved against `baseUrl`. Custom script files can be placed in `public/custom/`.
 
+> [!WARNING]
+> **Security Notice regarding Custom Scripts (`injectScripts`)**:
+> Injected scripts execute directly within the security context and origin of the target downstream service (e.g. `https://myapp.example.com`). They have full client-side access to the application's DOM, local storage, session storage, and non-`HttpOnly` cookies. Never inject untrusted third-party scripts. Only use verified scripts written or audited by the administrator.
+
 ### Step 3: Add Service Block to Caddy
 
 Add the site block to your `Caddyfile` on your reverse proxy host (choose Pattern A, B, C, or D above):
