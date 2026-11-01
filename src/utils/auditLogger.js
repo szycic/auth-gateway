@@ -342,9 +342,7 @@ function getAuditStats() {
       securityAlerts24h++;
     } else if (evClass === 'warning') {
       warnings24h++;
-    }
-
-    if (entry.event === 'LOGIN_SUCCESS' || entry.event === 'APPROVER_LOGIN_SUCCESS' || entry.event === 'USER_FIDO_LOGIN_SUCCESS') {
+    } else if (evClass === 'success') {
       logins24h++;
     }
   }
