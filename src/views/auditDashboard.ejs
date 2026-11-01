@@ -10,25 +10,12 @@
   <div class="audit-container">
     <!-- Top Navigation Bar -->
     <div class="top-bar">
-      <div class="top-bar-title">
-        <h1>Security Audit Log</h1>
-      </div>
-
-      <div class="nav-links">
-        <a href="/" class="btn-nav btn-nav-portal">
-          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-          </svg>
-          Portal
-        </a>
-        <a href="/auth/sessions" class="btn-nav btn-nav-sessions">
-          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          Sessions
-        </a>
+      <h1>Security Audit Log</h1>
+      <div class="top-bar-actions">
+        <a href="/" class="btn-header btn-header-portal">Portal</a>
+        <a href="/auth/sessions" class="btn-header btn-header-sessions">Sessions</a>
         <form method="POST" action="/auth/approver/logout" style="display: contents;">
-          <button type="submit" class="btn-nav">Sign Out</button>
+          <button type="submit" class="btn-header btn-header-logout">Sign Out</button>
         </form>
       </div>
     </div>
