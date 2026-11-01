@@ -229,15 +229,6 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       return res.json({ success: true, redirect: redirectTarget });
     }
 
-    // Default: Approver session
-    auditLog('APPROVER_LOGIN_SUCCESS', {
-      ip: clientIp,
-      method: 'fido',
-      keyName: cred.name,
-      keyId: cred.id,
-      userAgent: ua,
-    });
-
     // Issue Approver session token (30 days)
     const approverToken = crypto.randomBytes(48).toString('base64url');
     const maxAgeMs = config.APPROVER_TTL_DAYS * 24 * 3600 * 1000;
@@ -263,6 +254,16 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       appObj.activeSessionToken = activeSess.token;
     }
     sessionService.savePersistedSessions();
+
+    auditLog('APPROVER_LOGIN_SUCCESS', {
+      ip: clientIp,
+      device: finalDeviceName || (activeSess && activeSess.friendlyDevice) || parseUserAgent(ua),
+      sessionId: activeSess ? activeSess.id : undefined,
+      method: 'fido',
+      keyName: cred.name,
+      keyId: cred.id,
+      userAgent: ua,
+    });
 
     return res.json({ success: true, redirect: redirectTarget });
   } catch (err) {
@@ -370,11 +371,6 @@ router.post('/approver/login', (req, res) => {
   }
 
   authService.clearFailedLogins(clientIp);
-  auditLog('APPROVER_LOGIN_SUCCESS', {
-    ip: clientIp,
-    method: 'password',
-    userAgent: req.headers['user-agent'] || 'Unknown',
-  });
 
   // Issue Approver session token (30 days)
   const approverToken = crypto.randomBytes(48).toString('base64url');
@@ -397,6 +393,15 @@ router.post('/approver/login', (req, res) => {
     appObj.activeSessionToken = activeSess.token;
   }
   sessionService.savePersistedSessions();
+
+  auditLog('APPROVER_LOGIN_SUCCESS', {
+    ip: clientIp,
+    device: (activeSess && activeSess.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || ''),
+    sessionId: activeSess ? activeSess.id : undefined,
+    method: 'password',
+    userAgent: req.headers['user-agent'] || 'Unknown',
+  });
+
   return res.redirect(redirectTarget);
 });
 
@@ -416,6 +421,11 @@ function handleApproverLogout(req, res) {
     ip: clientIp,
     device,
   };
+
+  const sessionId = (approverSession && approverSession.sessionId) || (session && session.id);
+  if (sessionId) {
+    details.sessionId = sessionId;
+  }
 
   if (approverSession && approverSession.createdAt) {
     const activeMinutes = Math.round((Date.now() - approverSession.createdAt) / 60000);

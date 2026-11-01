@@ -265,11 +265,12 @@
           const d = log.details || {};
           const ip = d.ip || d.clientIp || d.approverIp || '-';
           const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
+          const uuid = d.sessionId || d.uuid || '';
 
           // Format detail chips
           const chips = [];
           for (const [k, v] of Object.entries(d)) {
-            if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent'].includes(k)) continue;
+            if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent', 'sessionId', 'uuid'].includes(k)) continue;
             const strVal = typeof v === 'object' ? JSON.stringify(v) : String(v);
             chips.push(`<span class="detail-chip"><strong>${k}:</strong> ${escapeHtml(strVal)}</span>`);
           }
@@ -288,6 +289,7 @@
               <div class="col-actor">
                 <span class="ip-text">${escapeHtml(ip)}</span>
                 ${device ? `<span class="device-pill">${escapeHtml(device)}</span>` : ''}
+                ${uuid ? `<span class="device-uuid" title="UUID: ${escapeHtml(uuid)} (Click to copy)" onclick="event.stopPropagation(); copyUuid(this, '${escapeHtml(uuid)}')">${escapeHtml(uuid)}</span>` : ''}
               </div>
             </td>
             <td>
@@ -350,6 +352,19 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+    }
+
+    function copyUuid(el, text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+        const originalText = el.textContent;
+        el.textContent = 'Copied!';
+        el.style.color = '#34d399';
+        setTimeout(() => {
+          el.textContent = originalText;
+          el.style.color = '';
+        }, 1200);
+      }
     }
 
     function exportData(format) {

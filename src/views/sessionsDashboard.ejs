@@ -150,6 +150,10 @@
                       <span style="color: #94a3b8;">Access:</span>
                       <span class="session-services-label" id="services-label-<%= s.id %>" style="color: #38bdf8; font-weight: 500;"><%= initialSvcNames %></span>
                     </div>
+                    <div class="session-uuid-row">
+                      <span style="color: #64748b; font-size: 0.72rem;">UUID:</span>
+                      <code class="session-uuid-code" title="Click to copy UUID" onclick="copySessionId(this, '<%= s.id %>')"><%= s.id %></code>
+                    </div>
                   </div>
                 </div>
                 <div class="session-card-actions">
@@ -685,6 +689,20 @@
       if (noticeEl) {
         noticeEl.textContent = msg;
         noticeEl.style.display = 'block';
+      }
+    }
+
+    function copySessionId(el, id) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(id);
+        const originalText = el.textContent;
+        el.textContent = 'Copied!';
+        el.style.color = '#34d399';
+        showNotice('Copied session UUID to clipboard.');
+        setTimeout(() => {
+          el.textContent = originalText;
+          el.style.color = '';
+        }, 1200);
       }
     }
 

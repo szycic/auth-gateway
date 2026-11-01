@@ -159,6 +159,7 @@ const EVENT_CATEGORIES = {
     'PASSWORD_CHANGED',
     'AUTH_METHOD_CHANGED',
     'SESSION_PERMISSIONS_UPDATED',
+    'DEVICE_RENAMED',
   ],
 };
 
@@ -292,13 +293,14 @@ function escapeCsvCell(val) {
  * Format audit logs as semicolon-delimited CSV.
  */
 function exportToCsv(logs) {
-  const headers = ['Timestamp', 'Event', 'IP', 'Device', 'Service', 'Path', 'Details'];
+  const headers = ['Timestamp', 'Event', 'IP', 'Device', 'UUID', 'Service', 'Path', 'Details'];
   const rows = [headers.map(escapeCsvCell).join(';')];
 
   for (const log of logs) {
     const d = log.details || {};
     const ip = d.ip || d.clientIp || d.approverIp || '';
     const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
+    const uuid = d.sessionId || d.uuid || '';
     const service = d.service || d.targetDomain || '';
     const path = d.path || '';
 
@@ -310,6 +312,8 @@ function exportToCsv(logs) {
     delete remainingDetails.device;
     delete remainingDetails.targetDevice;
     delete remainingDetails.approverDevice;
+    delete remainingDetails.sessionId;
+    delete remainingDetails.uuid;
     delete remainingDetails.service;
     delete remainingDetails.targetDomain;
     delete remainingDetails.path;
@@ -321,6 +325,7 @@ function exportToCsv(logs) {
       escapeCsvCell(log.event),
       escapeCsvCell(ip),
       escapeCsvCell(device),
+      escapeCsvCell(uuid),
       escapeCsvCell(service),
       escapeCsvCell(path),
       escapeCsvCell(detailsStr),

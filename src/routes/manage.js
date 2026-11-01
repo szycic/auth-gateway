@@ -215,8 +215,18 @@ router.post('/sessions/rename', (req, res) => {
 
   for (const [, session] of sessionService.activeSessions.entries()) {
     if (session.id === sessionId) {
-      session.friendlyDevice = trimmed || parseUserAgent(session.userAgent) || 'Desktop Browser';
-      updatedDevice = session.friendlyDevice;
+      const oldName = session.friendlyDevice;
+      const newName = trimmed || parseUserAgent(session.userAgent) || 'Desktop Browser';
+      session.friendlyDevice = newName;
+      updatedDevice = newName;
+      auditLog('DEVICE_RENAMED', {
+        sessionId: session.id,
+        device: newName,
+        oldName,
+        newName,
+        renamedBy: 'approver',
+        ip: authService.getClientIp(req),
+      });
       break;
     }
   }
@@ -485,7 +495,16 @@ router.post('/device/rename', (req, res) => {
   const { name } = req.body;
   const trimmed = typeof name === 'string' ? name.trim().slice(0, 50) : '';
   if (trimmed) {
+    const oldName = session.friendlyDevice;
     session.friendlyDevice = trimmed;
+    auditLog('DEVICE_RENAMED', {
+      sessionId: session.id,
+      device: trimmed,
+      oldName,
+      newName: trimmed,
+      renamedBy: 'user',
+      ip: authService.getClientIp(req),
+    });
     sessionService.savePersistedSessions();
   }
 
