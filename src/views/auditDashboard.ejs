@@ -259,6 +259,36 @@
       if (sel) sel.value = currentClass;
       currentOffset = 0;
       openDrawers.clear();
+      updateClearFilterState();
+      fetchAuditLogs();
+    }
+
+    function setEventFilter(ev) {
+      if (currentEvent === ev) {
+        currentEvent = '';
+      } else {
+        currentEvent = ev;
+      }
+      const sel = document.getElementById('eventSelect');
+      if (sel) {
+        let optExists = false;
+        for (let i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === currentEvent) {
+            optExists = true;
+            break;
+          }
+        }
+        if (!optExists && currentEvent) {
+          const newOpt = document.createElement('option');
+          newOpt.value = currentEvent;
+          newOpt.textContent = currentEvent;
+          sel.appendChild(newOpt);
+        }
+        sel.value = currentEvent;
+      }
+      currentOffset = 0;
+      openDrawers.clear();
+      updateClearFilterState();
       fetchAuditLogs();
     }
 
@@ -380,7 +410,7 @@
               <div class="time-full">${new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
             </td>
             <td>
-              <span class="event-badge ${badgeCls}" onclick="event.stopPropagation(); setClassFilter('${cls}')" title="Filter by '${cls}' class">
+              <span class="event-badge ${badgeCls}" data-event="${escapeHtml(log.event)}" onclick="event.stopPropagation(); setEventFilter(this.dataset.event)" title="Filter by '${escapeHtml(log.event)}'">
                 ${escapeHtml(log.event)}
               </span>
             </td>
