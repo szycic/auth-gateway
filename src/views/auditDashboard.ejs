@@ -120,7 +120,7 @@
     <div class="audit-table-card">
       <div class="table-header-meta">
         <div class="meta-status">
-          <span>Showing <strong id="countFiltered" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events</span>
+          <span>Showing <strong id="countVisible" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events<span id="filteredMatchNote" style="display: none; color: #94a3b8; font-size: 0.775rem;"> (<strong id="countFilteredMatch" style="color: #cbd5e1;">0</strong> matching filters)</span></span>
           <span class="meta-dot">•</span>
           <span id="lastUpdatedText" style="color: #64748b;">Updated just now</span>
           <span id="clearDot" class="meta-dot" style="display: none;">•</span>
@@ -186,10 +186,21 @@
       </div>
 
       <div class="pagination-bar">
-        <span id="paginationInfo">Page 1</span>
-        <div class="pagination-controls">
-          <button id="btnPrevPage" class="btn-page" onclick="changePage(-1)" disabled>&larr; Prev</button>
-          <button id="btnNextPage" class="btn-page" onclick="changePage(1)" disabled>Next &rarr;</button>
+        <div class="pagination-size">
+          <label for="pageSizeSelect">Per page:</label>
+          <select id="pageSizeSelect" class="select-page-size" onchange="changePageSize(this.value)" title="Choose number of events per page">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <div class="pagination-right">
+          <span id="paginationInfo">Page 1</span>
+          <div class="pagination-controls">
+            <button id="btnPrevPage" class="btn-page" onclick="changePage(-1)" disabled>&larr; Prev</button>
+            <button id="btnNextPage" class="btn-page" onclick="changePage(1)" disabled>Next &rarr;</button>
+          </div>
         </div>
       </div>
     </div>
@@ -202,7 +213,13 @@
     let currentClass = '<%= typeof initialClass !== "undefined" && initialClass ? initialClass : "" %>';
     let currentSort = 'time-desc';
     let currentOffset = 0;
-    const pageSize = 50;
+    let pageSize = (() => {
+      try {
+        const saved = parseInt(localStorage.getItem('audit_page_size'), 10);
+        if ([25, 50, 100, 200].includes(saved)) return saved;
+      } catch (_) {}
+      return 50;
+    })();
     let autoRefreshTimer = null;
     let autoRefreshEnabled = true;
 
@@ -370,11 +387,34 @@
         document.getElementById('statIps').textContent = data.stats.uniqueIps24h || 0;
       }
 
-      document.getElementById('countFiltered').textContent = data.filteredCount || 0;
-      document.getElementById('countTotal').textContent = data.total || 0;
+      const logs = data.logs || [];
+      const visibleCount = logs.length;
+      const totalAvailable = data.total || 0;
+      const filteredCount = (typeof data.filteredCount === 'number') ? data.filteredCount : totalAvailable;
+
+      const countVisibleEl = document.getElementById('countVisible');
+      const countTotalEl = document.getElementById('countTotal');
+      const filteredMatchNote = document.getElementById('filteredMatchNote');
+      const countFilteredMatch = document.getElementById('countFilteredMatch');
+
+      if (countVisibleEl) countVisibleEl.textContent = visibleCount;
+      if (countTotalEl) countTotalEl.textContent = totalAvailable;
+
+      if (filteredMatchNote) {
+        if (filteredCount < totalAvailable) {
+          filteredMatchNote.style.display = 'inline';
+          if (countFilteredMatch) countFilteredMatch.textContent = filteredCount;
+        } else {
+          filteredMatchNote.style.display = 'none';
+        }
+      }
       document.getElementById('lastUpdatedText').textContent = 'Updated ' + new Date().toLocaleTimeString();
 
-      const logs = data.logs || [];
+      const sizeSelect = document.getElementById('pageSizeSelect');
+      if (sizeSelect && sizeSelect.value !== String(pageSize)) {
+        sizeSelect.value = String(pageSize);
+      }
+
       if (logs.length === 0) {
         emptyEl.style.display = 'block';
       } else {
@@ -445,10 +485,10 @@
 
       // Pagination
       const pageNum = Math.floor(currentOffset / pageSize) + 1;
-      const totalPages = Math.ceil((data.filteredCount || 1) / pageSize) || 1;
+      const totalPages = Math.ceil(filteredCount / pageSize) || 1;
       document.getElementById('paginationInfo').textContent = `Page ${pageNum} of ${totalPages}`;
       document.getElementById('btnPrevPage').disabled = currentOffset <= 0;
-      document.getElementById('btnNextPage').disabled = currentOffset + pageSize >= (data.filteredCount || 0);
+      document.getElementById('btnNextPage').disabled = currentOffset + pageSize >= filteredCount;
     }
 
     function toggleDrawer(id) {
@@ -469,6 +509,18 @@
 
     function changePage(direction) {
       currentOffset = Math.max(0, currentOffset + direction * pageSize);
+      openDrawers.clear();
+      fetchAuditLogs();
+    }
+
+    function changePageSize(val) {
+      const parsed = parseInt(val, 10);
+      if (![25, 50, 100, 200].includes(parsed)) return;
+      pageSize = parsed;
+      try {
+        localStorage.setItem('audit_page_size', String(pageSize));
+      } catch (_) {}
+      currentOffset = 0;
       openDrawers.clear();
       fetchAuditLogs();
     }
