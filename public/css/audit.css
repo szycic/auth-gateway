@@ -164,9 +164,16 @@ body {
 }
 
 .search-box-wrapper {
-  flex: 1;
-  min-width: 180px;
+  flex: 1 1 240px;
+  min-width: 220px;
   position: relative;
+}
+
+.filters-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .search-icon {
@@ -214,6 +221,8 @@ body {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
+  text-overflow: ellipsis;
+  overflow: hidden;
   transition: border-color 0.15s ease, background 0.15s ease;
   box-sizing: border-box;
 }
@@ -618,13 +627,27 @@ body {
   cursor: not-allowed;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1120px) {
   .controls-bar {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.6rem;
   }
   .search-box-wrapper {
-    flex: 1 1 100%;
+    width: 100%;
+  }
+  .filters-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .filters-row .select-filter {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .filters-row .btn-clear-filter {
+    flex-shrink: 0;
   }
 }
 
@@ -642,10 +665,17 @@ body {
   .search-box-wrapper {
     width: 100%;
   }
-  .select-filter {
+  .filters-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
     width: 100%;
   }
-  .btn-clear-filter {
+  .filters-row .select-filter {
+    width: 100%;
+  }
+  .filters-row .btn-clear-filter {
+    grid-column: span 2;
     width: 100%;
     justify-content: center;
   }
