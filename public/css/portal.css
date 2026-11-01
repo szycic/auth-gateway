@@ -244,8 +244,37 @@
   border-color: rgba(255, 255, 255, 0.25);
 }
 
+.btn-sessions {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.btn-sessions:hover {
+  color: #6ee7b7;
+  border-color: rgba(52, 211, 153, 0.6);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.btn-audit {
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.btn-audit:hover {
+  color: #c084fc;
+  border-color: rgba(167, 139, 250, 0.6);
+  background: rgba(167, 139, 250, 0.08);
+}
+
 .btn-logout {
   color: #f87171;
+  border-color: rgba(248, 113, 113, 0.25);
+}
+
+.btn-logout:hover {
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 @media (max-width: 480px) {
@@ -265,11 +294,4 @@
     text-align: center;
     justify-content: center;
   }
-}
-  border-color: rgba(248, 113, 113, 0.25);
-}
-
-.btn-logout:hover {
-  color: #fca5a5;
-  border-color: rgba(248, 113, 113, 0.5);
 }
