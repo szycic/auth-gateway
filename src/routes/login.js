@@ -14,7 +14,11 @@ router.use(verifySameOrigin);
 
 router.get('/login', (req, res) => {
   const rawRedirect = req.query.redirect || req.query.returnTo || '';
-  const matchedService = config.getService(req.query.service || rawRedirect);
+  let matchedService = config.getService(req.query.service || rawRedirect);
+  if (!matchedService && rawRedirect.startsWith('/launch/')) {
+    const launchId = rawRedirect.replace('/launch/', '').split('?')[0];
+    matchedService = config.getService(launchId);
+  }
   const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '';
 
   if (matchedService && matchedService.disableService) {
@@ -114,6 +118,18 @@ router.get('/login', (req, res) => {
   if (req.query.monit === '1' || req.query.prompt === '1') {
     isFromOpenHandle = true;
     if (!fromUrl) fromUrl = rawFrom || (matchedService ? matchedService.url : '/');
+  }
+
+  // Log unauthenticated access attempt to a protected service (redirected to auth gateway)
+  if ((matchedService || redirectTarget) && !req.query.error && !req.query.notice) {
+    const targetService = matchedService || config.getService(redirectTarget);
+    auditLog('SERVICE_AUTH_REQUIRED', {
+      service: targetService ? targetService.name : 'Unknown Service',
+      serviceId: targetService ? targetService.id : null,
+      url: redirectTarget || (targetService ? targetService.url : ''),
+      ip: authService.getClientIp(req),
+      device: parseUserAgent(req.headers['user-agent'] || '') || 'Desktop Browser',
+    });
   }
 
   return res.render('desktopLogin', {
