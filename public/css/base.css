@@ -155,6 +155,10 @@ p.subtitle, p.desc {
   margin-bottom: 1.25rem;
   line-height: 1.45;
   text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .notice-box {
@@ -167,6 +171,10 @@ p.subtitle, p.desc {
   margin-bottom: 1.25rem;
   line-height: 1.45;
   text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .success-box {

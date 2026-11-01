@@ -60,6 +60,28 @@
       </div>
     <% } %>
 
+    <% if (typeof notice !== 'undefined' && notice) { %>
+      <div class="notice-box" id="loginNoticeBox" style="margin-top: 0.75rem;">
+        <span class="notice-text"><%= notice %></span>
+        <button type="button" class="btn-close-notice" onclick="closeLoginNotice()" aria-label="Close notice">
+          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    <% } %>
+
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="error-box" id="loginErrorBox" style="margin-top: 0.75rem;">
+        <span class="notice-text"><%= error %></span>
+        <button type="button" class="btn-close-notice" onclick="closeLoginError()" aria-label="Close error">
+          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    <% } %>
+
     <% if (isFromOpenHandle) { %>
       <div class="monit-container" id="openHandleMonit">
         <p class="monit-desc">
@@ -1083,6 +1105,30 @@
 
     if (typeof resetFidoMonitForm === 'function') {
       resetFidoMonitForm();
+    }
+
+    function closeLoginNotice() {
+      const el = document.getElementById('loginNoticeBox');
+      if (el) el.style.display = 'none';
+      if (window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('notice')) {
+          url.searchParams.delete('notice');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+        }
+      }
+    }
+
+    function closeLoginError() {
+      const el = document.getElementById('loginErrorBox');
+      if (el) el.style.display = 'none';
+      if (window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('error')) {
+          url.searchParams.delete('error');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+        }
+      }
     }
 
     if (isFromOpenHandle && window.location.hash !== '#auth') {
