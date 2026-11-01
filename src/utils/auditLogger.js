@@ -177,6 +177,9 @@ function getEventClass(event = '') {
   if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT')) {
     return 'danger';
   }
+  if (ev.includes('LOGOUT') || ev.includes('REVOKED')) {
+    return 'purple';
+  }
   if (ev.includes('SUCCESS') || ev.includes('APPROVED')) {
     return 'success';
   }
@@ -186,8 +189,9 @@ function getEventClass(event = '') {
 const CLASS_SEVERITY_RANK = {
   danger: 1,
   warning: 2,
-  success: 3,
-  info: 4,
+  purple: 3,
+  success: 4,
+  info: 5,
 };
 
 function getEventClassRank(event) {
