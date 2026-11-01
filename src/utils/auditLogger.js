@@ -220,9 +220,23 @@ function getAuditLogs({
     logs: paged,
     total,
     filteredCount,
+    eventTypes: getUniqueEvents(),
     limit: numLimit,
     offset: numOffset,
   };
+}
+
+/**
+ * Retrieve a sorted list of unique event types currently present in the log buffer.
+ */
+function getUniqueEvents() {
+  const events = new Set();
+  for (const entry of inMemoryLogs) {
+    if (entry && entry.event) {
+      events.add(entry.event);
+    }
+  }
+  return Array.from(events).sort();
 }
 
 /**
@@ -322,6 +336,7 @@ module.exports = {
   auditLog,
   getAuditLogs,
   getAuditStats,
+  getUniqueEvents,
   exportToCsv,
   EVENT_CATEGORIES,
 };

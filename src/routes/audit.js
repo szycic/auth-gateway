@@ -3,8 +3,8 @@ const sessionService = require('../services/sessionService');
 const {
   getAuditLogs,
   getAuditStats,
+  getUniqueEvents,
   exportToCsv,
-  EVENT_CATEGORIES,
 } = require('../utils/auditLogger');
 const { verifySameOrigin } = require('../utils/csrfHelper');
 
@@ -31,7 +31,7 @@ router.get('/audit', requireApprover, (req, res) => {
     title: 'Audit Log',
     stats,
     initialData,
-    categories: EVENT_CATEGORIES,
+    eventTypes: initialData.eventTypes || getUniqueEvents(),
   });
 });
 

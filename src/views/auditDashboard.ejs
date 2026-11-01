@@ -46,15 +46,6 @@
 
     <!-- Filter & Search Controls -->
     <div class="audit-controls-card">
-      <div class="category-tabs" id="categoryTabs">
-        <button class="tab-pill active" data-category="all">All Events</button>
-        <button class="tab-pill" data-category="auth">Logins &amp; FIDO</button>
-        <button class="tab-pill" data-category="revocation">Revocations</button>
-        <button class="tab-pill" data-category="security">Security &amp; CSRF</button>
-        <button class="tab-pill" data-category="approval">Approvals</button>
-        <button class="tab-pill" data-category="config">Config &amp; Keys</button>
-      </div>
-
       <div class="filter-inputs-row">
         <div class="search-box-wrapper">
           <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -73,19 +64,11 @@
 
         <select id="eventSelect" class="select-filter">
           <option value="">All Event Types</option>
-          <option value="LOGIN_SUCCESS">LOGIN_SUCCESS</option>
-          <option value="LOGIN_FAILED">LOGIN_FAILED</option>
-          <option value="APPROVER_LOGIN_SUCCESS">APPROVER_LOGIN_SUCCESS</option>
-          <option value="APPROVER_LOGIN_FAILED">APPROVER_LOGIN_FAILED</option>
-          <option value="SESSION_APPROVED">SESSION_APPROVED</option>
-          <option value="SESSION_REJECTED">SESSION_REJECTED</option>
-          <option value="SESSION_REVOKED">SESSION_REVOKED</option>
-          <option value="ALL_SESSIONS_REVOKED">ALL_SESSIONS_REVOKED</option>
-          <option value="LOCKOUT_TRIGGERED">LOCKOUT_TRIGGERED</option>
-          <option value="CSRF_BLOCKED">CSRF_BLOCKED</option>
-          <option value="CROSS_SUBDOMAIN_BLOCKED">CROSS_SUBDOMAIN_BLOCKED</option>
-          <option value="FIDO_KEY_ENROLLED">FIDO_KEY_ENROLLED</option>
-          <option value="FIDO_KEY_REVOKED">FIDO_KEY_REVOKED</option>
+          <% if (typeof eventTypes !== 'undefined' && eventTypes && eventTypes.length > 0) { %>
+            <% eventTypes.forEach(function(ev) { %>
+              <option value="<%= ev %>"><%= ev %></option>
+            <% }); %>
+          <% } %>
         </select>
 
         <div class="export-actions">
@@ -149,7 +132,6 @@
   </div>
 
   <script>
-    let activeCategory = 'all';
     let currentSearch = '';
     let currentTimeRange = '24h';
     let currentEvent = '';
@@ -190,7 +172,6 @@
 
     async function fetchAuditLogs() {
       const params = new URLSearchParams({
-        category: activeCategory,
         event: currentEvent,
         search: currentSearch,
         from: getFromTimestamp(currentTimeRange),
@@ -208,11 +189,42 @@
       }
     }
 
+    function updateEventSelect(eventTypes) {
+      if (!Array.isArray(eventTypes)) return;
+      const select = document.getElementById('eventSelect');
+      const currentVal = select.value;
+
+      const existingOptions = Array.from(select.options).slice(1).map(opt => opt.value);
+      const isSame = existingOptions.length === eventTypes.length &&
+        existingOptions.every((val, idx) => val === eventTypes[idx]);
+
+      if (isSame) return;
+
+      select.innerHTML = '<option value="">All Event Types</option>';
+      for (const ev of eventTypes) {
+        const opt = document.createElement('option');
+        opt.value = ev;
+        opt.textContent = ev;
+        if (ev === currentVal) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      }
+
+      if (currentVal && !eventTypes.includes(currentVal)) {
+        currentEvent = '';
+      }
+    }
+
     const openDrawers = new Set();
 
     function renderAuditLogs(data) {
       const tbody = document.getElementById('auditTableBody');
       const emptyEl = document.getElementById('auditEmptyState');
+
+      if (data.eventTypes) {
+        updateEventSelect(data.eventTypes);
+      }
 
       // Preserve currently open drawer IDs before clearing DOM
       document.querySelectorAll('.audit-drawer-row.open').forEach(el => {
@@ -343,7 +355,6 @@
     function exportData(format) {
       const params = new URLSearchParams({
         format,
-        category: activeCategory,
         event: currentEvent,
         search: currentSearch,
         from: getFromTimestamp(currentTimeRange),
@@ -373,18 +384,6 @@
         }
       }, 5000);
     }
-
-    // Category Tabs click listener
-    document.getElementById('categoryTabs').addEventListener('click', (e) => {
-      const btn = e.target.closest('.tab-pill');
-      if (!btn) return;
-      document.querySelectorAll('#categoryTabs .tab-pill').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeCategory = btn.dataset.category || 'all';
-      currentOffset = 0;
-      openDrawers.clear();
-      fetchAuditLogs();
-    });
 
     // Time Range listener
     document.getElementById('timeRangeSelect').addEventListener('change', (e) => {
