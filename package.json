@@ -1,15 +1,43 @@
 {
   "name": "auth-gateway",
   "version": "1.9.0",
-  "description": "Secure, lightweight custom Forward Auth Gateway with QR code and PIN approval homelabs",
+  "description": "Secure, lightweight custom Forward Auth Gateway with QR code and PIN approval for homelabs",
   "main": "server.js",
+  "private": true,
+  "author": {
+    "name": "Szymon Cichy",
+    "email": "dev@szycic.com",
+    "url": "https://github.com/szycic"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/szycic/auth-gateway.git"
+  },
+  "bugs": {
+    "url": "https://github.com/szycic/auth-gateway/issues"
+  },
+  "homepage": "https://github.com/szycic/auth-gateway#readme",
+  "keywords": [
+    "forward-auth",
+    "sso",
+    "caddy",
+    "fido2",
+    "passkey",
+    "webauthn",
+    "homelab",
+    "reverse-proxy",
+    "docker",
+    "qr-login"
+  ],
   "scripts": {
     "start": "node server.js",
     "hash-password": "node hash-password.js",
     "set-password": "node set-password.js",
     "set-auth-method": "node set-auth-method.js",
     "set-fido": "node set-fido.js",
-    "logout-sessions": "node logout-sessions.js"
+    "logout-sessions": "node logout-sessions.js",
+    "postversion": "git push && git push --tags"
   },
   "dependencies": {
     "@simplewebauthn/server": "^14.0.3",
@@ -20,12 +48,11 @@
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "private": true,
   "devDependencies": {
     "pngjs": "^7.0.0",
     "socket.io-client": "^4.8.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
