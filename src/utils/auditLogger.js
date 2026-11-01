@@ -175,10 +175,10 @@ const EVENT_CATEGORIES = {
  */
 function getEventClass(event = '') {
   const ev = String(event);
-  if (ev.includes('SCANNER_')) {
+  if (ev.includes('SCANNER_') || ev.includes('RATE_LIMIT')) {
     return 'warning';
   }
-  if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('RATE_LIMIT')) {
+  if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT')) {
     return 'danger';
   }
   if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) {
