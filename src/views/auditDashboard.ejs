@@ -75,9 +75,36 @@
           <select id="eventSelect" class="select-filter select-event">
             <option value="">All Event Types</option>
             <% if (typeof eventTypes !== 'undefined' && eventTypes && eventTypes.length > 0) { %>
-              <% eventTypes.forEach(function(ev) { %>
-                <option value="<%= ev %>"><%= ev %></option>
-              <% }); %>
+              <%
+                const classGroups = {
+                  danger: { label: 'Danger', items: [] },
+                  warning: { label: 'Warning', items: [] },
+                  purple: { label: 'Credentials', items: [] },
+                  success: { label: 'Success', items: [] },
+                  info: { label: 'Info', items: [] }
+                };
+                eventTypes.forEach(function(ev) {
+                  let c = 'info';
+                  if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('RATE_LIMIT')) c = 'danger';
+                  else if (ev.includes('REVOKED') || ev.includes('LOGOUT') || ev.includes('REJECTED')) c = 'warning';
+                  else if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) c = 'purple';
+                  else if (ev.includes('SUCCESS') || ev.includes('APPROVED')) c = 'success';
+                  if (classGroups[c]) classGroups[c].items.push(ev);
+                });
+                ['danger', 'warning', 'purple', 'success', 'info'].forEach(function(cKey) {
+                  const grp = classGroups[cKey];
+                  if (grp && grp.items.length > 0) {
+                    grp.items.sort(function(a, b) { return a.localeCompare(b); });
+              %>
+                <optgroup label="<%= grp.label %>">
+                  <% grp.items.forEach(function(ev) { %>
+                    <option value="<%= ev %>"><%= ev %></option>
+                  <% }); %>
+                </optgroup>
+              <%
+                  }
+                });
+              %>
             <% } %>
           </select>
 
@@ -288,18 +315,23 @@
       }
       const sel = document.getElementById('eventSelect');
       if (sel) {
-        let optExists = false;
-        for (let i = 0; i < sel.options.length; i++) {
-          if (sel.options[i].value === currentEvent) {
-            optExists = true;
-            break;
+        if (currentEvent) {
+          const opt = sel.querySelector(`option[value="${CSS.escape(currentEvent)}"]`);
+          if (!opt) {
+            const c = getEventClass(currentEvent);
+            const labelMap = { danger: 'Danger', warning: 'Warning', purple: 'Credentials', success: 'Success', info: 'Info' };
+            const targetLabel = labelMap[c] || 'Info';
+            let optGroup = sel.querySelector(`optgroup[label="${targetLabel}"]`);
+            if (!optGroup) {
+              optGroup = document.createElement('optgroup');
+              optGroup.label = targetLabel;
+              sel.appendChild(optGroup);
+            }
+            const newOpt = document.createElement('option');
+            newOpt.value = currentEvent;
+            newOpt.textContent = currentEvent;
+            optGroup.appendChild(newOpt);
           }
-        }
-        if (!optExists && currentEvent) {
-          const newOpt = document.createElement('option');
-          newOpt.value = currentEvent;
-          newOpt.textContent = currentEvent;
-          sel.appendChild(newOpt);
         }
         sel.value = currentEvent;
       }
@@ -333,27 +365,63 @@
     function updateEventSelect(eventTypes) {
       if (!Array.isArray(eventTypes)) return;
       const select = document.getElementById('eventSelect');
-      const currentVal = select.value;
+      const currentVal = currentEvent || select.value;
 
-      const existingOptions = Array.from(select.options).slice(1).map(opt => opt.value);
-      const isSame = existingOptions.length === eventTypes.length &&
-        existingOptions.every((val, idx) => val === eventTypes[idx]);
+      const classGroups = {
+        danger: { label: 'Danger', items: [] },
+        warning: { label: 'Warning', items: [] },
+        purple: { label: 'Credentials', items: [] },
+        success: { label: 'Success', items: [] },
+        info: { label: 'Info', items: [] }
+      };
 
-      if (isSame) return;
+      for (const ev of eventTypes) {
+        const c = getEventClass(ev);
+        if (classGroups[c]) {
+          classGroups[c].items.push(ev);
+        } else {
+          classGroups.info.items.push(ev);
+        }
+      }
+
+      const existingOptions = Array.from(select.querySelectorAll('option')).slice(1).map(opt => opt.value);
+      const allNewEvents = ['danger', 'warning', 'purple', 'success', 'info']
+        .flatMap(cKey => classGroups[cKey].items.slice().sort((a, b) => a.localeCompare(b)));
+
+      const isSame = existingOptions.length === allNewEvents.length &&
+        existingOptions.every((val, idx) => val === allNewEvents[idx]);
+
+      if (isSame) {
+        if (select.value !== currentVal) select.value = currentVal;
+        return;
+      }
 
       select.innerHTML = '<option value="">All Event Types</option>';
-      for (const ev of eventTypes) {
-        const opt = document.createElement('option');
-        opt.value = ev;
-        opt.textContent = ev;
-        if (ev === currentVal) {
-          opt.selected = true;
+
+      ['danger', 'warning', 'purple', 'success', 'info'].forEach(cKey => {
+        const grp = classGroups[cKey];
+        if (grp && grp.items.length > 0) {
+          grp.items.sort((a, b) => a.localeCompare(b));
+          const optGroup = document.createElement('optgroup');
+          optGroup.label = grp.label;
+
+          for (const ev of grp.items) {
+            const opt = document.createElement('option');
+            opt.value = ev;
+            opt.textContent = ev;
+            if (ev === currentVal) {
+              opt.selected = true;
+            }
+            optGroup.appendChild(opt);
+          }
+          select.appendChild(optGroup);
         }
-        select.appendChild(opt);
-      }
+      });
 
       if (currentVal && !eventTypes.includes(currentVal)) {
         currentEvent = '';
+      } else if (currentVal) {
+        select.value = currentVal;
       }
     }
 

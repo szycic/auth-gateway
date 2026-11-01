@@ -259,6 +259,22 @@ body {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 
+.select-filter optgroup {
+  background: #1e293b;
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 0.775rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.select-filter option {
+  background: #0f172a;
+  color: #e2e8f0;
+  font-weight: normal;
+  font-size: 0.825rem;
+  padding: 0.35rem 0.5rem;
+}
+
 .btn-clear-pill {
   display: inline-flex;
   align-items: center;
