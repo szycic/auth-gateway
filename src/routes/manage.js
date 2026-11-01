@@ -440,12 +440,8 @@ router.post('/logout', (req, res) => handleUserLogout(req, res));
 
 // User logout: GET protected against cross-site CSRF (<img>, <iframe>, cross-site links)
 router.get('/logout', (req, res) => {
-  if (authService.isGatewayTokenValid(req)) {
-    return handleUserLogout(req, res);
-  }
-
   const dest = req.headers['sec-fetch-dest'];
-  if (dest && ['image', 'script', 'style', 'font', 'audio', 'video', 'track', 'object', 'embed', 'iframe', 'empty'].includes(dest)) {
+  if (dest && ['image', 'script', 'style', 'font', 'audio', 'video', 'track', 'object', 'embed', 'iframe'].includes(dest)) {
     auditLog('CSRF_LOGOUT_BLOCKED', { path: req.originalUrl || req.path, dest, ip: authService.getClientIp(req) });
     return res.status(403).send('Forbidden: Cross-site logout blocked');
   }
