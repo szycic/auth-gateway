@@ -72,6 +72,7 @@ router.post('/sessions/revoke', (req, res) => {
     let count = 0;
     for (const [tok, session] of sessionService.activeSessions.entries()) {
       if (tok !== currentAuthToken && session.approverToken !== currentApproverToken) {
+        sessionService.trackRevokedSession(tok, session);
         sessionService.activeSessions.delete(tok);
         count++;
       }
@@ -80,6 +81,7 @@ router.post('/sessions/revoke', (req, res) => {
     socketService.notifyAllSessionsRevoked();
     auditLog('ALL_SESSIONS_REVOKED', {
       count,
+      ip: authService.getClientIp(req),
       revokedByIp: authService.getClientIp(req),
     });
 
@@ -105,12 +107,19 @@ router.post('/sessions/revoke', (req, res) => {
       const sid = targetSession.id || sessionId;
       const appToken = targetSession.approverToken;
 
+      // Track session in recently revoked cache before deleting to preserve context on subsequent logout
+      sessionService.trackRevokedSession(targetToken, targetSession);
+      if (appToken && sessionService.approverSessions.has(appToken)) {
+        sessionService.trackRevokedApproverSession(appToken, sessionService.approverSessions.get(appToken));
+      }
+
       // Revoke the approver session completely if this device is an approver!
       if (appToken) {
         sessionService.approverSessions.delete(appToken);
       }
       for (const [aTok, aSess] of sessionService.approverSessions.entries()) {
         if (aSess.sessionId === sid || aSess.activeSessionToken === targetToken || (appToken && aTok === appToken)) {
+          sessionService.trackRevokedApproverSession(aTok, aSess);
           sessionService.approverSessions.delete(aTok);
         }
       }
@@ -124,6 +133,7 @@ router.post('/sessions/revoke', (req, res) => {
       auditLog('SESSION_REVOKED', {
         sessionId: sid,
         device: targetSession.friendlyDevice,
+        ip: authService.getClientIp(req),
         deviceIp: targetSession.ip,
         isApprover: isApproverDevice,
         revokedByIp: authService.getClientIp(req),
@@ -165,14 +175,21 @@ router.post('/sessions/revoke', (req, res) => {
     // Direct check in approverSessions (fallback if not in activeSessions)
     for (const [aTok, aSess] of sessionService.approverSessions.entries()) {
       if (aTok === sessionId || aSess.sessionId === sessionId) {
-        sessionService.approverSessions.delete(aTok);
+        sessionService.trackRevokedApproverSession(aTok, aSess);
         if (aSess.activeSessionToken) {
+          if (sessionService.activeSessions.has(aSess.activeSessionToken)) {
+            sessionService.trackRevokedSession(aSess.activeSessionToken, sessionService.activeSessions.get(aSess.activeSessionToken));
+          }
           sessionService.activeSessions.delete(aSess.activeSessionToken);
         }
+        sessionService.approverSessions.delete(aTok);
         sessionService.savePersistedSessions();
         socketService.notifySessionRevoked(aSess.sessionId || sessionId, aSess.activeSessionToken, aTok);
         auditLog('APPROVER_SESSION_REVOKED', {
           token: aTok,
+          ip: authService.getClientIp(req),
+          device: aSess.friendlyDevice || 'Approver Device',
+          sessionId: aSess.sessionId || sessionId,
           revokedByIp: authService.getClientIp(req),
         });
 
@@ -397,9 +414,20 @@ router.get('/exchange', (req, res) => {
 
 function handleUserLogout(req, res) {
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
-  const session = token ? sessionService.activeSessions.get(token) : null;
+  let session = token ? sessionService.activeSessions.get(token) : null;
+  let wasRevoked = false;
+
+  if (!session && token && sessionService.recentlyRevokedSessions.has(token)) {
+    session = sessionService.recentlyRevokedSessions.get(token);
+    wasRevoked = true;
+  }
+
   const approverToken = req.cookies[config.APPROVER_COOKIE_NAME];
-  const approverSession = approverToken ? sessionService.approverSessions.get(approverToken) : null;
+  let approverSession = approverToken ? sessionService.approverSessions.get(approverToken) : null;
+  if (!approverSession && approverToken && sessionService.recentlyRevokedApproverSessions.has(approverToken)) {
+    approverSession = sessionService.recentlyRevokedApproverSessions.get(approverToken);
+    wasRevoked = true;
+  }
 
   const device = (session && session.friendlyDevice)
     || (approverSession && approverSession.friendlyDevice)
@@ -411,12 +439,19 @@ function handleUserLogout(req, res) {
     device,
   };
 
-  if (session) {
-    details.sessionId = session.id;
-    if (session.createdAt) {
-      const activeMinutes = Math.round((Date.now() - session.createdAt) / 60000);
-      details.activeDuration = activeMinutes < 60 ? `${activeMinutes}m` : `${(activeMinutes / 60).toFixed(1)}h`;
-    }
+  const sessionId = (session && session.id) || (approverSession && (approverSession.sessionId || approverSession.id));
+  if (sessionId) {
+    details.sessionId = sessionId;
+  }
+
+  const sessionCreatedAt = (session && session.createdAt) || (approverSession && approverSession.createdAt);
+  if (sessionCreatedAt) {
+    const activeMinutes = Math.round((Date.now() - sessionCreatedAt) / 60000);
+    details.activeDuration = activeMinutes < 60 ? `${activeMinutes}m` : `${(activeMinutes / 60).toFixed(1)}h`;
+  }
+
+  if (wasRevoked || req.query.notice === 'Your session was revoked.' || req.query.notice === 'revoked') {
+    details.reason = 'session_revoked';
   }
 
   auditLog('USER_LOGOUT', details);

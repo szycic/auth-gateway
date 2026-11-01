@@ -420,9 +420,20 @@ router.post('/approver/login', (req, res) => {
 function handleApproverLogout(req, res) {
   const clientIp = authService.getClientIp(req);
   const token = req.cookies[config.APPROVER_COOKIE_NAME];
-  const approverSession = token ? sessionService.approverSessions.get(token) : null;
+  let approverSession = token ? sessionService.approverSessions.get(token) : null;
+  let wasRevoked = false;
+
+  if (!approverSession && token && sessionService.recentlyRevokedApproverSessions && sessionService.recentlyRevokedApproverSessions.has(token)) {
+    approverSession = sessionService.recentlyRevokedApproverSessions.get(token);
+    wasRevoked = true;
+  }
+
   const sessionToken = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
-  const session = sessionToken ? sessionService.activeSessions.get(sessionToken) : null;
+  let session = sessionToken ? sessionService.activeSessions.get(sessionToken) : null;
+  if (!session && sessionToken && sessionService.recentlyRevokedSessions && sessionService.recentlyRevokedSessions.has(sessionToken)) {
+    session = sessionService.recentlyRevokedSessions.get(sessionToken);
+    wasRevoked = true;
+  }
 
   const device = (approverSession && approverSession.friendlyDevice)
     || (session && session.friendlyDevice)
@@ -434,14 +445,19 @@ function handleApproverLogout(req, res) {
     device,
   };
 
-  const sessionId = (approverSession && approverSession.sessionId) || (session && session.id);
+  const sessionId = (approverSession && (approverSession.sessionId || approverSession.id)) || (session && session.id);
   if (sessionId) {
     details.sessionId = sessionId;
   }
 
-  if (approverSession && approverSession.createdAt) {
-    const activeMinutes = Math.round((Date.now() - approverSession.createdAt) / 60000);
+  const sessionCreatedAt = (approverSession && approverSession.createdAt) || (session && session.createdAt);
+  if (sessionCreatedAt) {
+    const activeMinutes = Math.round((Date.now() - sessionCreatedAt) / 60000);
     details.activeDuration = activeMinutes < 60 ? `${activeMinutes}m` : `${(activeMinutes / 60).toFixed(1)}h`;
+  }
+
+  if (wasRevoked || req.query.notice === 'revoked') {
+    details.reason = 'session_revoked';
   }
 
   auditLog('APPROVER_LOGOUT', details);

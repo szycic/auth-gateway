@@ -360,7 +360,7 @@
           const cls = getEventClass(log.event);
           const badgeCls = `badge-${cls}`;
           const d = log.details || {};
-          const ip = d.ip || d.clientIp || d.approverIp || '-';
+          const ip = d.ip || d.clientIp || d.approverIp || d.revokedByIp || d.deviceIp || d.desktopIp || '-';
           const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
           const uuid = d.sessionId || d.uuid || '';
 

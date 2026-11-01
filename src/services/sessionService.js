@@ -13,6 +13,30 @@ const SESSIONS_FILE = path.join(config.DATA_DIR, 'sessions.json');
 const activeSessions = new Map();
 const approverSessions = new Map();
 const pendingLoginSessions = new Map();
+const recentlyRevokedSessions = new Map();
+const recentlyRevokedApproverSessions = new Map();
+
+function trackRevokedSession(token, sessionObj) {
+  if (!token || !sessionObj) return;
+  recentlyRevokedSessions.set(token, {
+    ...sessionObj,
+    revokedAt: Date.now(),
+  });
+  setTimeout(() => {
+    recentlyRevokedSessions.delete(token);
+  }, 15 * 60 * 1000).unref();
+}
+
+function trackRevokedApproverSession(token, approverObj) {
+  if (!token || !approverObj) return;
+  recentlyRevokedApproverSessions.set(token, {
+    ...approverObj,
+    revokedAt: Date.now(),
+  });
+  setTimeout(() => {
+    recentlyRevokedApproverSessions.delete(token);
+  }, 15 * 60 * 1000).unref();
+}
 
 let lastSavedRaw = '';
 
@@ -390,6 +414,10 @@ module.exports = {
   activeSessions,
   approverSessions,
   pendingLoginSessions,
+  recentlyRevokedSessions,
+  recentlyRevokedApproverSessions,
+  trackRevokedSession,
+  trackRevokedApproverSession,
   loadPersistedSessions,
   savePersistedSessions,
   isValidSession,

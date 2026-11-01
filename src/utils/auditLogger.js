@@ -364,7 +364,7 @@ function exportToCsv(logs) {
 
   for (const log of logs) {
     const d = log.details || {};
-    const ip = d.ip || d.clientIp || d.approverIp || '';
+    const ip = d.ip || d.clientIp || d.approverIp || d.revokedByIp || d.deviceIp || d.desktopIp || '';
     const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
     const uuid = d.sessionId || d.uuid || '';
     const service = d.service || d.targetDomain || '';
