@@ -655,7 +655,8 @@ Add an entry to the `"services"` array in your `config.json`:
   "upstream": "http://my-app:8080",
   "allowedRedirects": ["https://myapp.example.com*"],
   "disableService": false,
-  "disableAuth": false
+  "disableAuth": false,
+  "injectScripts": ["/auth/assets/custom/myscript.js"]
 }
 ```
 
@@ -667,6 +668,7 @@ Add an entry to the `"services"` array in your `config.json`:
 - `allowedRedirects`: Allowed redirect URL patterns after successful authentication.
 - `disableService`: _(Optional)_ If `true`, hides the service from the dashboard and blocks redirects/access.
 - `disableAuth`: _(Optional)_ If `true`, bypasses authentication verification for this service.
+- `injectScripts`: _(Optional)_ Array of custom script URLs or paths to inject into HTML pages for this service. Relative paths are resolved against `baseUrl`. Custom script files can be placed in `public/custom/` or `data/custom/`.
 
 ### Step 3: Add Service Block to Caddy
 
@@ -752,6 +754,7 @@ myapp.example.com {
 | `services` | `allowedRedirects`   | array   | List of URL patterns permitted for post-login redirection (e.g. `["https://myapp.example.com*"]`). Wildcards (`*`) supported.              |
 | `services` | `disableService`     | boolean | Optional. When `true`, completely hides service from dashboard and disables redirects.                                                     |
 | `services` | `disableAuth`        | boolean | Optional. When `true`, bypasses authentication verification for this service.                                                              |
+| `services` | `injectScripts`      | array   | Optional. List of script URLs or paths to inject before `</body>` for this service (e.g. `["/auth/assets/custom/myscript.js"]`).              |
 
 ---
 

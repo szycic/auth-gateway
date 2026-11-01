@@ -221,8 +221,15 @@ function proxyToTargetApp(req, res) {
           const scriptName = isSessionValid ? 'auth-watchdog.js' : 'auth-public-guard.js';
           let injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}" crossorigin="anonymous"></script>`;
 
-          if (matchedService && matchedService.id === 'pdf') {
-            injectionScript += `<script src="${config.BASE_URL}/auth/assets/stirling-guest-banner.js" crossorigin="anonymous"></script>`;
+          if (Array.isArray(matchedService?.injectScripts)) {
+            for (const scriptUrl of matchedService.injectScripts) {
+              if (typeof scriptUrl === 'string' && scriptUrl.trim()) {
+                const resolvedUrl = scriptUrl.startsWith('http://') || scriptUrl.startsWith('https://')
+                  ? scriptUrl
+                  : `${config.BASE_URL}${scriptUrl.startsWith('/') ? '' : '/'}${scriptUrl}`;
+                injectionScript += `<script src="${resolvedUrl}" crossorigin="anonymous"></script>`;
+              }
+            }
           }
 
           if (body.includes('</body>')) {
