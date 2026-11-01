@@ -46,48 +46,46 @@
 
     <!-- Filter & Search Controls -->
     <div class="audit-controls-card">
-      <div class="search-box-wrapper">
-        <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-        <input type="text" id="searchInput" class="search-input" placeholder="Search by IP, device, path, event, or metadata..." autocomplete="off">
-      </div>
-
-      <div class="controls-toolbar-row">
-        <div class="filters-group">
-          <select id="timeRangeSelect" class="select-filter">
-            <option value="">All Time</option>
-            <option value="1h">Last 1 Hour</option>
-            <option value="24h" selected>Last 24 Hours</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-          </select>
-
-          <select id="classSelect" class="select-filter" title="Filter by event class">
-            <option value="" <%= (typeof initialClass === 'undefined' || !initialClass) ? 'selected' : '' %>>All Classes</option>
-            <option value="danger" <%= (typeof initialClass !== 'undefined' && initialClass === 'danger') ? 'selected' : '' %>>Danger (Red)</option>
-            <option value="warning" <%= (typeof initialClass !== 'undefined' && initialClass === 'warning') ? 'selected' : '' %>>Warning (Amber)</option>
-            <option value="purple" <%= (typeof initialClass !== 'undefined' && initialClass === 'purple') ? 'selected' : '' %>>Credentials (Purple)</option>
-            <option value="info" <%= (typeof initialClass !== 'undefined' && initialClass === 'info') ? 'selected' : '' %>>Info (Blue)</option>
-            <option value="success" <%= (typeof initialClass !== 'undefined' && initialClass === 'success') ? 'selected' : '' %>>Success (Green)</option>
-          </select>
-
-          <select id="eventSelect" class="select-filter">
-            <option value="">All Event Types</option>
-            <% if (typeof eventTypes !== 'undefined' && eventTypes && eventTypes.length > 0) { %>
-              <% eventTypes.forEach(function(ev) { %>
-                <option value="<%= ev %>"><%= ev %></option>
-              <% }); %>
-            <% } %>
-          </select>
-
-          <select id="sortSelect" class="select-filter" title="Sort order">
-            <option value="time-desc" selected>Sort: Newest First</option>
-            <option value="time-asc">Sort: Oldest First</option>
-            <option value="class-desc">Sort: Event Class (High Severity First)</option>
-            <option value="class-asc">Sort: Event Class (Low Severity First)</option>
-          </select>
+      <div class="controls-bar">
+        <div class="search-box-wrapper">
+          <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="Search by IP, device, path, event, or metadata..." autocomplete="off">
         </div>
+
+        <select id="timeRangeSelect" class="select-filter">
+          <option value="">All Time</option>
+          <option value="1h">Last 1 Hour</option>
+          <option value="24h" selected>Last 24 Hours</option>
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
+        </select>
+
+        <select id="classSelect" class="select-filter" title="Filter by event class">
+          <option value="" <%= (typeof initialClass === 'undefined' || !initialClass) ? 'selected' : '' %>>All Classes</option>
+          <option value="danger" <%= (typeof initialClass !== 'undefined' && initialClass === 'danger') ? 'selected' : '' %>>Danger (Red)</option>
+          <option value="warning" <%= (typeof initialClass !== 'undefined' && initialClass === 'warning') ? 'selected' : '' %>>Warning (Amber)</option>
+          <option value="purple" <%= (typeof initialClass !== 'undefined' && initialClass === 'purple') ? 'selected' : '' %>>Credentials (Purple)</option>
+          <option value="info" <%= (typeof initialClass !== 'undefined' && initialClass === 'info') ? 'selected' : '' %>>Info (Blue)</option>
+          <option value="success" <%= (typeof initialClass !== 'undefined' && initialClass === 'success') ? 'selected' : '' %>>Success (Green)</option>
+        </select>
+
+        <select id="eventSelect" class="select-filter">
+          <option value="">All Event Types</option>
+          <% if (typeof eventTypes !== 'undefined' && eventTypes && eventTypes.length > 0) { %>
+            <% eventTypes.forEach(function(ev) { %>
+              <option value="<%= ev %>"><%= ev %></option>
+            <% }); %>
+          <% } %>
+        </select>
+
+        <select id="sortSelect" class="select-filter" title="Sort order">
+          <option value="time-desc" selected>Sort: Newest First</option>
+          <option value="time-asc">Sort: Oldest First</option>
+          <option value="class-desc">Sort: Severity (High to Low)</option>
+          <option value="class-asc">Sort: Severity (Low to High)</option>
+        </select>
 
         <div class="export-actions">
           <button type="button" class="btn-export" onclick="exportData('csv')">
