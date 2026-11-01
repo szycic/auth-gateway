@@ -524,7 +524,18 @@ router.post('/approver/self-authorize', (req, res) => {
   }
   const rawRedirect = req.body.redirect || '';
   const redirectTarget = config.isAllowedRedirect(rawRedirect) ? rawRedirect : '/';
-  sessionService.mintApproverSession(req, res);
+  const approverSession = sessionService.mintApproverSession(req, res);
+  if (redirectTarget && redirectTarget !== '/' && !redirectTarget.startsWith('/?')) {
+    const targetService = config.getService(redirectTarget);
+    auditLog('SERVICE_REDIRECT', {
+      service: targetService ? targetService.name : 'Unknown Service',
+      serviceId: targetService ? targetService.id : null,
+      url: redirectTarget,
+      ip: authService.getClientIp(req),
+      device: (approverSession && approverSession.friendlyDevice) || 'Approver Device',
+      isApprover: true,
+    });
+  }
   return res.redirect(redirectTarget);
 });
 

@@ -78,7 +78,7 @@
       <% } else { %>
         <% visibleServices.forEach(function(s) { 
              const isAllowed = checkAllowed(s);
-             const targetUrl = s.url || '#';
+             const targetUrl = s.url ? ('/launch/' + encodeURIComponent(s.id)) : '#';
         %>
           <div class="service-card <%= !isAllowed ? 'service-card-disabled' : '' %>">
             <div class="service-info">

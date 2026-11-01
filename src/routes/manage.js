@@ -377,6 +377,18 @@ router.get('/exchange', (req, res) => {
 
     res.cookie(config.AUTH_COOKIE_NAME, sessionToken, getCookieOptions(req, maxAgeMs));
     const target = config.normalizeRedirect(redirect, '/');
+    if (target && target !== '/' && !target.startsWith('/?')) {
+      const targetService = config.getService(target);
+      auditLog('SERVICE_REDIRECT', {
+        service: targetService ? targetService.name : 'Unknown Service',
+        serviceId: targetService ? targetService.id : null,
+        url: target,
+        ip: authService.getClientIp(req),
+        device: (session && session.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || '') || 'Desktop Browser',
+        sessionId: session ? session.id : undefined,
+        trusted: session ? session.isTrusted : false,
+      });
+    }
     return res.redirect(target);
   }
 

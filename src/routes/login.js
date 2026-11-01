@@ -45,8 +45,20 @@ router.get('/login', (req, res) => {
           type: 'error',
         });
       }
+
+      auditLog('SERVICE_REDIRECT', {
+        service: targetService ? targetService.name : (matchedService ? matchedService.name : 'Unknown Service'),
+        serviceId: targetService ? targetService.id : (matchedService ? matchedService.id : null),
+        url: redirectTarget,
+        ip: authService.getClientIp(req),
+        device: (session && session.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || '') || 'Desktop Browser',
+        sessionId: session ? session.id : undefined,
+        trusted: session ? session.isTrusted : false,
+      });
+
+      return res.redirect(redirectTarget);
     }
-    return res.redirect(redirectTarget || '/');
+    return res.redirect('/');
   }
 
   // Approver auto-authorization
@@ -58,8 +70,20 @@ router.get('/login', (req, res) => {
       });
     }
 
-    sessionService.mintApproverSession(req, res);
-    return res.redirect(redirectTarget || '/');
+    const approverSession = sessionService.mintApproverSession(req, res);
+    if (redirectTarget) {
+      const targetService = config.getService(redirectTarget);
+      auditLog('SERVICE_REDIRECT', {
+        service: targetService ? targetService.name : (matchedService ? matchedService.name : 'Unknown Service'),
+        serviceId: targetService ? targetService.id : (matchedService ? matchedService.id : null),
+        url: redirectTarget,
+        ip: authService.getClientIp(req),
+        device: (approverSession && approverSession.friendlyDevice) || 'Approver Device',
+        isApprover: true,
+      });
+      return res.redirect(redirectTarget);
+    }
+    return res.redirect('/');
   }
 
   // Detect whether request comes from an open handle of the service
