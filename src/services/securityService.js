@@ -157,7 +157,6 @@ function blockScannerProbe(req, res, targetUrlOrUri, reason) {
       device: parseUserAgent(ua) || 'Automated Scanner',
       userAgent: ua.slice(0, 150),
       jailDuration: '30m',
-      attempts: 1,
     });
     auditDebounceMap.set(debounceKey, { lastLogged: now, count: 1, logRecord });
   } else {
@@ -208,7 +207,6 @@ function recordRateLimitHit(clientIp, endpoint, req) {
       endpoint,
       count: UNAUTH_RATE_LIMIT_PER_MINUTE,
       device: parseUserAgent((req && req.headers && req.headers['user-agent']) || '') || 'Desktop Browser',
-      attempts: 1,
     });
     auditDebounceMap.set(debounceKey, { lastLogged: now, count: 1, logRecord });
   } else {
@@ -259,7 +257,6 @@ function recordAuthRequired(clientIp, targetService, redirectTarget, req) {
       url: redirectTarget || (targetService ? targetService.url : ''),
       ip: clientIp,
       device: parseUserAgent((req && req.headers && req.headers['user-agent']) || '') || 'Desktop Browser',
-      attempts: 1,
     });
     authRequiredDebounceMap.set(key, {
       firstTime: now,

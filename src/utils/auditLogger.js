@@ -48,6 +48,11 @@ function loadExistingLogs() {
           if (!parsed.id) {
             parsed.id = `log-${new Date(parsed.timestamp).getTime()}-${parsed.event}`;
           }
+          if (parsed.details && typeof parsed.details.attempts === 'number' && parsed.details.attempts <= 1) {
+            delete parsed.details.attempts;
+            delete parsed.details.firstAttempt;
+            delete parsed.details.lastAttempt;
+          }
           const existing = inMemoryLogs.find(l => l.id === parsed.id);
           if (existing) {
             Object.assign(existing.details, parsed.details);
@@ -93,11 +98,18 @@ function auditLog(event, details = {}) {
   const timestamp = new Date().toISOString();
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+  const cleanDetails = { ...details };
+  if (typeof cleanDetails.attempts === 'number' && cleanDetails.attempts <= 1) {
+    delete cleanDetails.attempts;
+    delete cleanDetails.firstAttempt;
+    delete cleanDetails.lastAttempt;
+  }
+
   const record = {
     id,
     timestamp,
     event,
-    details: { ...details },
+    details: cleanDetails,
   };
 
   // Add to memory ring buffer (newest first)
@@ -136,6 +148,12 @@ function auditLog(event, details = {}) {
  */
 function updateLogAttempts(record, attempts) {
   if (!record || !record.details) return;
+  if (!attempts || attempts <= 1) {
+    delete record.details.attempts;
+    delete record.details.firstAttempt;
+    delete record.details.lastAttempt;
+    return;
+  }
   if (!record.details.firstAttempt) {
     record.details.firstAttempt = record.timestamp || new Date().toISOString();
   }

@@ -844,9 +844,21 @@
           const drawerRow = document.createElement('tr');
           drawerRow.id = `drawer-${logId}`;
           drawerRow.className = 'audit-drawer-row' + (isOpen ? ' open' : '');
+
+          // Clean log object for JSON display: omit attempts/firstAttempt/lastAttempt when attempts <= 1
+          const jsonLog = { ...log };
+          if (jsonLog.details) {
+            jsonLog.details = { ...jsonLog.details };
+            if (!jsonLog.details.attempts || jsonLog.details.attempts <= 1) {
+              delete jsonLog.details.attempts;
+              delete jsonLog.details.firstAttempt;
+              delete jsonLog.details.lastAttempt;
+            }
+          }
+
           drawerRow.innerHTML = `
             <td colspan="4" class="audit-drawer-content">
-              <pre class="json-view">${escapeHtml(JSON.stringify(log, null, 2))}</pre>
+              <pre class="json-view">${escapeHtml(JSON.stringify(jsonLog, null, 2))}</pre>
             </td>
           `;
 
