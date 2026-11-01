@@ -23,6 +23,10 @@ if (activeHashOnBoot) {
 process.on('SIGHUP', () => {
   console.log('[auth-gateway] Received SIGHUP signal, reloading configuration...');
   config.reload();
+  try {
+    const versionHelper = require('./utils/versionHelper');
+    versionHelper.refresh();
+  } catch (_) {}
 });
 
 // Graceful shutdown handling (SIGTERM, SIGINT)

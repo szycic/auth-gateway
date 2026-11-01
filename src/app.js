@@ -15,8 +15,16 @@ app.set('views', path.join(__dirname, 'views'));
 app.locals.config = config;
 app.locals.isSessionAllowedForService = sessionService.isSessionAllowedForService;
 app.locals.versionHelper = versionHelper;
-app.locals.appVersion = versionHelper.version;
-app.locals.assetVersion = versionHelper.assetVersion;
+Object.defineProperty(app.locals, 'appVersion', {
+  get: () => versionHelper.version,
+  enumerable: true,
+  configurable: true,
+});
+Object.defineProperty(app.locals, 'assetVersion', {
+  get: () => versionHelper.assetVersion,
+  enumerable: true,
+  configurable: true,
+});
 
 const { isAuthDomain } = require('./utils/originHelper');
 
