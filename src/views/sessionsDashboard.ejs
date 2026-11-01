@@ -24,9 +24,23 @@
     </div>
 
     <% if (notice) { %>
-      <div class="notice" id="dashboard-notice"><%= notice %></div>
+      <div class="notice" id="dashboard-notice">
+        <span class="notice-text" id="dashboard-notice-text"><%= notice %></span>
+        <button type="button" class="btn-close-notice" onclick="closeNotice()" aria-label="Close notice">
+          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     <% } else { %>
-      <div class="notice" id="dashboard-notice" style="display: none;"></div>
+      <div class="notice" id="dashboard-notice" style="display: none;">
+        <span class="notice-text" id="dashboard-notice-text"></span>
+        <button type="button" class="btn-close-notice" onclick="closeNotice()" aria-label="Close notice">
+          <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     <% } %>
 
     <!-- Dual Action Header: Scan QR & Enter Code -->
@@ -686,9 +700,24 @@
 
     function showNotice(msg) {
       let noticeEl = document.getElementById('dashboard-notice');
+      let textEl = document.getElementById('dashboard-notice-text');
+      if (noticeEl && textEl) {
+        textEl.textContent = msg;
+        noticeEl.style.display = 'flex';
+      }
+    }
+
+    function closeNotice() {
+      let noticeEl = document.getElementById('dashboard-notice');
       if (noticeEl) {
-        noticeEl.textContent = msg;
-        noticeEl.style.display = 'block';
+        noticeEl.style.display = 'none';
+      }
+      if (window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('notice')) {
+          url.searchParams.delete('notice');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+        }
       }
     }
 
@@ -698,7 +727,6 @@
         const originalText = el.textContent;
         el.textContent = 'Copied!';
         el.style.color = '#34d399';
-        showNotice('Copied session UUID to clipboard.');
         setTimeout(() => {
           el.textContent = originalText;
           el.style.color = '';

@@ -179,6 +179,30 @@ p.subtitle, p.desc {
   margin-bottom: 1.25rem;
   line-height: 1.45;
   text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.btn-close-notice {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-close-notice:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* Spinner */
