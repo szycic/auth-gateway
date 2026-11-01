@@ -223,7 +223,19 @@ function getAuditLogs({
   const fromTime = from ? new Date(from).getTime() : 0;
   const toTime = to ? new Date(to).getTime() : Infinity;
   const searchLower = (search || '').trim().toLowerCase();
-  const classFilter = (eventClass || cls || '').trim().toLowerCase();
+
+  // Support multiple classes (array or comma-separated string)
+  const rawClass = eventClass || cls || '';
+  const classList = (Array.isArray(rawClass) ? rawClass : String(rawClass).split(','))
+    .map(c => c.trim().toLowerCase())
+    .filter(c => c && c !== 'all');
+  const allowedClasses = classList.length > 0 ? new Set(classList) : null;
+
+  // Support multiple events (array or comma-separated string)
+  const eventList = (Array.isArray(event) ? event : String(event || '').split(','))
+    .map(e => e.trim())
+    .filter(e => e && e !== 'all');
+  const allowedSpecificEvents = eventList.length > 0 ? new Set(eventList) : null;
 
   const allowedEvents = category && category !== 'all' && EVENT_CATEGORIES[category]
     ? new Set(EVENT_CATEGORIES[category])
@@ -231,11 +243,9 @@ function getAuditLogs({
 
   const filtered = inMemoryLogs.filter((entry) => {
     // 1. Event / Category / Class filter
-    if (event && entry.event !== event) return false;
+    if (allowedSpecificEvents && !allowedSpecificEvents.has(entry.event)) return false;
     if (allowedEvents && !allowedEvents.has(entry.event)) return false;
-    if (classFilter && classFilter !== 'all') {
-      if (getEventClass(entry.event) !== classFilter) return false;
-    }
+    if (allowedClasses && !allowedClasses.has(getEventClass(entry.event))) return false;
 
     // 2. Timestamp range
     const entryTime = new Date(entry.timestamp).getTime();

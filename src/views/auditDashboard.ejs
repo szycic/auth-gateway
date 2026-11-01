@@ -63,50 +63,39 @@
             <option value="30d">Last 30 Days</option>
           </select>
 
-          <select id="classSelect" class="select-filter select-class" title="Filter by event class">
-            <option value="" <%= (typeof initialClass === 'undefined' || !initialClass) ? 'selected' : '' %>>All Classes</option>
-            <option value="danger" <%= (typeof initialClass !== 'undefined' && initialClass === 'danger') ? 'selected' : '' %>>Danger (Red)</option>
-            <option value="warning" <%= (typeof initialClass !== 'undefined' && initialClass === 'warning') ? 'selected' : '' %>>Warning (Amber)</option>
-            <option value="purple" <%= (typeof initialClass !== 'undefined' && initialClass === 'purple') ? 'selected' : '' %>>Credentials (Purple)</option>
-            <option value="success" <%= (typeof initialClass !== 'undefined' && initialClass === 'success') ? 'selected' : '' %>>Success (Green)</option>
-            <option value="info" <%= (typeof initialClass !== 'undefined' && initialClass === 'info') ? 'selected' : '' %>>Info (Blue)</option>
-          </select>
+          <!-- Class Multiselect -->
+          <div class="multiselect-wrapper wrapper-class" id="classMultiselectWrapper">
+            <button type="button" class="select-filter select-class multiselect-trigger" id="classDropdownBtn" onclick="toggleDropdown('class')" aria-haspopup="true" aria-expanded="false" title="Filter by event classes">
+              <span class="multiselect-label" id="classSelectLabel">All Classes</span>
+              <svg class="dropdown-arrow" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <div class="multiselect-menu menu-class" id="classDropdownMenu">
+              <div class="multiselect-header">
+                <span>Classes</span>
+                <button type="button" class="btn-text-action" onclick="selectAllClasses(false)">Clear</button>
+              </div>
+              <div class="multiselect-items" id="classItemsContainer"></div>
+            </div>
+          </div>
 
-          <select id="eventSelect" class="select-filter select-event">
-            <option value="">All Event Types</option>
-            <% if (typeof eventTypes !== 'undefined' && eventTypes && eventTypes.length > 0) { %>
-              <%
-                const classGroups = {
-                  danger: { label: 'Danger', items: [] },
-                  warning: { label: 'Warning', items: [] },
-                  purple: { label: 'Credentials', items: [] },
-                  success: { label: 'Success', items: [] },
-                  info: { label: 'Info', items: [] }
-                };
-                eventTypes.forEach(function(ev) {
-                  let c = 'info';
-                  if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('RATE_LIMIT')) c = 'danger';
-                  else if (ev.includes('REVOKED') || ev.includes('LOGOUT') || ev.includes('REJECTED')) c = 'warning';
-                  else if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) c = 'purple';
-                  else if (ev.includes('SUCCESS') || ev.includes('APPROVED')) c = 'success';
-                  if (classGroups[c]) classGroups[c].items.push(ev);
-                });
-                ['danger', 'warning', 'purple', 'success', 'info'].forEach(function(cKey) {
-                  const grp = classGroups[cKey];
-                  if (grp && grp.items.length > 0) {
-                    grp.items.sort(function(a, b) { return a.localeCompare(b); });
-              %>
-                <optgroup label="<%= grp.label %>">
-                  <% grp.items.forEach(function(ev) { %>
-                    <option value="<%= ev %>"><%= ev %></option>
-                  <% }); %>
-                </optgroup>
-              <%
-                  }
-                });
-              %>
-            <% } %>
-          </select>
+          <!-- Event Type Multiselect -->
+          <div class="multiselect-wrapper wrapper-event" id="eventMultiselectWrapper">
+            <button type="button" class="select-filter select-event multiselect-trigger" id="eventDropdownBtn" onclick="toggleDropdown('event')" aria-haspopup="true" aria-expanded="false" title="Filter by event types">
+              <span class="multiselect-label" id="eventSelectLabel">All Event Types</span>
+              <svg class="dropdown-arrow" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <div class="multiselect-menu menu-event" id="eventDropdownMenu">
+              <div class="multiselect-header">
+                <input type="text" id="eventFilterQuickSearch" class="multiselect-search-input" placeholder="Search event types..." autocomplete="off">
+                <button type="button" class="btn-text-action" onclick="selectAllEvents(false)">Clear</button>
+              </div>
+              <div class="multiselect-items" id="eventItemsContainer"></div>
+            </div>
+          </div>
 
           <select id="sortSelect" class="select-filter select-sort" title="Sort order">
             <option value="time-desc" selected>Newest First</option>
@@ -236,10 +225,15 @@
   <script>
     let currentSearch = '';
     let currentTimeRange = '24h';
-    let currentEvent = '';
-    let currentClass = '<%= typeof initialClass !== "undefined" && initialClass ? initialClass : "" %>';
+    let currentClasses = (() => {
+      const init = '<%= typeof initialClass !== "undefined" && initialClass ? initialClass : "" %>';
+      if (!init) return [];
+      return init.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    })();
+    let currentEvents = [];
     let currentSort = 'time-desc';
     let currentOffset = 0;
+    let latestEventTypes = <%- JSON.stringify(typeof eventTypes !== 'undefined' ? eventTypes : []) %>;
     let pageSize = (() => {
       try {
         const saved = parseInt(localStorage.getItem('audit_page_size'), 10);
@@ -293,79 +287,104 @@
       return `badge-${getEventClass(event)}`;
     }
 
-    function setClassFilter(cls) {
-      if (currentClass === cls) {
-        currentClass = '';
-      } else {
-        currentClass = cls;
-      }
-      const sel = document.getElementById('classSelect');
-      if (sel) sel.value = currentClass;
-      currentOffset = 0;
-      openDrawers.clear();
-      updateClearFilterState();
-      fetchAuditLogs();
-    }
+    const ALL_CLASSES = [
+      { key: 'danger', label: 'Danger (Red)', indicator: 'indicator-danger' },
+      { key: 'warning', label: 'Warning (Amber)', indicator: 'indicator-warning' },
+      { key: 'purple', label: 'Credentials (Purple)', indicator: 'indicator-purple' },
+      { key: 'success', label: 'Success (Green)', indicator: 'indicator-success' },
+      { key: 'info', label: 'Info (Blue)', indicator: 'indicator-info' },
+    ];
 
-    function setEventFilter(ev) {
-      if (currentEvent === ev) {
-        currentEvent = '';
-      } else {
-        currentEvent = ev;
-      }
-      const sel = document.getElementById('eventSelect');
-      if (sel) {
-        if (currentEvent) {
-          const opt = sel.querySelector(`option[value="${CSS.escape(currentEvent)}"]`);
-          if (!opt) {
-            const c = getEventClass(currentEvent);
-            const labelMap = { danger: 'Danger', warning: 'Warning', purple: 'Credentials', success: 'Success', info: 'Info' };
-            const targetLabel = labelMap[c] || 'Info';
-            let optGroup = sel.querySelector(`optgroup[label="${targetLabel}"]`);
-            if (!optGroup) {
-              optGroup = document.createElement('optgroup');
-              optGroup.label = targetLabel;
-              sel.appendChild(optGroup);
-            }
-            const newOpt = document.createElement('option');
-            newOpt.value = currentEvent;
-            newOpt.textContent = currentEvent;
-            optGroup.appendChild(newOpt);
-          }
-        }
-        sel.value = currentEvent;
-      }
-      currentOffset = 0;
-      openDrawers.clear();
-      updateClearFilterState();
-      fetchAuditLogs();
-    }
+    function renderClassMultiselect() {
+      const container = document.getElementById('classItemsContainer');
+      if (!container) return;
+      container.innerHTML = '';
 
-    async function fetchAuditLogs() {
-      const params = new URLSearchParams({
-        sort: currentSort,
-        event: currentEvent,
-        eventClass: currentClass,
-        search: currentSearch,
-        from: getFromTimestamp(currentTimeRange),
-        limit: pageSize,
-        offset: currentOffset,
+      ALL_CLASSES.forEach(item => {
+        const isSelected = currentClasses.includes(item.key);
+        const row = document.createElement('div');
+        row.className = 'multiselect-item' + (isSelected ? ' selected' : '');
+        row.onclick = (e) => {
+          e.stopPropagation();
+          toggleClass(item.key);
+        };
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'multiselect-checkbox';
+        checkbox.checked = isSelected;
+        checkbox.onclick = (e) => e.stopPropagation();
+        checkbox.onchange = () => toggleClass(item.key);
+
+        const dot = document.createElement('span');
+        dot.className = `class-indicator ${item.indicator}`;
+
+        const span = document.createElement('span');
+        span.textContent = item.label;
+
+        row.appendChild(checkbox);
+        row.appendChild(dot);
+        row.appendChild(span);
+        container.appendChild(row);
       });
 
-      try {
-        const res = await fetch(`/auth/audit/api?${params.toString()}`);
-        if (!res.ok) throw new Error('Failed to load audit logs');
-        const data = await res.json();
-        renderAuditLogs(data);
-      } catch (err) {
-        console.error('Audit fetch error:', err);
+      updateClassMultiselectLabel();
+    }
+
+    function updateClassMultiselectLabel() {
+      const labelEl = document.getElementById('classSelectLabel');
+      const btn = document.getElementById('classDropdownBtn');
+      if (!labelEl) return;
+
+      if (currentClasses.length === 0) {
+        labelEl.textContent = 'All Classes';
+        if (btn) btn.title = 'Filter by event classes';
+      } else if (currentClasses.length === 1) {
+        const found = ALL_CLASSES.find(c => c.key === currentClasses[0]);
+        labelEl.textContent = found ? found.label.split(' ')[0] : currentClasses[0];
+        if (btn) btn.title = `Class: ${currentClasses[0]}`;
+      } else {
+        labelEl.textContent = `Classes (${currentClasses.length})`;
+        if (btn) btn.title = `Classes: ${currentClasses.join(', ')}`;
       }
     }
 
-    function updateEventSelect(eventTypes) {
+    function toggleClass(cls) {
+      const idx = currentClasses.indexOf(cls);
+      if (idx > -1) {
+        currentClasses.splice(idx, 1);
+      } else {
+        currentClasses.push(cls);
+      }
+      renderClassMultiselect();
+      currentOffset = 0;
+      openDrawers.clear();
+      updateClearFilterState();
+      fetchAuditLogs();
+    }
+
+    function selectAllClasses(select) {
+      if (select) {
+        currentClasses = ALL_CLASSES.map(c => c.key);
+      } else {
+        currentClasses = [];
+      }
+      renderClassMultiselect();
+      currentOffset = 0;
+      openDrawers.clear();
+      updateClearFilterState();
+      fetchAuditLogs();
+    }
+
+    function renderEventMultiselect(eventTypes) {
       if (!Array.isArray(eventTypes)) return;
-      const select = document.getElementById('eventSelect');
-      const currentVal = currentEvent || select.value;
+      latestEventTypes = eventTypes;
+      const container = document.getElementById('eventItemsContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const searchInput = document.getElementById('eventFilterQuickSearch');
+      const filterText = (searchInput ? searchInput.value : '').trim().toLowerCase();
 
       const classGroups = {
         danger: { label: 'Danger', items: [] },
@@ -384,44 +403,186 @@
         }
       }
 
-      const existingOptions = Array.from(select.querySelectorAll('option')).slice(1).map(opt => opt.value);
-      const allNewEvents = ['danger', 'warning', 'purple', 'success', 'info']
-        .flatMap(cKey => classGroups[cKey].items.slice().sort((a, b) => a.localeCompare(b)));
-
-      const isSame = existingOptions.length === allNewEvents.length &&
-        existingOptions.every((val, idx) => val === allNewEvents[idx]);
-
-      if (isSame) {
-        if (select.value !== currentVal) select.value = currentVal;
-        return;
-      }
-
-      select.innerHTML = '<option value="">All Event Types</option>';
-
       ['danger', 'warning', 'purple', 'success', 'info'].forEach(cKey => {
         const grp = classGroups[cKey];
-        if (grp && grp.items.length > 0) {
-          grp.items.sort((a, b) => a.localeCompare(b));
-          const optGroup = document.createElement('optgroup');
-          optGroup.label = grp.label;
+        if (!grp || grp.items.length === 0) return;
 
-          for (const ev of grp.items) {
-            const opt = document.createElement('option');
-            opt.value = ev;
-            opt.textContent = ev;
-            if (ev === currentVal) {
-              opt.selected = true;
-            }
-            optGroup.appendChild(opt);
-          }
-          select.appendChild(optGroup);
-        }
+        grp.items.sort((a, b) => a.localeCompare(b));
+
+        const visibleItems = grp.items.filter(ev => !filterText || ev.toLowerCase().includes(filterText));
+        if (visibleItems.length === 0) return;
+
+        const title = document.createElement('div');
+        title.className = 'multiselect-group-title';
+        title.textContent = grp.label;
+        container.appendChild(title);
+
+        visibleItems.forEach(ev => {
+          const isSelected = currentEvents.includes(ev);
+          const row = document.createElement('div');
+          row.className = 'multiselect-item' + (isSelected ? ' selected' : '');
+          row.onclick = (e) => {
+            e.stopPropagation();
+            toggleEvent(ev);
+          };
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.className = 'multiselect-checkbox';
+          checkbox.checked = isSelected;
+          checkbox.onclick = (e) => e.stopPropagation();
+          checkbox.onchange = () => toggleEvent(ev);
+
+          const span = document.createElement('span');
+          span.textContent = ev;
+
+          row.appendChild(checkbox);
+          row.appendChild(span);
+          container.appendChild(row);
+        });
       });
 
-      if (currentVal && !eventTypes.includes(currentVal)) {
-        currentEvent = '';
-      } else if (currentVal) {
-        select.value = currentVal;
+      updateEventMultiselectLabel();
+    }
+
+    function updateEventMultiselectLabel() {
+      const labelEl = document.getElementById('eventSelectLabel');
+      const btn = document.getElementById('eventDropdownBtn');
+      if (!labelEl) return;
+
+      if (currentEvents.length === 0) {
+        labelEl.textContent = 'All Event Types';
+        if (btn) btn.title = 'Filter by event types';
+      } else if (currentEvents.length === 1) {
+        labelEl.textContent = currentEvents[0];
+        if (btn) btn.title = `Event: ${currentEvents[0]}`;
+      } else {
+        labelEl.textContent = `Events (${currentEvents.length})`;
+        if (btn) btn.title = `Events: ${currentEvents.join(', ')}`;
+      }
+    }
+
+    function toggleEvent(ev) {
+      if (!latestEventTypes.includes(ev)) {
+        latestEventTypes.push(ev);
+      }
+      const idx = currentEvents.indexOf(ev);
+      if (idx > -1) {
+        currentEvents.splice(idx, 1);
+      } else {
+        currentEvents.push(ev);
+      }
+      renderEventMultiselect(latestEventTypes);
+      currentOffset = 0;
+      openDrawers.clear();
+      updateClearFilterState();
+      fetchAuditLogs();
+    }
+
+    function selectAllEvents(select) {
+      if (select) {
+        currentEvents = latestEventTypes.slice();
+      } else {
+        currentEvents = [];
+      }
+      renderEventMultiselect(latestEventTypes);
+      currentOffset = 0;
+      openDrawers.clear();
+      updateClearFilterState();
+      fetchAuditLogs();
+    }
+
+    function setClassFilter(cls) {
+      toggleClass(cls);
+    }
+
+    function setEventFilter(ev) {
+      toggleEvent(ev);
+    }
+
+    function toggleDropdown(type) {
+      const classWrapper = document.getElementById('classMultiselectWrapper');
+      const classMenu = document.getElementById('classDropdownMenu');
+      const eventWrapper = document.getElementById('eventMultiselectWrapper');
+      const eventMenu = document.getElementById('eventDropdownMenu');
+
+      if (type === 'class') {
+        const isOpen = classMenu.classList.contains('open');
+        closeEventMenu();
+        if (isOpen) {
+          closeClassMenu();
+        } else {
+          classMenu.classList.add('open');
+          classWrapper.classList.add('open');
+        }
+      } else if (type === 'event') {
+        const isOpen = eventMenu.classList.contains('open');
+        closeClassMenu();
+        if (isOpen) {
+          closeEventMenu();
+        } else {
+          eventMenu.classList.add('open');
+          eventWrapper.classList.add('open');
+          setTimeout(() => {
+            const searchInput = document.getElementById('eventFilterQuickSearch');
+            if (searchInput) searchInput.focus();
+          }, 50);
+        }
+      }
+    }
+
+    function closeClassMenu() {
+      const wrapper = document.getElementById('classMultiselectWrapper');
+      const menu = document.getElementById('classDropdownMenu');
+      if (menu) menu.classList.remove('open');
+      if (wrapper) wrapper.classList.remove('open');
+    }
+
+    function closeEventMenu() {
+      const wrapper = document.getElementById('eventMultiselectWrapper');
+      const menu = document.getElementById('eventDropdownMenu');
+      if (menu) menu.classList.remove('open');
+      if (wrapper) wrapper.classList.remove('open');
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#classMultiselectWrapper')) {
+        closeClassMenu();
+      }
+      if (!e.target.closest('#eventMultiselectWrapper')) {
+        closeEventMenu();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeClassMenu();
+        closeEventMenu();
+      }
+    });
+
+    async function fetchAuditLogs() {
+      const params = new URLSearchParams({
+        sort: currentSort,
+        search: currentSearch,
+        from: getFromTimestamp(currentTimeRange),
+        limit: pageSize,
+        offset: currentOffset,
+      });
+      if (currentClasses.length > 0) {
+        params.set('eventClass', currentClasses.join(','));
+      }
+      if (currentEvents.length > 0) {
+        params.set('event', currentEvents.join(','));
+      }
+
+      try {
+        const res = await fetch(`/auth/audit/api?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to load audit logs');
+        const data = await res.json();
+        renderAuditLogs(data);
+      } catch (err) {
+        console.error('Audit fetch error:', err);
       }
     }
 
@@ -436,7 +597,7 @@
       }
 
       if (data.eventTypes) {
-        updateEventSelect(data.eventTypes);
+        renderEventMultiselect(data.eventTypes);
       }
 
       // Preserve currently open drawer IDs before clearing DOM
@@ -620,11 +781,15 @@
       const params = new URLSearchParams({
         format,
         sort: currentSort,
-        event: currentEvent,
-        eventClass: currentClass,
         search: currentSearch,
         from: getFromTimestamp(currentTimeRange),
       });
+      if (currentClasses.length > 0) {
+        params.set('eventClass', currentClasses.join(','));
+      }
+      if (currentEvents.length > 0) {
+        params.set('event', currentEvents.join(','));
+      }
       window.location.href = `/auth/audit/export?${params.toString()}`;
     }
 
@@ -662,8 +827,8 @@
     function updateClearFilterState() {
       const isFiltered = Boolean(
         (currentSearch && currentSearch.trim() !== '') ||
-        (currentClass && currentClass !== '') ||
-        (currentEvent && currentEvent !== '') ||
+        (currentClasses && currentClasses.length > 0) ||
+        (currentEvents && currentEvents.length > 0) ||
         (currentTimeRange && currentTimeRange !== '24h') ||
         (currentSort && currentSort !== 'time-desc')
       );
@@ -676,8 +841,8 @@
     function clearAllFilters() {
       currentSearch = '';
       currentTimeRange = '24h';
-      currentClass = '';
-      currentEvent = '';
+      currentClasses = [];
+      currentEvents = [];
       currentSort = 'time-desc';
       currentOffset = 0;
 
@@ -687,14 +852,11 @@
       const timeSelect = document.getElementById('timeRangeSelect');
       if (timeSelect) timeSelect.value = '24h';
 
-      const classSelect = document.getElementById('classSelect');
-      if (classSelect) classSelect.value = '';
-
-      const eventSelect = document.getElementById('eventSelect');
-      if (eventSelect) eventSelect.value = '';
-
       const sortSelect = document.getElementById('sortSelect');
       if (sortSelect) sortSelect.value = 'time-desc';
+
+      renderClassMultiselect();
+      renderEventMultiselect(latestEventTypes);
 
       openDrawers.clear();
       updateSortIcons();
@@ -777,27 +939,9 @@
       fetchAuditLogs();
     });
 
-    // Class filter listener
-    document.getElementById('classSelect').addEventListener('change', (e) => {
-      currentClass = e.target.value;
-      currentOffset = 0;
-      openDrawers.clear();
-      updateClearFilterState();
-      fetchAuditLogs();
-    });
-
     // Time Range listener
     document.getElementById('timeRangeSelect').addEventListener('change', (e) => {
       currentTimeRange = e.target.value;
-      currentOffset = 0;
-      openDrawers.clear();
-      updateClearFilterState();
-      fetchAuditLogs();
-    });
-
-    // Specific Event listener
-    document.getElementById('eventSelect').addEventListener('change', (e) => {
-      currentEvent = e.target.value;
       currentOffset = 0;
       openDrawers.clear();
       updateClearFilterState();
@@ -817,7 +961,19 @@
       }, 300);
     });
 
-    // Initial load
+    // Quick search input inside event multiselect
+    const eventQuickSearch = document.getElementById('eventFilterQuickSearch');
+    if (eventQuickSearch) {
+      eventQuickSearch.addEventListener('input', () => {
+        renderEventMultiselect(latestEventTypes);
+      });
+      eventQuickSearch.addEventListener('click', (e) => e.stopPropagation());
+      eventQuickSearch.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+
+    // Initial load & multiselect initialization
+    renderClassMultiselect();
+    renderEventMultiselect(latestEventTypes);
     fetchAuditLogs();
     startPolling();
   </script>

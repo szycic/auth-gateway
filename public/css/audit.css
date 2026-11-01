@@ -259,6 +259,188 @@ body {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 
+/* --- Multiselect Components --- */
+.multiselect-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.multiselect-wrapper.wrapper-class {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.multiselect-wrapper.wrapper-event {
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.multiselect-trigger {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  text-align: left;
+}
+
+.multiselect-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.dropdown-arrow {
+  width: 13px;
+  height: 13px;
+  color: #94a3b8;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.multiselect-wrapper.open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.multiselect-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 200px;
+  max-height: 360px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 250;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+}
+
+.multiselect-menu.menu-event {
+  min-width: 280px;
+}
+
+.multiselect-menu.open {
+  display: flex;
+}
+
+.multiselect-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(30, 41, 59, 0.5);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.multiselect-search-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 0.5rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.75rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.multiselect-search-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+}
+
+.btn-text-action {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.725rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-text-action:hover {
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.multiselect-items {
+  overflow-y: auto;
+  max-height: 280px;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.multiselect-group-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  padding: 0.45rem 0.5rem 0.2rem 0.5rem;
+}
+
+.multiselect-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.multiselect-item:hover {
+  background: rgba(56, 189, 248, 0.12);
+  color: #ffffff;
+}
+
+.multiselect-item.selected {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.multiselect-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: #38bdf8;
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.class-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.class-indicator.indicator-danger { background-color: #f43f5e; box-shadow: 0 0 6px rgba(244, 63, 94, 0.5); }
+.class-indicator.indicator-warning { background-color: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.5); }
+.class-indicator.indicator-purple { background-color: #a855f7; box-shadow: 0 0 6px rgba(168, 85, 247, 0.5); }
+.class-indicator.indicator-success { background-color: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.5); }
+.class-indicator.indicator-info { background-color: #38bdf8; box-shadow: 0 0 6px rgba(56, 189, 248, 0.5); }
+
 .select-filter optgroup {
   background: #1e293b;
   color: #94a3b8;
@@ -710,7 +892,9 @@ body {
     gap: 0.5rem;
     width: 100%;
   }
-  .filters-row .select-filter {
+  .filters-row .select-filter,
+  .multiselect-wrapper.wrapper-class,
+  .multiselect-wrapper.wrapper-event {
     flex: 1 1 0;
     width: auto;
     min-width: 0;
@@ -751,7 +935,9 @@ body {
     gap: 0.5rem;
     width: 100%;
   }
-  .filters-row .select-filter {
+  .filters-row .select-filter,
+  .multiselect-wrapper.wrapper-class,
+  .multiselect-wrapper.wrapper-event {
     width: 100%;
   }
 }
