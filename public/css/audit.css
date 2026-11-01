@@ -234,6 +234,46 @@ body {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 
+.btn-clear-filter {
+  height: 38px;
+  padding: 0 0.85rem;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #94a3b8;
+  font-size: 0.825rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.btn-clear-filter:hover {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.4);
+  color: #fb7185;
+}
+
+.btn-clear-filter.active {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.4);
+  color: #fb7185;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.refresh-icon.spinning {
+  animation: spin 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .export-actions {
   display: flex;
   gap: 0.45rem;
@@ -610,12 +650,16 @@ body {
   .select-filter {
     width: 100%;
   }
+  .btn-clear-filter {
+    width: 100%;
+    justify-content: center;
+  }
   .export-actions-desktop {
     display: none !important;
   }
   .export-actions-mobile {
     display: grid !important;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 0.5rem;
     width: 100%;
     margin-top: 0.65rem;
@@ -638,6 +682,10 @@ body {
 
   .top-bar h1 {
     font-size: 1.35rem;
+  }
+
+  .export-actions-mobile {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .top-bar-actions {

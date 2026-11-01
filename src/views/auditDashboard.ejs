@@ -86,10 +86,23 @@
           <option value="class-desc">Sort: Severity (High to Low)</option>
           <option value="class-asc">Sort: Severity (Low to High)</option>
         </select>
+
+        <button type="button" id="btnClearFilters" class="btn-clear-filter" onclick="clearAllFilters()" title="Reset all search &amp; filter criteria">
+          <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Clear
+        </button>
       </div>
 
       <!-- Mobile-only export & auto-refresh toolbar -->
       <div class="export-actions export-actions-mobile">
+        <button type="button" class="btn-export btn-manual-refresh" onclick="manualRefresh()" title="Refresh logs now">
+          <svg class="refresh-icon" style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh
+        </button>
         <button type="button" class="btn-export" onclick="exportData('csv')">
           <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -119,6 +132,12 @@
 
         <!-- Desktop-only export & auto-refresh toolbar -->
         <div class="export-actions export-actions-desktop">
+          <button type="button" class="btn-export btn-manual-refresh" onclick="manualRefresh()" title="Refresh logs now">
+            <svg class="refresh-icon" style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
           <button type="button" class="btn-export" onclick="exportData('csv')" title="Download CSV">
             <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -295,6 +314,10 @@
       const tbody = document.getElementById('auditTableBody');
       const emptyEl = document.getElementById('auditEmptyState');
 
+      if (typeof updateClearFilterState === 'function') {
+        updateClearFilterState();
+      }
+
       if (data.eventTypes) {
         updateEventSelect(data.eventTypes);
       }
@@ -470,6 +493,65 @@
       } else {
         if (autoRefreshTimer) clearInterval(autoRefreshTimer);
       }
+    }
+
+    async function manualRefresh() {
+      const icons = document.querySelectorAll('.refresh-icon');
+      icons.forEach(ic => ic.classList.add('spinning'));
+      try {
+        await fetchAuditLogs();
+      } finally {
+        setTimeout(() => {
+          icons.forEach(ic => ic.classList.remove('spinning'));
+        }, 650);
+      }
+    }
+
+    function updateClearFilterState() {
+      const isFiltered = Boolean(
+        currentSearch ||
+        currentClass ||
+        currentEvent ||
+        (currentTimeRange && currentTimeRange !== '24h') ||
+        currentSort !== 'time-desc'
+      );
+      const btn = document.getElementById('btnClearFilters');
+      if (btn) {
+        if (isFiltered) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      }
+    }
+
+    function clearAllFilters() {
+      currentSearch = '';
+      currentTimeRange = '24h';
+      currentClass = '';
+      currentEvent = '';
+      currentSort = 'time-desc';
+      currentOffset = 0;
+
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) searchInput.value = '';
+
+      const timeSelect = document.getElementById('timeRangeSelect');
+      if (timeSelect) timeSelect.value = '24h';
+
+      const classSelect = document.getElementById('classSelect');
+      if (classSelect) classSelect.value = '';
+
+      const eventSelect = document.getElementById('eventSelect');
+      if (eventSelect) eventSelect.value = '';
+
+      const sortSelect = document.getElementById('sortSelect');
+      if (sortSelect) sortSelect.value = 'time-desc';
+
+      openDrawers.clear();
+      updateSortIcons();
+      updateClearFilterState();
+      fetchAuditLogs();
     }
 
     function startPolling() {
