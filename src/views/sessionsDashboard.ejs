@@ -10,6 +10,11 @@
   <div class="ambient-glow"></div>
   <%
     const pad = (n) => String(n).padStart(2, '0');
+    const formatExactDateTime = (ts) => {
+      if (!ts) return '';
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? '' : pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    };
   %>
   <div class="container">
     <div class="top-bar">
@@ -74,32 +79,31 @@
                    timeLabel = elapsedMinutes + 'm ago';
                  }
 
-                 let expiresLabel = 'Never';
+                 const startedExact = formatExactDateTime(s.createdAt);
+
                  let ttlLabel = 'Never';
+                 const expiresExact = formatExactDateTime(s.expiresAt);
                  if (s.expiresAt) {
-                   const expDate = new Date(s.expiresAt);
-                   if (!isNaN(expDate.getTime())) {
-                     expiresLabel = pad(expDate.getDate()) + '.' + pad(expDate.getMonth() + 1) + '.' + expDate.getFullYear() + ' ' + pad(expDate.getHours()) + ':' + pad(expDate.getMinutes());
-                     const remainingMs = s.expiresAt - Date.now();
-                     if (remainingMs <= 0) {
-                       ttlLabel = 'Expired';
+                   const remainingMs = s.expiresAt - Date.now();
+                   if (remainingMs <= 0) {
+                     ttlLabel = 'Expired';
+                   } else {
+                     const totalHours = Math.floor(remainingMs / 3600000);
+                     const days = Math.floor(totalHours / 24);
+                     const hours = totalHours % 24;
+                     const minutes = Math.floor((remainingMs % 3600000) / 60000);
+                     if (days > 0) {
+                       ttlLabel = days + 'd ' + hours + 'h left';
+                     } else if (hours > 0) {
+                       ttlLabel = hours + 'h ' + minutes + 'm left';
                      } else {
-                       const totalHours = Math.floor(remainingMs / 3600000);
-                       const days = Math.floor(totalHours / 24);
-                       const hours = totalHours % 24;
-                       const minutes = Math.floor((remainingMs % 3600000) / 60000);
-                       if (days > 0) {
-                         ttlLabel = days + 'd ' + hours + 'h left';
-                       } else if (hours > 0) {
-                         ttlLabel = hours + 'h ' + minutes + 'm left';
-                       } else {
-                         ttlLabel = Math.max(1, minutes) + 'm left';
-                       }
+                       ttlLabel = Math.max(1, minutes) + 'm left';
                      }
                    }
                  }
 
                  let lastActiveLabel = 'No recent activity';
+                 const lastActiveExact = formatExactDateTime(s.lastActiveAt);
                  if (s.lastActiveAt) {
                    const activeElapsedMin = Math.floor(Math.max(0, Date.now() - s.lastActiveAt) / 60000);
                    if (activeElapsedMin >= 60 * 24) {
@@ -189,12 +193,12 @@
                     <button type="button" class="btn-rename-cancel" onclick="closeRename('<%= s.id %>')">Cancel</button>
                   </form>
                   <div class="session-sub">
-                    <div><%= s.ip %> &bull; <span class="session-started" data-created="<%= s.createdAt || '' %>">Started <%= timeLabel %></span></div>
+                    <div><%= s.ip %> &bull; <span class="session-started" data-created="<%= s.createdAt || '' %>" title="<%= startedExact %>">Started <%= timeLabel %></span></div>
                     
                     <div class="session-activity">
                       <span style="color: #94a3b8;">Last active:</span>
                       <% if (s.lastActiveAt) { %>
-                        <span class="session-last-active" data-last-active="<%= s.lastActiveAt %>" data-service="<%= s.lastActiveService || '' %>"><%= lastActiveLabel %><% if (s.lastActiveService) { %> on <%= s.lastActiveService %><% } %></span>
+                        <span class="session-last-active" data-last-active="<%= s.lastActiveAt %>" data-service="<%= s.lastActiveService || '' %>" title="<%= lastActiveExact %>"><%= lastActiveLabel %><% if (s.lastActiveService) { %> on <%= s.lastActiveService %><% } %></span>
                       <% } else { %>
                         <span style="color: #64748b;">Never</span>
                       <% } %>
@@ -203,7 +207,7 @@
                     <div class="session-expiry">
                       <span style="color: #94a3b8;">Expires:</span>
                       <% if (s.expiresAt) { %>
-                        <span class="session-ttl" data-expires="<%= s.expiresAt %>" title="<%= expiresLabel %>"><%= ttlLabel %></span>
+                        <span class="session-ttl" data-expires="<%= s.expiresAt %>" title="<%= expiresExact %>"><%= ttlLabel %></span>
                       <% } else { %>
                         <span style="color: #64748b;">Never</span>
                       <% } %>
@@ -447,6 +451,13 @@
       return String(n).padStart(2, '0');
     }
 
+    function formatExactDateTime(ts) {
+      if (!ts) return '';
+      const d = new Date(Number(ts));
+      if (isNaN(d.getTime())) return '';
+      return padZero(d.getDate()) + '.' + padZero(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + padZero(d.getHours()) + ':' + padZero(d.getMinutes()) + ':' + padZero(d.getSeconds());
+    }
+
     function updateSessionTimestamps() {
       // 1. Started time
       document.querySelectorAll('.session-started[data-created]').forEach(function(el) {
@@ -463,6 +474,7 @@
         } else if (elapsedMinutes >= 1) {
           label = elapsedMinutes + 'm ago';
         }
+        el.title = formatExactDateTime(ts);
         el.textContent = 'Started ' + label;
       });
 
@@ -487,9 +499,7 @@
             ttlLabel = Math.max(1, minutes) + 'm left';
           }
         }
-        const expDate = new Date(ts);
-        const formatted = pad(expDate.getDate()) + '.' + pad(expDate.getMonth() + 1) + '.' + expDate.getFullYear() + ' ' + pad(expDate.getHours()) + ':' + pad(expDate.getMinutes());
-        el.title = formatted;
+        el.title = formatExactDateTime(ts);
         el.textContent = ttlLabel;
       });
 
@@ -509,6 +519,7 @@
         } else if (activeElapsedMin >= 1) {
           label = activeElapsedMin + 'm ago';
         }
+        el.title = formatExactDateTime(ts);
         el.textContent = label + (svc ? ' on ' + svc : '');
       });
     }
