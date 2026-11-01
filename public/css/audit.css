@@ -167,6 +167,7 @@ body {
 .search-box-wrapper {
   flex: 1 1 220px;
   min-width: 180px;
+  height: 38px;
   position: relative;
 }
 
@@ -684,6 +685,8 @@ body {
   }
   .search-box-wrapper {
     width: 100%;
+    flex: none;
+    height: 38px;
   }
   .filters-row {
     display: flex;
