@@ -5,6 +5,7 @@ const config = require('../config');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
 
@@ -39,6 +40,12 @@ router.get('/init', async (req, res) => {
   const clientIp = authService.getClientIp(req);
   const rateCheck = checkInitRateLimit(clientIp);
   if (!rateCheck.allowed) {
+    auditLog('RATE_LIMIT_TRIGGERED', {
+      ip: clientIp,
+      endpoint: '/auth/init',
+      reason: 'too_many_qr_requests',
+      retryAfterSec: rateCheck.retryAfter,
+    });
     res.set('Retry-After', String(rateCheck.retryAfter));
     return res.status(429).json({
       error: 'Rate limit active',

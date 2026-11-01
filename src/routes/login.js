@@ -125,6 +125,12 @@ router.post('/login', (req, res) => {
   const clientIp = authService.getClientIp(req);
   const lockoutStatus = authService.checkLoginLockout(clientIp);
   if (lockoutStatus.locked) {
+    auditLog('RATE_LIMIT_TRIGGERED', {
+      ip: clientIp,
+      endpoint: '/login',
+      reason: 'account_locked',
+      remainingMins: lockoutStatus.remainingMins,
+    });
     const err = `Too many failed attempts. Locked out for ${lockoutStatus.remainingMins} min.`;
     return res.redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}&error=${encodeURIComponent(err)}`);
   }

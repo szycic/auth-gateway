@@ -90,6 +90,12 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
   const clientIp = authService.getClientIp(req);
   const lockoutStatus = authService.checkLoginLockout(clientIp);
   if (lockoutStatus.locked) {
+    auditLog('RATE_LIMIT_TRIGGERED', {
+      ip: clientIp,
+      endpoint: '/auth/approver/webauthn/login-verify',
+      reason: 'account_locked',
+      remainingMins: lockoutStatus.remainingMins,
+    });
     return res.status(429).json({
       error: `Too many failed login attempts. Locked out for ${lockoutStatus.remainingMins} more minute(s).`,
     });
@@ -330,6 +336,12 @@ router.post('/approver/login', (req, res) => {
   const clientIp = authService.getClientIp(req);
   const lockoutStatus = authService.checkLoginLockout(clientIp);
   if (lockoutStatus.locked) {
+    auditLog('RATE_LIMIT_TRIGGERED', {
+      ip: clientIp,
+      endpoint: '/auth/approver/login',
+      reason: 'account_locked',
+      remainingMins: lockoutStatus.remainingMins,
+    });
     return res.status(429).render('approverLogin', {
       returnTo: redirectTarget,
       error: `Too many failed login attempts. Locked out for ${lockoutStatus.remainingMins} more minute(s).`,

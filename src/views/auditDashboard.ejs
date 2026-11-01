@@ -164,7 +164,7 @@
 
     function getEventBadgeClass(event) {
       if (event.includes('SUCCESS') || event.includes('APPROVED')) return 'badge-success';
-      if (event.includes('BLOCKED') || event.includes('FAILED') || event.includes('LOCKOUT') || event.includes('REJECTED')) return 'badge-danger';
+      if (event.includes('BLOCKED') || event.includes('FAILED') || event.includes('LOCKOUT') || event.includes('REJECTED') || event.includes('RATE_LIMIT')) return 'badge-danger';
       if (event.includes('REVOKED') || event.includes('LOGOUT')) return 'badge-warning';
       if (event.includes('FIDO') || event.includes('KEY') || event.includes('METHOD')) return 'badge-purple';
       return 'badge-info';

@@ -147,6 +147,7 @@ const EVENT_CATEGORIES = {
     'CSRF_LOGOUT_BLOCKED',
     'CROSS_SUBDOMAIN_BLOCKED',
     'LOCKOUT_TRIGGERED',
+    'RATE_LIMIT_TRIGGERED',
   ],
   approval: [
     'SESSION_APPROVED',
@@ -264,7 +265,7 @@ function getAuditStats() {
       logins24h++;
     } else if (entry.event.startsWith('CSRF_') || entry.event.startsWith('CROSS_SUBDOMAIN_')) {
       securityAlerts24h++;
-    } else if (entry.event === 'LOCKOUT_TRIGGERED' || entry.event === 'LOGIN_FAILED' || entry.event === 'APPROVER_LOGIN_FAILED') {
+    } else if (entry.event === 'LOCKOUT_TRIGGERED' || entry.event === 'RATE_LIMIT_TRIGGERED' || entry.event === 'LOGIN_FAILED' || entry.event === 'APPROVER_LOGIN_FAILED') {
       lockouts24h++;
     }
   }
