@@ -1,5 +1,6 @@
 const express = require('express');
 const config = require('../config');
+const versionHelper = require('../utils/versionHelper');
 const sessionService = require('../services/sessionService');
 const authService = require('../services/authService');
 
@@ -12,6 +13,9 @@ router.get('/health', (req, res) => {
 
   const baseResponse = {
     status: 'ok',
+    version: versionHelper.version,
+    assetVersion: versionHelper.assetVersion,
+    commit: versionHelper.commit,
     timestamp: new Date().toISOString(),
   };
 
@@ -37,6 +41,10 @@ router.get('/health', (req, res) => {
       disableAuth: Boolean(s.disableAuth),
     })),
   });
+});
+
+router.get('/version', (req, res) => {
+  return res.json(versionHelper.getMetadata());
 });
 
 module.exports = router;

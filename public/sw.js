@@ -1,7 +1,14 @@
-const CACHE_NAME = 'auth-gateway-v5';
+const CACHE_VERSION = '__CACHE_VERSION__';
+const CACHE_NAME = 'auth-gateway-' + (CACHE_VERSION.startsWith('__') ? 'v1' : CACHE_VERSION);
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/css/base.css',
+  '/css/portal.css',
+  '/css/sessions.css',
+  '/css/login.css',
+  '/css/approve.css',
+  '/css/approver.css',
+  '/css/notice.css',
   '/assets/icon.svg',
   '/assets/icon-192.png',
   '/assets/icon-512.png',
@@ -24,10 +31,19 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME).map((key) => {
+          console.log('[SW] Purging outdated cache:', key);
+          return caches.delete(key);
+        })
       );
     }).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
@@ -52,7 +68,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: Cache-first
+  // Static assets: Cache-first with network revalidation
   const isStaticAsset =
     STATIC_ASSETS.some((path) => url.pathname === path) ||
     url.pathname.startsWith('/auth/assets/') ||

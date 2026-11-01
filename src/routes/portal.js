@@ -1,8 +1,13 @@
 const express = require('express');
 const config = require('../config');
+const versionHelper = require('../utils/versionHelper');
 const sessionService = require('../services/sessionService');
 
 const router = express.Router();
+
+router.get('/version', (req, res) => {
+  return res.json(versionHelper.getMetadata());
+});
 
 router.get(['/', '/portal'], (req, res) => {
   let token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];

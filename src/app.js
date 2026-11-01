@@ -5,6 +5,8 @@ const config = require('./config');
 const sessionService = require('./services/sessionService');
 const routes = require('./routes');
 
+const versionHelper = require('./utils/versionHelper');
+
 const app = express();
 
 app.set('trust proxy', 1);
@@ -12,7 +14,9 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.locals.config = config;
 app.locals.isSessionAllowedForService = sessionService.isSessionAllowedForService;
-app.locals.assetVersion = Date.now().toString(36);
+app.locals.versionHelper = versionHelper;
+app.locals.appVersion = versionHelper.version;
+app.locals.assetVersion = versionHelper.assetVersion;
 
 const { isAuthDomain } = require('./utils/originHelper');
 

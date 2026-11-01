@@ -2,10 +2,25 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
+const versionHelper = require('../utils/versionHelper');
 const { isAuthDomain } = require('../utils/originHelper');
 const { generatePwaManifest } = require('../utils/pwaHelper');
 
 const router = express.Router();
+
+/**
+ * Intelligent Cache-Control middleware:
+ * - Versioned requests (?v=...): Cache aggressively (1 year, immutable).
+ * - Unversioned requests: Always revalidate against ETag / 304 (max-age=0, must-revalidate).
+ */
+function assetCacheControl(req, res, next) {
+  if (req.query && req.query.v) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+  }
+  next();
+}
 
 // Dynamic PWA manifest route (only on Auth Gateway domain)
 router.get('/manifest.webmanifest', (req, res, next) => {
@@ -15,7 +30,23 @@ router.get('/manifest.webmanifest', (req, res, next) => {
   return res.json(generatePwaManifest());
 });
 
-// Serve static PWA assets (sw.js, icons) ONLY for Auth Gateway host or /auth/ paths
+// Dynamic Service Worker route (injected with current version identifier)
+router.get('/sw.js', (req, res, next) => {
+  if (!isAuthDomain(req)) return next();
+  try {
+    const swPath = path.join(config.ROOT_DIR, 'public/sw.js');
+    let swContent = fs.readFileSync(swPath, 'utf8');
+    swContent = swContent.replace(/__CACHE_VERSION__/g, versionHelper.assetVersion);
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.send(swContent);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// Serve static PWA assets (icons, fallback) ONLY for Auth Gateway host or /auth/ paths
 const servePwaStatic = express.static(path.join(config.ROOT_DIR, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('sw.js')) {
@@ -23,9 +54,6 @@ const servePwaStatic = express.static(path.join(config.ROOT_DIR, 'public'), {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (filePath.endsWith('.css')) {
       res.setHeader('Content-Type', 'text/css');
-      res.setHeader('Cache-Control', 'public, max-age=604800');
-    } else if (filePath.endsWith('.png') || filePath.endsWith('.svg')) {
-      res.setHeader('Cache-Control', 'public, max-age=604800');
     }
   },
 });
@@ -36,18 +64,12 @@ router.use('/auth/assets', (req, res, next) => {
   next();
 });
 
-router.use('/auth/assets/css', express.static(path.join(config.ROOT_DIR, 'public/css'), {
-  maxAge: '7d',
-}));
+router.use('/auth/assets/css', assetCacheControl, express.static(path.join(config.ROOT_DIR, 'public/css')));
 
 // Serve operator custom scripts/assets from public/custom
-router.use('/auth/assets/custom', express.static(path.join(config.ROOT_DIR, 'public/custom'), {
-  maxAge: '1d',
-}));
+router.use('/auth/assets/custom', assetCacheControl, express.static(path.join(config.ROOT_DIR, 'public/custom')));
 
-router.use('/auth/assets', express.static(path.join(config.ROOT_DIR, 'public/assets'), {
-  maxAge: '7d',
-}));
+router.use('/auth/assets', assetCacheControl, express.static(path.join(config.ROOT_DIR, 'public/assets')));
 
 // Root icon fallbacks for standard browser probes
 router.get(['/favicon.ico', '/icon.svg'], (req, res, next) => {
@@ -64,20 +86,11 @@ router.get('/apple-touch-icon.png', (req, res, next) => {
 
 router.use((req, res, next) => {
   if (isAuthDomain(req) || req.path.startsWith('/auth/')) {
-    return servePwaStatic(req, res, next);
+    return assetCacheControl(req, res, () => {
+      servePwaStatic(req, res, next);
+    });
   }
   next();
-});
-
-router.get('/sw.js', (req, res, next) => {
-  if (!isAuthDomain(req)) return next();
-  res.sendFile(path.join(config.ROOT_DIR, 'public/sw.js'), {
-    headers: {
-      'Content-Type': 'application/javascript',
-      'Service-Worker-Allowed': '/',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-    },
-  });
 });
 
 // Serve jsQR for in-app scanner
@@ -85,7 +98,11 @@ router.get('/auth/assets/jsqr.js', (req, res) => {
   const localFile = path.join(config.ROOT_DIR, 'node_modules/jsqr/dist/jsQR.js');
   if (fs.existsSync(localFile)) {
     res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Cache-Control', 'public, max-age=604800');
+    if (req.query && req.query.v) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    }
     return res.sendFile(localFile);
   }
   return res.redirect('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
@@ -252,7 +269,11 @@ router.get('/auth/assets/auth-watchdog.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  if (req.query && req.query.v) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
   return res.send(getAuthWatchdogScript());
 });
 
@@ -364,7 +385,11 @@ router.get('/auth/assets/auth-public-guard.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  if (req.query && req.query.v) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
   return res.send(getAuthPublicGuardScript());
 });
 

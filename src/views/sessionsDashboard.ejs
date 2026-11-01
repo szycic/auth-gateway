@@ -3,7 +3,7 @@
 <head>
   <%- include('partials/head', { extraCss: '/css/sessions.css' }) %>
   <title>Active Sessions - <%= config.app.name %></title>
-  <script src="/auth/assets/jsqr.js"></script>
+  <script src="/auth/assets/jsqr.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>"></script>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>

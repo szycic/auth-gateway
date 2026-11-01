@@ -8,7 +8,14 @@
   if ('serviceWorker' in navigator && (!'<%= authOrigin %>' || window.location.origin === '<%= authOrigin %>')) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(reg => {
+          reg.update().catch(() => {});
+        })
         .catch(err => console.warn('[PWA] ServiceWorker registration failed:', err));
+
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('[PWA] Service worker updated to latest version.');
+      });
     });
   }
 </script>

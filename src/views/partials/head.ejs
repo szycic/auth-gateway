@@ -1,9 +1,21 @@
 <%
   const authBase = (config && config.server && config.server.baseUrl) ? config.server.baseUrl.replace(/\/+$/, '') : '';
-  const toAuthAsset = (p) => (p && typeof p === 'string' && p.startsWith('/') ? `${authBase}${p}` : p);
+  const currentAssetVersion = typeof assetVersion !== 'undefined' ? assetVersion : '1';
+  const toAuthAsset = (p) => {
+    if (!p || typeof p !== 'string') return p;
+    let url = p.startsWith('/') ? `${authBase}${p}` : p;
+    if (url.includes('.css') || url.includes('.js')) {
+      if (!url.includes('?v=') && !url.includes('&v=')) {
+        url += (url.includes('?') ? '&' : '?') + `v=${encodeURIComponent(currentAssetVersion)}`;
+      }
+    }
+    return url;
+  };
 %>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="application-version" content="<%= typeof appVersion !== 'undefined' ? appVersion : '1.0.0' %>">
+<meta name="asset-version" content="<%= currentAssetVersion %>">
 <link rel="manifest" href="<%= toAuthAsset('/manifest.webmanifest') %>">
 <meta name="theme-color" content="#1e293b">
 <meta name="color-scheme" content="dark">
@@ -18,13 +30,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="<%= toAuthAsset('/css/base.css') %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
+<link rel="stylesheet" href="<%= toAuthAsset('/css/base.css') %>">
 <% if (typeof extraCss !== 'undefined' && extraCss) { %>
   <% if (Array.isArray(extraCss)) { %>
     <% extraCss.forEach(function(href) { %>
-      <link rel="stylesheet" href="<%= toAuthAsset(href) %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
+      <link rel="stylesheet" href="<%= toAuthAsset(href) %>">
     <% }); %>
   <% } else { %>
-    <link rel="stylesheet" href="<%= toAuthAsset(extraCss) %>?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '1' %>">
+    <link rel="stylesheet" href="<%= toAuthAsset(extraCss) %>">
   <% } %>
 <% } %>

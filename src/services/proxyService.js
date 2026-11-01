@@ -1,5 +1,6 @@
 const http = require('http');
 const config = require('../config');
+const versionHelper = require('../utils/versionHelper');
 const sessionService = require('./sessionService');
 const authService = require('./authService');
 const { isAllowedOrigin } = require('../utils/originHelper');
@@ -219,14 +220,18 @@ function proxyToTargetApp(req, res) {
             return res.end(body);
           }
           const scriptName = isSessionValid ? 'auth-watchdog.js' : 'auth-public-guard.js';
-          let injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}" crossorigin="anonymous"></script>`;
+          const currentAssetVersion = versionHelper.assetVersion;
+          let injectionScript = `<script src="${config.BASE_URL}/auth/assets/${scriptName}?v=${encodeURIComponent(currentAssetVersion)}" crossorigin="anonymous"></script>`;
 
           if (Array.isArray(matchedService?.injectScripts)) {
             for (const scriptUrl of matchedService.injectScripts) {
               if (typeof scriptUrl === 'string' && scriptUrl.trim()) {
-                const resolvedUrl = scriptUrl.startsWith('http://') || scriptUrl.startsWith('https://')
+                let resolvedUrl = scriptUrl.startsWith('http://') || scriptUrl.startsWith('https://')
                   ? scriptUrl
                   : `${config.BASE_URL}${scriptUrl.startsWith('/') ? '' : '/'}${scriptUrl}`;
+                if (!resolvedUrl.includes('?v=') && !resolvedUrl.includes('&v=')) {
+                  resolvedUrl += (resolvedUrl.includes('?') ? '&' : '?') + `v=${encodeURIComponent(currentAssetVersion)}`;
+                }
                 const safeUrl = resolvedUrl.replace(/"/g, '&quot;');
                 injectionScript += `<script src="${safeUrl}" crossorigin="anonymous"></script>`;
               }

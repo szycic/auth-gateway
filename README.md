@@ -24,6 +24,7 @@ Auth Gateway provides zero-trust single sign-on (SSO) protection across multiple
   - [Pattern D: SPAs with Mixed Public & Protected Routes (e.g. ByteStash)](#pattern-d-spas-with-mixed-public--protected-routes-eg-bytestash)
 - [Automated & API Access (Gateway Token)](#automated--api-access-gateway-token)
 - [Health Check & Monitoring (`/auth/health`)](#health-check--monitoring-authhealth)
+- [Versioning & Asset Cache-Busting (`/auth/version`)](#versioning--asset-cache-busting-authversion)
 - [Session Management & Revocation Portal](#session-management--revocation-portal)
 - [Adding and Configuring a New Service](#adding-and-configuring-a-new-service)
 - [Configuration Reference (`config.json`)](#configuration-reference-configjson)
@@ -568,6 +569,9 @@ curl -s https://auth.example.com/auth/health
 ```json
 {
   "status": "ok",
+  "version": "1.0.0",
+  "assetVersion": "1.0.0.588ef17.3c8db854",
+  "commit": "588ef17",
   "timestamp": "2026-10-31T10:00:00.000Z"
 }
 ```
@@ -586,6 +590,9 @@ curl -s -H "Authorization: Bearer your-random-secret-token-here" https://auth.ex
 ```json
 {
   "status": "ok",
+  "version": "1.0.0",
+  "assetVersion": "1.0.0.588ef17.3c8db854",
+  "commit": "588ef17",
   "timestamp": "2026-10-31T10:00:00.000Z",
   "uptime": 3600.5,
   "metrics": {
@@ -605,6 +612,46 @@ curl -s -H "Authorization: Bearer your-random-secret-token-here" https://auth.ex
   ]
 }
 ```
+
+---
+
+## Versioning & Asset Cache-Busting (`/auth/version`)
+
+Auth Gateway implements a deterministic, multi-layer asset versioning and cache-invalidation system:
+
+### How Versioning Works
+- **Version Source**: Defined by `package.json` (`version`), optionally combined with the active git commit short hash and deterministic content hashes of static CSS, JS, and custom assets.
+- **Asset Fingerprinting**: All static CSS and JS references (e.g. `/css/base.css`, injected `auth-watchdog.js`, and custom service scripts) automatically include the asset version parameter:
+  ```html
+  <link rel="stylesheet" href="https://auth.example.com/css/base.css?v=1.0.0.588ef17.d9538a34">
+  ```
+- **HTTP Cache Optimization**:
+  - Versioned requests (`?v=...`) are served with `Cache-Control: public, max-age=31536000, immutable`, allowing browsers to cache them indefinitely without revalidation overhead.
+  - Unversioned requests are served with `Cache-Control: public, max-age=0, must-revalidate` along with `ETag` to ensure browsers always validate freshness before using local cache.
+- **Service Worker Lifecycle (`sw.js`)**:
+  - `/sw.js` dynamically embeds the active `CACHE_NAME` (`auth-gateway-v<assetVersion>`).
+  - When the version is bumped or assets change, the browser detects the modified service worker bytecode, installs it, and purges all previous version caches during the `activate` event.
+- **Diagnostics Endpoint**:
+  Query `https://auth.example.com/version` (or `/auth/version`) to inspect active version metadata and asset hashes:
+  ```bash
+  curl -s https://auth.example.com/version
+  ```
+  ```json
+  {
+    "version": "1.0.0",
+    "commit": "588ef17",
+    "assetVersion": "1.0.0.588ef17.3c8db854",
+    "cacheName": "auth-gateway-v1.0.0.588ef17.3c8db854",
+    "buildTime": "2026-11-01T12:00:00.000Z",
+    "hashes": {
+      "css": "e01d116e",
+      "assets": "68b438c7",
+      "custom": "45252e57",
+      "sw": "ff38cc33",
+      "combined": "3c8db854"
+    }
+  }
+  ```
 
 ---
 

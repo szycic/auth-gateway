@@ -106,6 +106,10 @@
         <button type="submit" class="btn-action btn-logout" style="background: transparent; font-family: inherit; font-size: inherit; cursor: pointer;">Sign Out</button>
       </form>
     </div>
+
+    <div style="text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: #64748b;">
+      <%= config.app.footerText %> <span style="opacity: 0.7;">v<%= typeof appVersion !== 'undefined' ? appVersion : '1.0.0' %></span>
+    </div>
   </div>
 
   <script>
