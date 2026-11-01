@@ -285,9 +285,6 @@
       if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT')) {
         return 'danger';
       }
-      if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) {
-        return 'purple';
-      }
       if (ev.includes('SUCCESS') || ev.includes('APPROVED')) {
         return 'success';
       }
@@ -407,7 +404,6 @@
     const ALL_CLASSES = [
       { key: 'danger', label: 'Danger (Red)', indicator: 'indicator-danger' },
       { key: 'warning', label: 'Warning (Amber)', indicator: 'indicator-warning' },
-      { key: 'purple', label: 'Credentials (Purple)', indicator: 'indicator-purple' },
       { key: 'success', label: 'Success (Green)', indicator: 'indicator-success' },
       { key: 'info', label: 'Info (Blue)', indicator: 'indicator-info' },
     ];
@@ -506,7 +502,6 @@
       const classGroups = {
         danger: { label: 'Danger', items: [] },
         warning: { label: 'Warning', items: [] },
-        purple: { label: 'Credentials', items: [] },
         success: { label: 'Success', items: [] },
         info: { label: 'Info', items: [] }
       };
@@ -520,7 +515,7 @@
         }
       }
 
-      ['danger', 'warning', 'purple', 'success', 'info'].forEach(cKey => {
+      ['danger', 'warning', 'success', 'info'].forEach(cKey => {
         const grp = classGroups[cKey];
         if (!grp || grp.items.length === 0) return;
 

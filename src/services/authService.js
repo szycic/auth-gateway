@@ -67,7 +67,6 @@ function setOnPasswordChanged(callback) {
 function syncPasswordChanges() {
   const latestHash = getApproverPasswordHash();
   if (latestHash !== currentPasswordHash) {
-    auditLog('PASSWORD_CHANGED', { source: 'sync' });
     console.log('[auth-gateway] Detected approver password change.');
     currentPasswordHash = latestHash;
     if (typeof onPasswordChangedCallback === 'function') {

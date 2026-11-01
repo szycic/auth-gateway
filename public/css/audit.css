@@ -475,7 +475,6 @@ body {
 
 .class-indicator.indicator-danger { background-color: #f43f5e; box-shadow: 0 0 6px rgba(244, 63, 94, 0.5); }
 .class-indicator.indicator-warning { background-color: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.5); }
-.class-indicator.indicator-purple { background-color: #a855f7; box-shadow: 0 0 6px rgba(168, 85, 247, 0.5); }
 .class-indicator.indicator-success { background-color: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.5); }
 .class-indicator.indicator-info { background-color: #38bdf8; box-shadow: 0 0 6px rgba(56, 189, 248, 0.5); }
 
@@ -722,11 +721,6 @@ body {
   border: 1px solid rgba(14, 165, 233, 0.3);
 }
 
-.badge-purple {
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.35);
-}
 
 .col-actor {
   display: flex;

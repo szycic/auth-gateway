@@ -156,10 +156,6 @@ const EVENT_CATEGORIES = {
     'PAIR_CODE_VERIFIED',
   ],
   config: [
-    'FIDO_KEY_ENROLLED',
-    'FIDO_KEY_REVOKED',
-    'PASSWORD_CHANGED',
-    'AUTH_METHOD_CHANGED',
     'SESSION_PERMISSIONS_UPDATED',
     'DEVICE_RENAMED',
   ],
@@ -181,9 +177,6 @@ function getEventClass(event = '') {
   if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT')) {
     return 'danger';
   }
-  if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) {
-    return 'purple';
-  }
   if (ev.includes('SUCCESS') || ev.includes('APPROVED')) {
     return 'success';
   }
@@ -193,9 +186,8 @@ function getEventClass(event = '') {
 const CLASS_SEVERITY_RANK = {
   danger: 1,
   warning: 2,
-  purple: 3,
-  success: 4,
-  info: 5,
+  success: 3,
+  info: 4,
 };
 
 function getEventClassRank(event) {

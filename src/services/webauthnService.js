@@ -84,7 +84,6 @@ function setActiveAuthMethod(method) {
   const tmp = `${AUTH_METHOD_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
   fs.renameSync(tmp, AUTH_METHOD_FILE);
-  auditLog('AUTH_METHOD_CHANGED', { method });
   console.log(`[auth-gateway] Approver login method switched to: ${method}`);
   return payload;
 }
@@ -271,12 +270,6 @@ async function verifyRegistrationForToken(token, response, keyName, req) {
   pendingEnrollmentTokens.delete(token);
 
   setActiveAuthMethod('fido');
-  auditLog('FIDO_KEY_ENROLLED', {
-    id: credRecord.id,
-    name: credRecord.name,
-    ip: req ? (req.ip || req.headers['x-forwarded-for']) : 'terminal',
-  });
-
   enrollmentEvents.emit(`enrolled:${token}`, credRecord);
   return credRecord;
 }
@@ -377,11 +370,6 @@ function deleteCredential(identifier) {
   }
   const [removed] = inMemoryCredentials.splice(idx, 1);
   saveCredentials();
-  auditLog('FIDO_KEY_REVOKED', {
-    id: removed.id,
-    name: removed.name,
-    remainingKeys: inMemoryCredentials.length,
-  });
   console.log(`[auth-gateway] Revoked FIDO security key: "${removed.name}" (${removed.id})`);
 
   // If 0 keys left and fido was active, automatically fall back to password mode
