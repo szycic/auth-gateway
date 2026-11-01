@@ -333,8 +333,9 @@ body {
   cursor: pointer;
 }
 
-.audit-row:hover {
-  background: rgba(255, 255, 255, 0.03);
+.audit-row:hover,
+.audit-row.expanded {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .audit-row td {

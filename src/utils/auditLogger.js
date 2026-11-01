@@ -45,6 +45,9 @@ function loadExistingLogs() {
       try {
         const parsed = JSON.parse(line);
         if (parsed && parsed.timestamp && parsed.event) {
+          if (!parsed.id) {
+            parsed.id = `log-${new Date(parsed.timestamp).getTime()}-${parsed.event}`;
+          }
           inMemoryLogs.push(parsed);
         }
       } catch (_) {}

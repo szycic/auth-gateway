@@ -208,9 +208,18 @@
       }
     }
 
+    const openDrawers = new Set();
+
     function renderAuditLogs(data) {
       const tbody = document.getElementById('auditTableBody');
       const emptyEl = document.getElementById('auditEmptyState');
+
+      // Preserve currently open drawer IDs before clearing DOM
+      document.querySelectorAll('.audit-drawer-row.open').forEach(el => {
+        const id = el.id.replace(/^drawer-/, '');
+        if (id) openDrawers.add(id);
+      });
+
       tbody.innerHTML = '';
 
       if (data.stats) {
@@ -232,9 +241,13 @@
         emptyEl.style.display = 'none';
 
         logs.forEach((log) => {
+          const logId = String(log.id || `${new Date(log.timestamp).getTime()}-${log.event}`);
+          const isOpen = openDrawers.has(logId);
+
           const row = document.createElement('tr');
-          row.className = 'audit-row';
-          row.onclick = () => toggleDrawer(log.id);
+          row.id = `row-${logId}`;
+          row.className = 'audit-row' + (isOpen ? ' expanded' : '');
+          row.onclick = () => toggleDrawer(logId);
 
           const badgeCls = getEventBadgeClass(log.event);
           const d = log.details || {};
@@ -274,8 +287,8 @@
 
           // Hidden expandable JSON drawer row
           const drawerRow = document.createElement('tr');
-          drawerRow.id = `drawer-${log.id}`;
-          drawerRow.className = 'audit-drawer-row';
+          drawerRow.id = `drawer-${logId}`;
+          drawerRow.className = 'audit-drawer-row' + (isOpen ? ' open' : '');
           drawerRow.innerHTML = `
             <td colspan="4" class="audit-drawer-content">
               <pre class="json-view">${escapeHtml(JSON.stringify(log, null, 2))}</pre>
@@ -296,12 +309,24 @@
     }
 
     function toggleDrawer(id) {
-      const el = document.getElementById(`drawer-${id}`);
-      if (el) el.classList.toggle('open');
+      const logId = String(id);
+      const el = document.getElementById(`drawer-${logId}`);
+      const row = document.getElementById(`row-${logId}`);
+      if (!el) return;
+      if (openDrawers.has(logId)) {
+        openDrawers.delete(logId);
+        el.classList.remove('open');
+        if (row) row.classList.remove('expanded');
+      } else {
+        openDrawers.add(logId);
+        el.classList.add('open');
+        if (row) row.classList.add('expanded');
+      }
     }
 
     function changePage(direction) {
       currentOffset = Math.max(0, currentOffset + direction * pageSize);
+      openDrawers.clear();
       fetchAuditLogs();
     }
 
@@ -357,6 +382,7 @@
       btn.classList.add('active');
       activeCategory = btn.dataset.category || 'all';
       currentOffset = 0;
+      openDrawers.clear();
       fetchAuditLogs();
     });
 
@@ -364,6 +390,7 @@
     document.getElementById('timeRangeSelect').addEventListener('change', (e) => {
       currentTimeRange = e.target.value;
       currentOffset = 0;
+      openDrawers.clear();
       fetchAuditLogs();
     });
 
@@ -371,6 +398,7 @@
     document.getElementById('eventSelect').addEventListener('change', (e) => {
       currentEvent = e.target.value;
       currentOffset = 0;
+      openDrawers.clear();
       fetchAuditLogs();
     });
 
@@ -381,6 +409,7 @@
       searchDebounce = setTimeout(() => {
         currentSearch = e.target.value;
         currentOffset = 0;
+        openDrawers.clear();
         fetchAuditLogs();
       }, 300);
     });
