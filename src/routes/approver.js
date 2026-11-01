@@ -402,8 +402,28 @@ router.post('/approver/login', (req, res) => {
 
 function handleApproverLogout(req, res) {
   const clientIp = authService.getClientIp(req);
-  auditLog('APPROVER_LOGOUT', { ip: clientIp });
   const token = req.cookies[config.APPROVER_COOKIE_NAME];
+  const approverSession = token ? sessionService.approverSessions.get(token) : null;
+  const sessionToken = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  const session = sessionToken ? sessionService.activeSessions.get(sessionToken) : null;
+
+  const device = (approverSession && approverSession.friendlyDevice)
+    || (session && session.friendlyDevice)
+    || parseUserAgent(req.headers['user-agent'] || '')
+    || 'Approver';
+
+  const details = {
+    ip: clientIp,
+    device,
+  };
+
+  if (approverSession && approverSession.createdAt) {
+    const activeMinutes = Math.round((Date.now() - approverSession.createdAt) / 60000);
+    details.activeDuration = activeMinutes < 60 ? `${activeMinutes}m` : `${(activeMinutes / 60).toFixed(1)}h`;
+  }
+
+  auditLog('APPROVER_LOGOUT', details);
+
   if (token) {
     sessionService.approverSessions.delete(token);
     for (const [sTok, s] of sessionService.activeSessions.entries()) {
@@ -412,7 +432,6 @@ function handleApproverLogout(req, res) {
       }
     }
   }
-  const sessionToken = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   if (sessionToken) {
     sessionService.activeSessions.delete(sessionToken);
   }

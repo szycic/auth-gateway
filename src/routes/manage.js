@@ -374,12 +374,34 @@ router.get('/exchange', (req, res) => {
 });
 
 function handleUserLogout(req, res) {
-  auditLog('USER_LOGOUT', { ip: authService.getClientIp(req) });
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  const session = token ? sessionService.activeSessions.get(token) : null;
+  const approverToken = req.cookies[config.APPROVER_COOKIE_NAME];
+  const approverSession = approverToken ? sessionService.approverSessions.get(approverToken) : null;
+
+  const device = (session && session.friendlyDevice)
+    || (approverSession && approverSession.friendlyDevice)
+    || parseUserAgent(req.headers['user-agent'] || '')
+    || 'Desktop Browser';
+
+  const details = {
+    ip: authService.getClientIp(req),
+    device,
+  };
+
+  if (session) {
+    details.sessionId = session.id;
+    if (session.createdAt) {
+      const activeMinutes = Math.round((Date.now() - session.createdAt) / 60000);
+      details.activeDuration = activeMinutes < 60 ? `${activeMinutes}m` : `${(activeMinutes / 60).toFixed(1)}h`;
+    }
+  }
+
+  auditLog('USER_LOGOUT', details);
+
   if (token) {
     sessionService.activeSessions.delete(token);
   }
-  const approverToken = req.cookies[config.APPROVER_COOKIE_NAME];
   if (approverToken) {
     sessionService.approverSessions.delete(approverToken);
   }
