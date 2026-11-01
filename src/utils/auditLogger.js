@@ -175,6 +175,9 @@ const EVENT_CATEGORIES = {
  */
 function getEventClass(event = '') {
   const ev = String(event);
+  if (ev.includes('SCANNER_')) {
+    return 'warning';
+  }
   if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('RATE_LIMIT')) {
     return 'danger';
   }
