@@ -269,10 +269,6 @@ function getAuditLogs({
       if (diff !== 0) return diff;
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  } else if (sort === 'event-asc') {
-    filtered.sort((a, b) => a.event.localeCompare(b.event) || (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-  } else if (sort === 'event-desc') {
-    filtered.sort((a, b) => b.event.localeCompare(a.event) || (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   } else {
     // Default: time-desc
     filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
