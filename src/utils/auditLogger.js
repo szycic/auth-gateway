@@ -262,11 +262,21 @@ function getAuditStats() {
 }
 
 /**
- * Format audit logs as CSV.
+ * Escape a single cell value for semicolon-delimited CSV.
+ * Properly wraps in double quotes and escapes internal quotes with "".
+ */
+function escapeCsvCell(val) {
+  if (val === null || val === undefined) return '""';
+  const str = String(val);
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Format audit logs as semicolon-delimited CSV.
  */
 function exportToCsv(logs) {
   const headers = ['Timestamp', 'Event', 'IP', 'Device', 'Service', 'Path', 'Details'];
-  const rows = [headers.join(',')];
+  const rows = [headers.map(escapeCsvCell).join(';')];
 
   for (const log of logs) {
     const d = log.details || {};
@@ -290,18 +300,19 @@ function exportToCsv(logs) {
     const detailsStr = Object.keys(remainingDetails).length > 0 ? JSON.stringify(remainingDetails) : '';
 
     const row = [
-      JSON.stringify(log.timestamp),
-      JSON.stringify(log.event),
-      JSON.stringify(ip),
-      JSON.stringify(device),
-      JSON.stringify(service),
-      JSON.stringify(path),
-      JSON.stringify(detailsStr),
+      escapeCsvCell(log.timestamp),
+      escapeCsvCell(log.event),
+      escapeCsvCell(ip),
+      escapeCsvCell(device),
+      escapeCsvCell(service),
+      escapeCsvCell(path),
+      escapeCsvCell(detailsStr),
     ];
-    rows.push(row.join(','));
+    rows.push(row.join(';'));
   }
 
-  return rows.join('\n');
+  // Prepend UTF-8 BOM so Excel automatically recognizes UTF-8 encoding
+  return '\uFEFF' + rows.join('\r\n');
 }
 
 module.exports = {
