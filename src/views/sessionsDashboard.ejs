@@ -571,13 +571,44 @@
       }
     }
 
+    let isSigningOut = false;
+    const approverLogoutForm = document.querySelector('form[action="/auth/approver/logout"]');
+    if (approverLogoutForm) {
+      approverLogoutForm.addEventListener('submit', function() {
+        isSigningOut = true;
+        const btn = approverLogoutForm.querySelector('button[type="submit"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Signing Out...';
+        }
+      });
+    }
+
     let isLocked = false;
-    function lockCurrentSession() {
-      if (isLocked) return;
+    function lockCurrentSession(reason) {
+      if (isLocked || isSigningOut) return;
       isLocked = true;
       if (socket) {
         try { socket.disconnect(); } catch (e) {}
       }
+
+      const isSelf = (reason === 'self');
+      const isRevoked = (reason === 'revoked');
+
+      let title = 'Session Ended';
+      let desc = 'Your session has ended or expired. Redirecting to login...';
+      let noticeMsg = '';
+
+      if (isSelf) {
+        title = 'Signed Out';
+        desc = 'You have signed out of this session. Redirecting...';
+        noticeMsg = 'You have signed out of this device session.';
+      } else if (isRevoked) {
+        title = 'Session Revoked';
+        desc = 'Access for this device was terminated by an approver. Redirecting to login...';
+        noticeMsg = 'Your session was revoked.';
+      }
+
       document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: inherit; padding: 1.5rem; box-sizing: border-box;">' +
         '<div style="background: rgba(15, 23, 42, 0.94); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 24px; padding: 2.25rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); box-sizing: border-box;">' +
           '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">' +
@@ -585,13 +616,14 @@
               '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />' +
             '</svg>' +
           '</div>' +
-          '<h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h1>' +
-          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>' +
+          '<h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">' + title + '</h1>' +
+          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">' + desc + '</p>' +
           '<div style="width: 24px; height: 24px; border: 2.5px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto;"></div>' +
         '</div>' +
       '</div>';
       setTimeout(function() {
-        window.location.href = '/auth/logout?redirect=/auth/approver/login&notice=' + encodeURIComponent('Your session was revoked.');
+        const noticeParam = noticeMsg ? ('&notice=' + encodeURIComponent(noticeMsg)) : '';
+        window.location.href = '/auth/logout?redirect=/auth/approver/login' + noticeParam;
       }, 1000);
     }
 
@@ -613,14 +645,14 @@
           data.all ||
           (mySid && data.sessionId === mySid)
         )) {
-          lockCurrentSession();
+          lockCurrentSession('revoked');
           return;
         }
 
         // Verify with server if this approver session is still valid
         fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
           if (r.status === 401) {
-            lockCurrentSession();
+            lockCurrentSession('ended');
           }
         }).catch(function() {});
 
@@ -640,10 +672,10 @@
 
     // Periodic heartbeat to guarantee immediate lockout even if socket disconnects
     setInterval(function() {
-      if (isLocked) return;
+      if (isLocked || isSigningOut) return;
       fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
         if (r.status === 401) {
-          lockCurrentSession();
+          lockCurrentSession('expired');
         }
       }).catch(function() {});
     }, 2000);
@@ -1015,7 +1047,7 @@
         }
         const data = await res.json();
         if (data.isCurrentSession || sessionId === '<%= (typeof currentSessionId !== "undefined" && currentSessionId) ? currentSessionId : "" %>') {
-          lockCurrentSession();
+          lockCurrentSession('self');
           return;
         }
         removeSessionCard(sessionId, data.message || 'Session revoked.');

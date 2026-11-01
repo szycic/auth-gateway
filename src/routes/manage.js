@@ -150,9 +150,11 @@ router.post('/sessions/revoke', (req, res) => {
         }
       }
 
-      const msg = isApproverDevice
-        ? `Approver session for ${targetSession.friendlyDevice} was completely revoked.`
-        : `Session for ${targetSession.friendlyDevice} was revoked.`;
+      const msg = isCurrentSession
+        ? 'You have signed out of this session.'
+        : (isApproverDevice
+          ? `Approver session for ${targetSession.friendlyDevice} was completely revoked.`
+          : `Session for ${targetSession.friendlyDevice} was revoked.`);
 
       if (req.accepts('json') && !req.accepts('html')) {
         return res.json({ success: true, sessionId: sid, isCurrentSession, message: msg });
@@ -182,10 +184,11 @@ router.post('/sessions/revoke', (req, res) => {
           res.clearCookie(config.APPROVER_COOKIE_NAME, cookieOpts);
         }
 
+        const msg = isCurrentSession ? 'You have signed out of this session.' : 'Approver session was revoked.';
         if (req.accepts('json') && !req.accepts('html')) {
-          return res.json({ success: true, sessionId, isCurrentSession, message: 'Approver session was revoked.' });
+          return res.json({ success: true, sessionId, isCurrentSession, message: msg });
         }
-        return res.redirect('/auth/sessions?notice=' + encodeURIComponent('Approver session was revoked.'));
+        return res.redirect('/auth/sessions?notice=' + encodeURIComponent(msg));
       }
     }
   }

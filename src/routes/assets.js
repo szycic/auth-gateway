@@ -117,12 +117,18 @@ function getAuthWatchdogScript() {
   var AUTH_URL = '${config.BASE_URL}';
   var isLocked = false;
 
-  function lockdown() {
+  function lockdown(reason) {
     if (isLocked) return;
     isLocked = true;
 
     var existing = document.getElementById('szycic-lockout-overlay');
     if (existing) return;
+
+    var isRevoked = (reason === 'revoked');
+    var title = isRevoked ? 'Session Revoked' : 'Session Ended';
+    var desc = isRevoked
+      ? 'Access for this device was terminated by an approver. Redirecting to login...'
+      : 'Your session has ended or expired. Redirecting to login...';
 
     var overlay = document.createElement('div');
     overlay.id = 'szycic-lockout-overlay';
@@ -155,8 +161,8 @@ function getAuthWatchdogScript() {
             '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />',
           '</svg>',
         '</div>',
-        '<h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h2>',
-        '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>',
+        '<h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">' + title + '</h2>',
+        '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">' + desc + '</p>',
         '<div style="width: 24px; height: 24px; border: 2.5px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; border-radius: 50%; animation: szycicSpin 0.7s linear infinite; margin: 0 auto;"></div>',
       '</div>'
     ].join('');
@@ -169,7 +175,7 @@ function getAuthWatchdogScript() {
     }, 1000);
   }
 
-  function verifySession() {
+  function verifySession(forceReason) {
     if (isLocked) return;
     var verifyUrl = AUTH_URL + '/auth/verify?service=' + encodeURIComponent(window.location.hostname);
     fetch(verifyUrl, {
@@ -178,7 +184,7 @@ function getAuthWatchdogScript() {
       cache: 'no-store'
     }).then(function(res) {
       if (res.status === 401) {
-        lockdown();
+        lockdown(forceReason || 'ended');
       }
     }).catch(function() {});
   }
@@ -206,7 +212,7 @@ function getAuthWatchdogScript() {
       });
       socket.emit('register-desktop', '');
       socket.on('session-revoked', function() {
-        verifySession();
+        verifySession('revoked');
       });
     } catch (e) {}
   }

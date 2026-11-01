@@ -14,11 +14,14 @@
     </div>
     <h1>Approver Device</h1>
     <% 
-      const noticeText = notice === 'revoked'
-        ? 'Your device session was revoked from the management dashboard.'
-        : (notice === 'logged_out'
-          ? 'You have signed out of this device session.'
-          : (notice ? String(notice) : 'Your device session is no longer active.'));
+      let noticeText = 'Your device session is no longer active.';
+      if (notice === 'revoked') {
+        noticeText = 'Your device session was revoked from the management dashboard.';
+      } else if (notice === 'logged_out' || notice === 'logout') {
+        noticeText = 'You have signed out of this device session.';
+      } else if (notice) {
+        noticeText = String(notice);
+      }
     %>
     <div class="notice-box"><%= noticeText %></div>
     <p class="desc">As the Approver, you can instantly authorize access to all protected services on this device.</p>

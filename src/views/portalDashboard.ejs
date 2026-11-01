@@ -116,6 +116,49 @@
   </div>
 
   <script>
+    let isSigningOut = false;
+    const logoutForm = document.querySelector('form[action="/auth/logout"]');
+    if (logoutForm) {
+      logoutForm.addEventListener('submit', function() {
+        isSigningOut = true;
+        const btn = logoutForm.querySelector('button[type="submit"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Signing Out...';
+        }
+      });
+    }
+
+    let isLocked = false;
+    function lockCurrentSession(reason) {
+      if (isLocked || isSigningOut) return;
+      isLocked = true;
+      if (socket) {
+        try { socket.disconnect(); } catch (e) {}
+      }
+
+      const isRevoked = (reason === 'revoked');
+      const title = isRevoked ? 'Session Revoked' : 'Session Ended';
+      const desc = isRevoked
+        ? 'Access for this device was terminated by an approver. Redirecting to login...'
+        : 'Your session has ended or expired. Redirecting to login...';
+
+      document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: inherit; padding: 1.5rem;">' +
+        '<div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 24px; padding: 2.25rem 2rem; max-width: 400px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);">' +
+          '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">' +
+            '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />' +
+            '</svg>' +
+          '</div>' +
+          '<h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">' + title + '</h1>' +
+          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">' + desc + '</p>' +
+        '</div>' +
+      '</div>';
+      setTimeout(function() {
+        window.location.href = isRevoked ? '/auth/logout?notice=' + encodeURIComponent('Your session was revoked.') : '/auth/logout';
+      }, 1000);
+    }
+
     const socket = typeof io !== 'undefined' ? io() : null;
     if (socket) {
       function registerDesktop() {
@@ -137,44 +180,29 @@
           data.all ||
           (data.sessionId && data.sessionId === '<%= sessionId %>')
         )) {
-          lockCurrentSession();
+          lockCurrentSession('revoked');
         } else {
           fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
-            if (r.status === 401) lockCurrentSession();
+            if (r.status === 401) lockCurrentSession('ended');
           }).catch(function() {});
         }
       });
     }
 
-    function lockCurrentSession() {
-      document.body.innerHTML = '<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 0%, #1e293b 0%, #090d16 100%); color: #f1f5f9; font-family: inherit; padding: 1.5rem;">' +
-        '<div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 24px; padding: 2.25rem 2rem; max-width: 400px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);">' +
-          '<div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">' +
-            '<svg style="width: 32px; height: 32px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
-              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />' +
-            '</svg>' +
-          '</div>' +
-          '<h1 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; color: #ffffff;">Session Revoked</h1>' +
-          '<p style="font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem;">Access for this device was terminated by an approver. Redirecting to login...</p>' +
-        '</div>' +
-      '</div>';
-      setTimeout(function() {
-        window.location.href = '/auth/logout';
-      }, 1000);
-    }
-
     setInterval(function() {
+      if (isLocked || isSigningOut) return;
       fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
         if (r.status === 401) {
-          lockCurrentSession();
+          lockCurrentSession('ended');
         }
       }).catch(function() {});
     }, 2000);
 
     document.addEventListener('visibilitychange', function() {
+      if (isLocked || isSigningOut) return;
       if (document.visibilityState === 'visible') {
         fetch('/auth/verify', { cache: 'no-store' }).then(function(r) {
-          if (r.status === 401) lockCurrentSession();
+          if (r.status === 401) lockCurrentSession('ended');
         }).catch(function() {});
       }
     });
