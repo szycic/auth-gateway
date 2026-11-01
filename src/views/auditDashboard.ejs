@@ -793,7 +793,7 @@
           // Format detail chips
           const chips = [];
           if (attempts > 1) {
-            chips.push(`<span class="detail-chip"><strong>attempts:</strong> ${attempts} (${attempts - 1} debounced)</span>`);
+            chips.push(`<span class="detail-chip chip-attempts ${attempts >= 10 ? 'high-intensity' : ''}"><strong>attempts:</strong> ${attempts} (${attempts - 1} debounced)</span>`);
           }
           for (const [k, v] of Object.entries(d)) {
             if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent', 'sessionId', 'uuid', 'attempts'].includes(k)) continue;
