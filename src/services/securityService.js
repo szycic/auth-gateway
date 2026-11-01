@@ -54,8 +54,24 @@ const SCANNER_PATH_PATTERNS = [
 const SCANNER_UA_PATTERN = /(sqlmap|nikto|nuclei|masscan|zgrab|nmap|gobuster|dirbuster|ffuf|wpscan|censys|shodan|python-requests|aiohttp|httpx)/i;
 
 const JAIL_DURATION_DEFAULT_MS = 30 * 60 * 1000; // 30 minutes initial jail
-const JAIL_DURATION_REPEAT_MS = 2 * 60 * 60 * 1000; // 2 hours for repeat offenders
+const JAIL_DURATION_REPEAT_MS = 2 * 60 * 60 * 1000; // 2 hours for repeat offenders (strike 2)
+const JAIL_DURATION_AGGRESSIVE_MS = 6 * 60 * 60 * 1000; // 6 hours for aggressive burst scanners (15+ hits)
+const JAIL_DURATION_MAX_MS = 24 * 60 * 60 * 1000; // 24 hours for extreme burst scanners (50+ hits) or strike 3+
 const UNAUTH_RATE_LIMIT_PER_MINUTE = 20; // Max 20 unauthenticated requests per minute per IP
+
+/**
+ * Check if an IP address belongs to private/local/VPN network ranges.
+ */
+function isPrivateOrLocalIp(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  const clean = ip.replace(/^::ffff:/, '').trim().toLowerCase();
+  if (clean === '127.0.0.1' || clean === '::1' || clean === 'localhost') return true;
+  if (/^10\./.test(clean)) return true;
+  if (/^192\.168\./.test(clean)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(clean)) return true;
+  if (/^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(clean)) return true; // Tailscale CGNAT
+  return false;
+}
 
 /**
  * Extract pathname from relative URI or absolute URL.
@@ -116,23 +132,36 @@ function isIpJailed(ip) {
 }
 
 /**
- * Jail an IP address for a specified duration.
+ * Jail an IP address for a specified duration with strike-based escalation.
  */
 function jailIp(ip, reason, durationMs = JAIL_DURATION_DEFAULT_MS) {
   if (!ip) return;
+  if (isPrivateOrLocalIp(ip)) return;
+
   const now = Date.now();
   const existing = jailedIps.get(ip);
   const count = (existing ? existing.count : 0) + 1;
-  const finalDuration = count > 1 ? JAIL_DURATION_REPEAT_MS : durationMs;
+  let finalDuration = durationMs;
+  let escalationLevel = '30m';
+
+  if (count === 2) {
+    finalDuration = JAIL_DURATION_REPEAT_MS; // 2 hours
+    escalationLevel = '2h (repeat strike 2)';
+  } else if (count >= 3) {
+    finalDuration = JAIL_DURATION_MAX_MS; // 24 hours
+    escalationLevel = `24h (persistent strike ${count})`;
+  }
 
   jailedIps.set(ip, {
     reason,
     bannedUntil: now + finalDuration,
     count,
+    hitCount: existing ? (existing.hitCount || 0) : 0,
     firstBannedAt: existing ? existing.firstBannedAt : now,
+    escalationLevel,
   });
 
-  console.warn(`[AUTH_SCANNER_BLOCKED] ip=${ip} reason="${reason}" duration=${Math.round(finalDuration / 60000)}m strike=${count}`);
+  console.warn(`[AUTH_SCANNER_BLOCKED] ip=${ip} reason="${reason}" duration=${Math.round(finalDuration / 60000)}m strike=${count} (${escalationLevel})`);
 }
 
 /**
@@ -149,6 +178,8 @@ function blockScannerProbe(req, res, targetUrlOrUri, reason) {
 
   if (!entry || now - entry.lastLogged > 10 * 60 * 1000) {
     const ua = (req.headers && req.headers['user-agent']) || '';
+    const jailEntry = jailedIps.get(clientIp);
+    const initialJail = (jailEntry && jailEntry.escalationLevel) || '30m';
     const logRecord = auditLog('SCANNER_PROBE_BLOCKED', {
       ip: clientIp,
       url: targetUrlOrUri || req.originalUrl || req.url,
@@ -156,7 +187,7 @@ function blockScannerProbe(req, res, targetUrlOrUri, reason) {
       reason,
       device: parseUserAgent(ua) || 'Automated Scanner',
       userAgent: ua.slice(0, 150),
-      jailDuration: '30m',
+      jailDuration: initialJail,
     });
     auditDebounceMap.set(debounceKey, { lastLogged: now, count: 1, logRecord });
   } else {
@@ -173,21 +204,48 @@ function blockScannerProbe(req, res, targetUrlOrUri, reason) {
 }
 
 /**
- * Record repeated hit from an already jailed IP, updating attempt counts on the blocked event.
+ * Record repeated hit from an already jailed IP, adaptively escalating jail duration for aggressive bursts.
  */
 function recordJailedHit(clientIp) {
   if (!clientIp) return;
+  const now = Date.now();
+  const jailEntry = jailedIps.get(clientIp);
+  let escalatedLabel = null;
+
+  if (jailEntry) {
+    jailEntry.hitCount = (jailEntry.hitCount || 0) + 1;
+
+    // Adaptive escalation based on concurrent burst hits during jail
+    if (jailEntry.hitCount >= 50 && jailEntry.bannedUntil < now + JAIL_DURATION_MAX_MS) {
+      jailEntry.bannedUntil = now + JAIL_DURATION_MAX_MS; // Escalate to 24 hours
+      jailEntry.escalationLevel = '24h (adaptive: 50+ burst hits)';
+      escalatedLabel = jailEntry.escalationLevel;
+      console.warn(`[AUTH_JAIL_ESCALATED] ip=${clientIp} escalated to 24h due to ${jailEntry.hitCount} burst hits`);
+    } else if (jailEntry.hitCount >= 15 && jailEntry.bannedUntil < now + JAIL_DURATION_AGGRESSIVE_MS) {
+      jailEntry.bannedUntil = now + JAIL_DURATION_AGGRESSIVE_MS; // Escalate to 6 hours
+      jailEntry.escalationLevel = '6h (adaptive: 15+ burst hits)';
+      escalatedLabel = jailEntry.escalationLevel;
+      console.warn(`[AUTH_JAIL_ESCALATED] ip=${clientIp} escalated to 6h due to ${jailEntry.hitCount} burst hits`);
+    }
+  }
+
   const scannerEntry = auditDebounceMap.get(`scanner:${clientIp}`);
   if (scannerEntry) {
     scannerEntry.count += 1;
-    scannerEntry.lastLogged = Date.now();
+    scannerEntry.lastLogged = now;
+    if (escalatedLabel && scannerEntry.logRecord && scannerEntry.logRecord.details) {
+      scannerEntry.logRecord.details.jailDuration = escalatedLabel;
+    }
     updateLogAttempts(scannerEntry.logRecord, scannerEntry.count);
     return;
   }
   const rateEntry = auditDebounceMap.get(`ratelimit:${clientIp}`);
   if (rateEntry) {
     rateEntry.count += 1;
-    rateEntry.lastLogged = Date.now();
+    rateEntry.lastLogged = now;
+    if (escalatedLabel && rateEntry.logRecord && rateEntry.logRecord.details) {
+      rateEntry.logRecord.details.jailDuration = escalatedLabel;
+    }
     updateLogAttempts(rateEntry.logRecord, rateEntry.count);
   }
 }
@@ -363,6 +421,13 @@ function logServiceAccess(req, session, targetService, isApprover = false) {
     trusted: session ? session.isTrusted : false,
     ...(isApprover ? { isApprover: true } : {}),
   });
+
+  if (session) {
+    try {
+      const sessionService = require('./sessionService');
+      sessionService.touchSession(session, serviceName, fullUrl, authService.getClientIp(req));
+    } catch (_) {}
+  }
 }
 
 /**

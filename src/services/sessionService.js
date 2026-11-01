@@ -361,6 +361,8 @@ function mintApproverSession(req, res, approverTokenExplicit) {
     type: 'approver',
     allowedServices: null,
     sortOrder: 0,
+    lastActiveAt: Date.now(),
+    lastActiveService: 'Szycic Auth',
   };
 
   if (approverToken && approverSessions.has(approverToken)) {
@@ -376,6 +378,32 @@ function mintApproverSession(req, res, approverTokenExplicit) {
     res.cookie(config.AUTH_COOKIE_NAME, sessionToken, getCookieOptions(req, maxAgeMs));
   }
   return sessionObj;
+}
+
+let persistDebounceTimer = null;
+
+function touchSession(session, serviceName, fullUrl, ip) {
+  if (!session) return;
+  const now = Date.now();
+  session.lastActiveAt = now;
+  if (serviceName) session.lastActiveService = serviceName;
+  if (fullUrl) session.lastActiveUrl = fullUrl;
+  if (ip) session.lastActiveIp = ip;
+
+  if (session.approverToken && approverSessions.has(session.approverToken)) {
+    const a = approverSessions.get(session.approverToken);
+    a.lastActiveAt = now;
+    if (serviceName) a.lastActiveService = serviceName;
+  }
+
+  // Debounced persistence to avoid constant disk writes during rapid page loads
+  if (!persistDebounceTimer) {
+    persistDebounceTimer = setTimeout(() => {
+      persistDebounceTimer = null;
+      savePersistedSessions();
+    }, 5000);
+    persistDebounceTimer.unref();
+  }
 }
 
 // Periodic cleanup of expired sessions every 60 seconds
@@ -426,5 +454,6 @@ module.exports = {
   isSessionAllowedForService,
   getTargetServiceForRequest,
   mintApproverSession,
+  touchSession,
   parseUserAgent,
 };

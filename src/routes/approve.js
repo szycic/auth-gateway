@@ -203,6 +203,8 @@ router.post('/approve/action', (req, res) => {
     type: isTrusted ? 'trusted_device' : 'desktop_guest',
     allowedServices,
     sortOrder: typeof session.sortOrder === 'number' ? session.sortOrder : null,
+    lastActiveAt: Date.now(),
+    lastActiveService: session.serviceName || 'Szycic Auth',
   });
 
   sessionService.savePersistedSessions();

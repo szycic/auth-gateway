@@ -219,6 +219,8 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
         type: isTrusted ? 'trusted_device' : 'desktop_guest',
         allowedServices,
         sortOrder: null,
+        lastActiveAt: Date.now(),
+        lastActiveService: 'Szycic Auth',
       });
 
       // Clear approver cookie if client had one
