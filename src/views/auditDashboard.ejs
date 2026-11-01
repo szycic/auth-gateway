@@ -55,7 +55,7 @@
         </div>
 
         <div class="filters-row">
-          <select id="timeRangeSelect" class="select-filter">
+          <select id="timeRangeSelect" class="select-filter select-time">
             <option value="">All Time</option>
             <option value="1h">Last 1 Hour</option>
             <option value="24h" selected>Last 24 Hours</option>
@@ -63,7 +63,7 @@
             <option value="30d">Last 30 Days</option>
           </select>
 
-          <select id="classSelect" class="select-filter" title="Filter by event class">
+          <select id="classSelect" class="select-filter select-class" title="Filter by event class">
             <option value="" <%= (typeof initialClass === 'undefined' || !initialClass) ? 'selected' : '' %>>All Classes</option>
             <option value="danger" <%= (typeof initialClass !== 'undefined' && initialClass === 'danger') ? 'selected' : '' %>>Danger (Red)</option>
             <option value="warning" <%= (typeof initialClass !== 'undefined' && initialClass === 'warning') ? 'selected' : '' %>>Warning (Amber)</option>
@@ -72,7 +72,7 @@
             <option value="info" <%= (typeof initialClass !== 'undefined' && initialClass === 'info') ? 'selected' : '' %>>Info (Blue)</option>
           </select>
 
-          <select id="eventSelect" class="select-filter">
+          <select id="eventSelect" class="select-filter select-event">
             <option value="">All Event Types</option>
             <% if (typeof eventTypes !== 'undefined' && eventTypes && eventTypes.length > 0) { %>
               <% eventTypes.forEach(function(ev) { %>
@@ -81,19 +81,12 @@
             <% } %>
           </select>
 
-          <select id="sortSelect" class="select-filter" title="Sort order">
+          <select id="sortSelect" class="select-filter select-sort" title="Sort order">
             <option value="time-desc" selected>Newest First</option>
             <option value="time-asc">Oldest First</option>
             <option value="class-desc">Severity (High to Low)</option>
             <option value="class-asc">Severity (Low to High)</option>
           </select>
-
-          <button type="button" id="btnClearFilters" class="btn-clear-filter" onclick="clearAllFilters()" title="Reset all search &amp; filter criteria">
-            <svg style="width: 13px; height: 13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Clear
-          </button>
         </div>
       </div>
 
@@ -130,6 +123,13 @@
           <span>Showing <strong id="countFiltered" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events</span>
           <span class="meta-dot">•</span>
           <span id="lastUpdatedText" style="color: #64748b;">Updated just now</span>
+          <span id="clearDot" class="meta-dot" style="display: none;">•</span>
+          <button type="button" id="btnClearFilters" class="btn-clear-pill" onclick="clearAllFilters()" style="display: none;" title="Reset all search &amp; filter criteria">
+            <svg style="width: 11px; height: 11px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear filters
+          </button>
         </div>
 
         <!-- Desktop-only export & auto-refresh toolbar -->
@@ -511,20 +511,16 @@
 
     function updateClearFilterState() {
       const isFiltered = Boolean(
-        currentSearch ||
-        currentClass ||
-        currentEvent ||
+        (currentSearch && currentSearch.trim() !== '') ||
+        (currentClass && currentClass !== '') ||
+        (currentEvent && currentEvent !== '') ||
         (currentTimeRange && currentTimeRange !== '24h') ||
-        currentSort !== 'time-desc'
+        (currentSort && currentSort !== 'time-desc')
       );
       const btn = document.getElementById('btnClearFilters');
-      if (btn) {
-        if (isFiltered) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
-        }
-      }
+      const dot = document.getElementById('clearDot');
+      if (btn) btn.style.display = isFiltered ? 'inline-flex' : 'none';
+      if (dot) dot.style.display = isFiltered ? 'inline' : 'none';
     }
 
     function clearAllFilters() {
@@ -627,6 +623,7 @@
       currentOffset = 0;
       openDrawers.clear();
       updateSortIcons();
+      updateClearFilterState();
       fetchAuditLogs();
     });
 
@@ -635,6 +632,7 @@
       currentClass = e.target.value;
       currentOffset = 0;
       openDrawers.clear();
+      updateClearFilterState();
       fetchAuditLogs();
     });
 
@@ -643,6 +641,7 @@
       currentTimeRange = e.target.value;
       currentOffset = 0;
       openDrawers.clear();
+      updateClearFilterState();
       fetchAuditLogs();
     });
 
@@ -651,15 +650,17 @@
       currentEvent = e.target.value;
       currentOffset = 0;
       openDrawers.clear();
+      updateClearFilterState();
       fetchAuditLogs();
     });
 
     // Search input with 300ms debounce
     let searchDebounce = null;
     document.getElementById('searchInput').addEventListener('input', (e) => {
+      currentSearch = e.target.value;
+      updateClearFilterState();
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => {
-        currentSearch = e.target.value;
         currentOffset = 0;
         openDrawers.clear();
         fetchAuditLogs();
