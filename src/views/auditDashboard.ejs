@@ -66,7 +66,7 @@
           <option value="" <%= (typeof initialClass === 'undefined' || !initialClass) ? 'selected' : '' %>>All Classes</option>
           <option value="danger" <%= (typeof initialClass !== 'undefined' && initialClass === 'danger') ? 'selected' : '' %>>Danger (Red)</option>
           <option value="warning" <%= (typeof initialClass !== 'undefined' && initialClass === 'warning') ? 'selected' : '' %>>Warning (Amber)</option>
-          <option value="purple" <%= (typeof initialClass !== 'undefined' && initialClass === 'purple') ? 'selected' : '' %>>Purple</option>
+          <option value="purple" <%= (typeof initialClass !== 'undefined' && initialClass === 'purple') ? 'selected' : '' %>>Credentials (Purple)</option>
           <option value="info" <%= (typeof initialClass !== 'undefined' && initialClass === 'info') ? 'selected' : '' %>>Info (Blue)</option>
           <option value="success" <%= (typeof initialClass !== 'undefined' && initialClass === 'success') ? 'selected' : '' %>>Success (Green)</option>
         </select>
@@ -188,10 +188,10 @@
 
     function getEventClass(event = '') {
       const ev = String(event);
-      if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('REJECTED') || ev.includes('RATE_LIMIT')) {
+      if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('RATE_LIMIT')) {
         return 'danger';
       }
-      if (ev.includes('REVOKED') || ev.includes('LOGOUT')) {
+      if (ev.includes('REVOKED') || ev.includes('LOGOUT') || ev.includes('REJECTED')) {
         return 'warning';
       }
       if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) {

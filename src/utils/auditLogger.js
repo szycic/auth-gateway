@@ -169,10 +169,10 @@ const EVENT_CATEGORIES = {
  */
 function getEventClass(event = '') {
   const ev = String(event);
-  if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('REJECTED') || ev.includes('RATE_LIMIT')) {
+  if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('RATE_LIMIT')) {
     return 'danger';
   }
-  if (ev.includes('REVOKED') || ev.includes('LOGOUT')) {
+  if (ev.includes('REVOKED') || ev.includes('LOGOUT') || ev.includes('REJECTED')) {
     return 'warning';
   }
   if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) {
