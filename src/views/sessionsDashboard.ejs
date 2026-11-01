@@ -76,7 +76,6 @@
 
                  let expiresLabel = 'Never';
                  let ttlLabel = 'Never';
-                 let ttlClass = 'ttl-ok';
                  if (s.expiresAt) {
                    const expDate = new Date(s.expiresAt);
                    if (!isNaN(expDate.getTime())) {
@@ -84,7 +83,6 @@
                      const remainingMs = s.expiresAt - Date.now();
                      if (remainingMs <= 0) {
                        ttlLabel = 'Expired';
-                       ttlClass = 'ttl-expired';
                      } else {
                        const totalHours = Math.floor(remainingMs / 3600000);
                        const days = Math.floor(totalHours / 24);
@@ -92,13 +90,10 @@
                        const minutes = Math.floor((remainingMs % 3600000) / 60000);
                        if (days > 0) {
                          ttlLabel = days + 'd ' + hours + 'h left';
-                         ttlClass = days >= 2 ? 'ttl-ok' : 'ttl-warn';
                        } else if (hours > 0) {
                          ttlLabel = hours + 'h ' + minutes + 'm left';
-                         ttlClass = hours >= 6 ? 'ttl-warn' : 'ttl-urgent';
                        } else {
                          ttlLabel = Math.max(1, minutes) + 'm left';
-                         ttlClass = 'ttl-urgent';
                        }
                      }
                    }
@@ -196,32 +191,19 @@
                   <div class="session-sub">
                     <div><%= s.ip %> &bull; <span class="session-started" data-created="<%= s.createdAt || '' %>">Started <%= timeLabel %></span></div>
                     
-                    <div class="session-activity-row">
+                    <div class="session-activity">
                       <span style="color: #94a3b8;">Last active:</span>
                       <% if (s.lastActiveAt) { %>
-                        <span class="activity-chip" data-last-active="<%= s.lastActiveAt %>" <% if (s.lastActiveService) { %>data-service="<%= s.lastActiveService %>"<% } %> title="<%= new Date(s.lastActiveAt).toLocaleString() %>">
-                          <span class="activity-pulse-dot"></span>
-                          <span class="activity-time"><%= lastActiveLabel %></span>
-                          <% if (s.lastActiveService) { %>
-                            <span style="color: #94a3b8;">on</span>
-                            <strong class="activity-service"><%= s.lastActiveService %></strong>
-                          <% } %>
-                        </span>
+                        <span class="session-last-active" data-last-active="<%= s.lastActiveAt %>" data-service="<%= s.lastActiveService || '' %>"><%= lastActiveLabel %><% if (s.lastActiveService) { %> on <%= s.lastActiveService %><% } %></span>
                       <% } else { %>
                         <span style="color: #64748b;">Never</span>
                       <% } %>
                     </div>
 
-                    <div class="session-expiry-row">
+                    <div class="session-expiry">
                       <span style="color: #94a3b8;">Expires:</span>
                       <% if (s.expiresAt) { %>
-                        <span class="ttl-countdown <%= ttlClass %>" data-expires="<%= s.expiresAt %>" title="Valid until <%= expiresLabel %>">
-                          <svg style="width: 11px; height: 11px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span class="ttl-label"><%= ttlLabel %></span>
-                        </span>
-                        <span class="expiry-date-hint">(<%= expiresLabel %>)</span>
+                        <span class="session-ttl" data-expires="<%= s.expiresAt %>"><%= ttlLabel %> (<%= expiresLabel %>)</span>
                       <% } else { %>
                         <span style="color: #64748b;">Never</span>
                       <% } %>
@@ -485,47 +467,38 @@
       });
 
       // 2. TTL Countdown
-      document.querySelectorAll('.ttl-countdown[data-expires]').forEach(function(el) {
+      document.querySelectorAll('.session-ttl[data-expires]').forEach(function(el) {
         const raw = el.getAttribute('data-expires');
         if (!raw) return;
         const ts = Number(raw);
         if (!ts || isNaN(ts)) return;
         const remainingMs = ts - Date.now();
-        const labelEl = el.querySelector('.ttl-label');
-        if (!labelEl) return;
-
-        el.classList.remove('ttl-ok', 'ttl-warn', 'ttl-urgent', 'ttl-expired');
-        if (remainingMs <= 0) {
-          labelEl.textContent = 'Expired';
-          el.classList.add('ttl-expired');
-        } else {
+        let ttlLabel = 'Expired';
+        if (remainingMs > 0) {
           const totalHours = Math.floor(remainingMs / 3600000);
           const days = Math.floor(totalHours / 24);
           const hours = totalHours % 24;
           const minutes = Math.floor((remainingMs % 3600000) / 60000);
-
           if (days > 0) {
-            labelEl.textContent = days + 'd ' + hours + 'h left';
-            el.classList.add(days >= 2 ? 'ttl-ok' : 'ttl-warn');
+            ttlLabel = days + 'd ' + hours + 'h left';
           } else if (hours > 0) {
-            labelEl.textContent = hours + 'h ' + minutes + 'm left';
-            el.classList.add(hours >= 6 ? 'ttl-warn' : 'ttl-urgent');
+            ttlLabel = hours + 'h ' + minutes + 'm left';
           } else {
-            labelEl.textContent = Math.max(1, minutes) + 'm left';
-            el.classList.add('ttl-urgent');
+            ttlLabel = Math.max(1, minutes) + 'm left';
           }
         }
+        const expDate = new Date(ts);
+        const formatted = pad(expDate.getDate()) + '.' + pad(expDate.getMonth() + 1) + '.' + expDate.getFullYear() + ' ' + pad(expDate.getHours()) + ':' + pad(expDate.getMinutes());
+        el.textContent = ttlLabel + ' (' + formatted + ')';
       });
 
       // 3. Last active time
-      document.querySelectorAll('.activity-chip[data-last-active]').forEach(function(el) {
+      document.querySelectorAll('.session-last-active[data-last-active]').forEach(function(el) {
         const raw = el.getAttribute('data-last-active');
         if (!raw) return;
         const ts = Number(raw);
         if (!ts || isNaN(ts)) return;
-        const timeEl = el.querySelector('.activity-time');
-        if (!timeEl) return;
-
+        const svc = el.getAttribute('data-service') || '';
         const activeElapsedMin = Math.floor(Math.max(0, Date.now() - ts) / 60000);
         let label = 'just now';
         if (activeElapsedMin >= 60 * 24) {
@@ -535,7 +508,7 @@
         } else if (activeElapsedMin >= 1) {
           label = activeElapsedMin + 'm ago';
         }
-        timeEl.textContent = label;
+        el.textContent = label + (svc ? ' on ' + svc : '');
       });
     }
 
