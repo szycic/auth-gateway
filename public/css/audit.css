@@ -995,7 +995,7 @@ body {
     width: 100%;
   }
   /* In 2-column grid, right column dropdowns align to the right edge */
-  .wrapper-class .multiselect-menu,
+  .wrapper-event .multiselect-menu,
   .wrapper-sort .multiselect-menu {
     left: auto;
     right: 0;

@@ -55,19 +55,6 @@
         </div>
 
         <div class="filters-row">
-          <!-- Time Range Dropdown -->
-          <div class="multiselect-wrapper wrapper-time" id="timeDropdownWrapper">
-            <button type="button" class="select-filter select-time multiselect-trigger" id="timeDropdownBtn" onclick="toggleDropdown('time')" aria-haspopup="true" aria-expanded="false" title="Filter by time range">
-              <span class="multiselect-label" id="timeSelectLabel">Last 24 Hours</span>
-              <svg class="dropdown-arrow" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-              </svg>
-            </button>
-            <div class="multiselect-menu menu-time" id="timeDropdownMenu">
-              <div class="multiselect-items" id="timeItemsContainer"></div>
-            </div>
-          </div>
-
           <!-- Class Multiselect -->
           <div class="multiselect-wrapper wrapper-class" id="classMultiselectWrapper">
             <button type="button" class="select-filter select-class multiselect-trigger" id="classDropdownBtn" onclick="toggleDropdown('class')" aria-haspopup="true" aria-expanded="false" title="Filter by event classes">
@@ -99,6 +86,19 @@
                 <button type="button" class="btn-text-action" onclick="selectAllEvents(false)">Clear</button>
               </div>
               <div class="multiselect-items" id="eventItemsContainer"></div>
+            </div>
+          </div>
+
+          <!-- Time Range Dropdown -->
+          <div class="multiselect-wrapper wrapper-time" id="timeDropdownWrapper">
+            <button type="button" class="select-filter select-time multiselect-trigger" id="timeDropdownBtn" onclick="toggleDropdown('time')" aria-haspopup="true" aria-expanded="false" title="Filter by time range">
+              <span class="multiselect-label" id="timeSelectLabel">Last 24 Hours</span>
+              <svg class="dropdown-arrow" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <div class="multiselect-menu menu-time" id="timeDropdownMenu">
+              <div class="multiselect-items" id="timeItemsContainer"></div>
             </div>
           </div>
 
