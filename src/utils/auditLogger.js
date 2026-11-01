@@ -136,6 +136,9 @@ function auditLog(event, details = {}) {
  */
 function updateLogAttempts(record, attempts) {
   if (!record || !record.details) return;
+  if (!record.details.firstAttempt) {
+    record.details.firstAttempt = record.timestamp || new Date().toISOString();
+  }
   record.details.attempts = attempts;
   record.details.lastAttempt = new Date().toISOString();
 

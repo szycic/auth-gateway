@@ -794,13 +794,24 @@
           const chips = [];
           if (attempts > 1) {
             chips.push(`<span class="detail-chip chip-attempts ${attempts >= 10 ? 'high-intensity' : ''}"><strong>attempts:</strong> ${attempts} (${attempts - 1} debounced)</span>`);
+            const firstTime = d.firstAttempt || log.timestamp;
+            if (firstTime) {
+              const firstDate = new Date(firstTime);
+              const firstValid = !isNaN(firstDate.getTime());
+              const firstTitle = firstValid ? ` title="First attempt: ${escapeHtml(firstDate.toISOString())}"` : '';
+              const firstFmt = firstValid ? firstDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : firstTime;
+              chips.push(`<span class="detail-chip"${firstTitle}><strong>first:</strong> ${escapeHtml(firstFmt)}</span>`);
+            }
+            if (d.lastAttempt) {
+              const lastDate = new Date(d.lastAttempt);
+              const lastValid = !isNaN(lastDate.getTime());
+              const lastTitle = lastValid ? ` title="Last attempt: ${escapeHtml(lastDate.toISOString())}"` : '';
+              const lastFmt = lastValid ? lastDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : d.lastAttempt;
+              chips.push(`<span class="detail-chip"${lastTitle}><strong>last:</strong> ${escapeHtml(lastFmt)}</span>`);
+            }
           }
           for (const [k, v] of Object.entries(d)) {
-            if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent', 'sessionId', 'uuid', 'attempts'].includes(k)) continue;
-            if (k === 'lastAttempt') {
-              chips.push(`<span class="detail-chip"><strong>last:</strong> ${escapeHtml(new Date(v).toLocaleTimeString())}</span>`);
-              continue;
-            }
+            if (['ip', 'clientIp', 'approverIp', 'friendlyDevice', 'device', 'targetDevice', 'approverDevice', 'userAgent', 'sessionId', 'uuid', 'attempts', 'firstAttempt', 'lastAttempt'].includes(k)) continue;
             const strVal = typeof v === 'object' ? JSON.stringify(v) : String(v);
             chips.push(`<span class="detail-chip"><strong>${k}:</strong> ${escapeHtml(strVal)}</span>`);
           }
