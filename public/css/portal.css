@@ -209,10 +209,19 @@
   align-items: center;
   padding-top: 1.25rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .actions-row.actions-row-approver {
   justify-content: space-between;
+}
+
+.actions-approver-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .btn-action {
@@ -223,6 +232,10 @@
   padding: 0.5rem 0.85rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -233,6 +246,26 @@
 
 .btn-logout {
   color: #f87171;
+}
+
+@media (max-width: 480px) {
+  .actions-row.actions-row-approver {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .actions-approver-group {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+  .actions-row .btn-action {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+}
   border-color: rgba(248, 113, 113, 0.25);
 }
 

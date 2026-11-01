@@ -100,8 +100,10 @@
 
     <div class="actions-row <%= isApproverUser ? 'actions-row-approver' : '' %>">
       <% if (isApproverUser) { %>
-        <a href="/auth/sessions" class="btn-action" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Manage Sessions</a>
-        <a href="/auth/audit" class="btn-action" style="color: #a78bfa; border-color: rgba(167, 139, 250, 0.3);">Audit Log</a>
+        <div class="actions-approver-group">
+          <a href="/auth/sessions" class="btn-action" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">Manage Sessions</a>
+          <a href="/auth/audit" class="btn-action" style="color: #a78bfa; border-color: rgba(167, 139, 250, 0.3);">Audit Log</a>
+        </div>
       <% } %>
       <form method="POST" action="/auth/logout" style="display: contents;">
         <button type="submit" class="btn-action btn-logout" style="background: transparent; font-family: inherit; font-size: inherit; cursor: pointer;">Sign Out</button>
