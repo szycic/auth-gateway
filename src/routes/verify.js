@@ -3,6 +3,7 @@ const config = require('../config');
 const { isAllowedOrigin } = require('../utils/originHelper');
 const sessionService = require('../services/sessionService');
 const authService = require('../services/authService');
+const securityService = require('../services/securityService');
 const { auditLog } = require('../utils/auditLogger');
 const { parseUserAgent } = require('../utils/deviceDetector');
 
@@ -106,6 +107,16 @@ router.options('/verify', (req, res) => {
 });
 
 router.all('/verify', (req, res) => {
+  const clientIp = authService.getClientIp(req);
+  const jailStatus = securityService.isIpJailed(clientIp);
+  if (jailStatus.jailed) {
+    return res.status(403).set({
+      'X-Auth-Status': 'blocked',
+      'X-Auth-Reason': 'ip_jailed',
+      'Retry-After': String(jailStatus.remainingSeconds),
+    }).send(`Forbidden: IP temporarily banned (${jailStatus.remainingSeconds}s remaining)`);
+  }
+
   const origin = req.headers.origin;
 
   if (origin) {
@@ -259,6 +270,31 @@ router.all('/verify', (req, res) => {
       'X-Auth-Role': 'trusted_device',
       'X-Auth-User': 'approver',
     }).send('OK');
+  }
+
+  // Scanner Probe Detection for Unauthenticated Requests:
+  const forwardedUri = req.headers['x-forwarded-uri'] || req.url || '';
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const fullUrl = `${proto}://${forwardedHost}${forwardedUri}`;
+
+  const scannerCheck = securityService.isScannerRequest(req, fullUrl);
+  if (scannerCheck.isScanner) {
+    return securityService.blockScannerProbe(req, res, fullUrl, scannerCheck.reason);
+  }
+
+  // Rate Limiter for Unauthenticated Traffic:
+  const rateCheck = securityService.checkUnauthRateLimit(clientIp);
+  if (!rateCheck.allowed) {
+    auditLog('RATE_LIMIT_TRIGGERED', {
+      ip: clientIp,
+      endpoint: fullUrl,
+      count: securityService.UNAUTH_RATE_LIMIT_PER_MINUTE,
+      device: parseUserAgent(req.headers['user-agent'] || ''),
+    });
+    return res.status(429).set({
+      'X-Auth-Status': 'rate_limited',
+      'Retry-After': String(rateCheck.retryAfter),
+    }).send('Too Many Requests');
   }
 
   return res.status(401).send('Unauthorized');

@@ -5,6 +5,7 @@ const config = require('../config');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const securityService = require('../services/securityService');
 const { auditLog } = require('../utils/auditLogger');
 
 const router = express.Router();
@@ -38,6 +39,15 @@ setInterval(() => {
 
 router.get('/init', async (req, res) => {
   const clientIp = authService.getClientIp(req);
+  const jailStatus = securityService.isIpJailed(clientIp);
+  if (jailStatus.jailed) {
+    return res.status(403).json({
+      error: 'blocked',
+      message: `IP temporarily banned (${jailStatus.remainingSeconds}s remaining)`,
+      retryAfter: jailStatus.remainingSeconds,
+    });
+  }
+
   const rateCheck = checkInitRateLimit(clientIp);
   if (!rateCheck.allowed) {
     auditLog('RATE_LIMIT_TRIGGERED', {

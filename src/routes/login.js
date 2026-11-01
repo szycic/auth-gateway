@@ -5,6 +5,7 @@ const { getCookieOptions, getApproverCookieOptions } = require('../utils/cookieH
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const webauthnService = require('../services/webauthnService');
+const securityService = require('../services/securityService');
 const { auditLog } = require('../utils/auditLogger');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const { verifySameOrigin } = require('../utils/csrfHelper');
@@ -13,7 +14,32 @@ const router = express.Router();
 router.use(verifySameOrigin);
 
 router.get('/login', (req, res) => {
+  const clientIp = authService.getClientIp(req);
+  const jailStatus = securityService.isIpJailed(clientIp);
+  if (jailStatus.jailed) {
+    return res.status(403).send(`Forbidden: IP temporarily banned (${jailStatus.remainingSeconds}s remaining)`);
+  }
+
   const rawRedirect = req.query.redirect || req.query.returnTo || '';
+
+  // Intercept scanner probe on login redirect
+  const scannerCheck = securityService.isScannerRequest(req, rawRedirect);
+  if (scannerCheck.isScanner) {
+    return securityService.blockScannerProbe(req, res, rawRedirect, scannerCheck.reason);
+  }
+
+  // Rate limit unauthenticated access to login page
+  const rateCheck = securityService.checkUnauthRateLimit(clientIp);
+  if (!rateCheck.allowed) {
+    auditLog('RATE_LIMIT_TRIGGERED', {
+      ip: clientIp,
+      endpoint: '/auth/login',
+      count: securityService.UNAUTH_RATE_LIMIT_PER_MINUTE,
+      device: parseUserAgent(req.headers['user-agent'] || ''),
+    });
+    return res.status(429).send('Too Many Requests: Please slow down.');
+  }
+
   let matchedService = config.getService(req.query.service || rawRedirect);
   if (!matchedService && rawRedirect.startsWith('/launch/')) {
     const launchId = rawRedirect.replace('/launch/', '').split('?')[0];
@@ -123,13 +149,17 @@ router.get('/login', (req, res) => {
   // Log unauthenticated access attempt to a protected service (redirected to auth gateway)
   if ((matchedService || redirectTarget) && !req.query.error && !req.query.notice) {
     const targetService = matchedService || config.getService(redirectTarget);
-    auditLog('SERVICE_AUTH_REQUIRED', {
-      service: targetService ? targetService.name : 'Unknown Service',
-      serviceId: targetService ? targetService.id : null,
-      url: redirectTarget || (targetService ? targetService.url : ''),
-      ip: authService.getClientIp(req),
-      device: parseUserAgent(req.headers['user-agent'] || '') || 'Desktop Browser',
-    });
+    const serviceId = targetService ? targetService.id : null;
+
+    if (!scannerCheck.isScanner && securityService.shouldLogAuthRequired(clientIp, serviceId)) {
+      auditLog('SERVICE_AUTH_REQUIRED', {
+        service: targetService ? targetService.name : 'Unknown Service',
+        serviceId,
+        url: redirectTarget || (targetService ? targetService.url : ''),
+        ip: clientIp,
+        device: parseUserAgent(req.headers['user-agent'] || '') || 'Desktop Browser',
+      });
+    }
   }
 
   return res.render('desktopLogin', {
@@ -163,6 +193,10 @@ router.post('/login', (req, res) => {
   }
 
   const clientIp = authService.getClientIp(req);
+  const jailStatus = securityService.isIpJailed(clientIp);
+  if (jailStatus.jailed) {
+    return res.status(403).send(`Forbidden: IP temporarily banned (${jailStatus.remainingSeconds}s remaining)`);
+  }
   const lockoutStatus = authService.checkLoginLockout(clientIp);
   if (lockoutStatus.locked) {
     auditLog('RATE_LIMIT_TRIGGERED', {

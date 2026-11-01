@@ -148,6 +148,7 @@ const EVENT_CATEGORIES = {
     'CROSS_SUBDOMAIN_BLOCKED',
     'LOCKOUT_TRIGGERED',
     'RATE_LIMIT_TRIGGERED',
+    'SCANNER_PROBE_BLOCKED',
   ],
   approval: [
     'SESSION_APPROVED',
@@ -338,7 +339,7 @@ function getAuditStats() {
 
     if (entry.event === 'LOGIN_SUCCESS' || entry.event === 'APPROVER_LOGIN_SUCCESS' || entry.event === 'USER_FIDO_LOGIN_SUCCESS') {
       logins24h++;
-    } else if (entry.event.startsWith('CSRF_') || entry.event.startsWith('CROSS_SUBDOMAIN_')) {
+    } else if (entry.event.startsWith('CSRF_') || entry.event.startsWith('CROSS_SUBDOMAIN_') || entry.event.startsWith('SCANNER_')) {
       securityAlerts24h++;
     } else if (entry.event === 'LOCKOUT_TRIGGERED' || entry.event === 'RATE_LIMIT_TRIGGERED' || entry.event === 'LOGIN_FAILED' || entry.event === 'APPROVER_LOGIN_FAILED') {
       lockouts24h++;

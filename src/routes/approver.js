@@ -5,6 +5,7 @@ const { getCookieOptions, getApproverCookieOptions } = require('../utils/cookieH
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
 const webauthnService = require('../services/webauthnService');
+const securityService = require('../services/securityService');
 const { auditLog } = require('../utils/auditLogger');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const { verifySameOrigin } = require('../utils/csrfHelper');
@@ -88,6 +89,15 @@ router.get('/approver/webauthn/login-options', async (req, res) => {
 // WebAuthn Approver Login verification
 router.post('/approver/webauthn/login-verify', async (req, res) => {
   const clientIp = authService.getClientIp(req);
+  const jailStatus = securityService.isIpJailed(clientIp);
+  if (jailStatus.jailed) {
+    return res.status(403).render('approverLogin', {
+      returnTo: redirectTarget,
+      error: `Access temporarily blocked (${jailStatus.remainingSeconds}s remaining).`,
+      mode: activeMethod,
+    });
+  }
+
   const lockoutStatus = authService.checkLoginLockout(clientIp);
   if (lockoutStatus.locked) {
     auditLog('RATE_LIMIT_TRIGGERED', {
@@ -334,6 +344,15 @@ router.post('/approver/login', (req, res) => {
   }
 
   const clientIp = authService.getClientIp(req);
+  const jailStatus = securityService.isIpJailed(clientIp);
+  if (jailStatus.jailed) {
+    return res.status(403).render('approverLogin', {
+      returnTo: redirectTarget,
+      error: `Access temporarily blocked (${jailStatus.remainingSeconds}s remaining).`,
+      mode: activeMethod,
+    });
+  }
+
   const lockoutStatus = authService.checkLoginLockout(clientIp);
   if (lockoutStatus.locked) {
     auditLog('RATE_LIMIT_TRIGGERED', {
