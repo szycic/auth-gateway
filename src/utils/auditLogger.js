@@ -203,6 +203,8 @@ function getEventClassRank(event) {
 function getAuditLogs({
   category = 'all',
   event = '',
+  eventClass = '',
+  class: cls = '',
   search = '',
   from = '',
   to = '',
@@ -216,15 +218,19 @@ function getAuditLogs({
   const fromTime = from ? new Date(from).getTime() : 0;
   const toTime = to ? new Date(to).getTime() : Infinity;
   const searchLower = (search || '').trim().toLowerCase();
+  const classFilter = (eventClass || cls || '').trim().toLowerCase();
 
   const allowedEvents = category && category !== 'all' && EVENT_CATEGORIES[category]
     ? new Set(EVENT_CATEGORIES[category])
     : null;
 
   const filtered = inMemoryLogs.filter((entry) => {
-    // 1. Event / Category filter
+    // 1. Event / Category / Class filter
     if (event && entry.event !== event) return false;
     if (allowedEvents && !allowedEvents.has(entry.event)) return false;
+    if (classFilter && classFilter !== 'all') {
+      if (getEventClass(entry.event) !== classFilter) return false;
+    }
 
     // 2. Timestamp range
     const entryTime = new Date(entry.timestamp).getTime();

@@ -22,22 +22,22 @@
 
     <!-- 24-Hour Metric Stat Cards -->
     <div class="stats-grid">
-      <div class="stat-card stat-card-logins">
+      <div class="stat-card stat-card-logins" onclick="setClassFilter('success')" style="cursor: pointer;" title="Filter by Success (Green)">
         <span class="stat-label">Logins (24h)</span>
         <span class="stat-value" id="statLogins"><%= stats.logins24h %></span>
         <span class="stat-subtext">Successful user &amp; approver logins</span>
       </div>
-      <div class="stat-card stat-card-alerts">
+      <div class="stat-card stat-card-alerts" onclick="setClassFilter('danger')" style="cursor: pointer;" title="Filter by Danger (Red)">
         <span class="stat-label">Security Alerts (24h)</span>
         <span class="stat-value" id="statAlerts"><%= stats.securityAlerts24h %></span>
         <span class="stat-subtext">CSRF &amp; cross-domain blocks</span>
       </div>
-      <div class="stat-card stat-card-lockouts">
+      <div class="stat-card stat-card-lockouts" onclick="setClassFilter('danger')" style="cursor: pointer;" title="Filter by Danger (Red)">
         <span class="stat-label">Lockouts &amp; Fails (24h)</span>
         <span class="stat-value" id="statLockouts"><%= stats.lockouts24h %></span>
         <span class="stat-subtext">Anti-brute-force rate limits</span>
       </div>
-      <div class="stat-card stat-card-events">
+      <div class="stat-card stat-card-events" onclick="setClassFilter('')" style="cursor: pointer;" title="Show all event classes">
         <span class="stat-label">Tracked Events</span>
         <span class="stat-value" id="statTotal"><%= stats.totalEvents %></span>
         <span class="stat-subtext">Unique IPs: <strong id="statIps" style="color: #cbd5e1;"><%= stats.uniqueIps24h %></strong> (24h)</span>
@@ -60,6 +60,15 @@
           <option value="24h" selected>Last 24 Hours</option>
           <option value="7d">Last 7 Days</option>
           <option value="30d">Last 30 Days</option>
+        </select>
+
+        <select id="classSelect" class="select-filter" title="Filter by event class">
+          <option value="" <%= (typeof initialClass === 'undefined' || !initialClass) ? 'selected' : '' %>>All Classes</option>
+          <option value="danger" <%= (typeof initialClass !== 'undefined' && initialClass === 'danger') ? 'selected' : '' %>>Danger (Red)</option>
+          <option value="warning" <%= (typeof initialClass !== 'undefined' && initialClass === 'warning') ? 'selected' : '' %>>Warning (Amber)</option>
+          <option value="purple" <%= (typeof initialClass !== 'undefined' && initialClass === 'purple') ? 'selected' : '' %>>Purple</option>
+          <option value="info" <%= (typeof initialClass !== 'undefined' && initialClass === 'info') ? 'selected' : '' %>>Info (Blue)</option>
+          <option value="success" <%= (typeof initialClass !== 'undefined' && initialClass === 'success') ? 'selected' : '' %>>Success (Green)</option>
         </select>
 
         <select id="eventSelect" class="select-filter">
@@ -148,6 +157,7 @@
     let currentSearch = '';
     let currentTimeRange = '24h';
     let currentEvent = '';
+    let currentClass = '<%= typeof initialClass !== "undefined" && initialClass ? initialClass : "" %>';
     let currentSort = 'time-desc';
     let currentOffset = 0;
     const pageSize = 50;
@@ -176,18 +186,45 @@
       return `${d}d ago`;
     }
 
+    function getEventClass(event = '') {
+      const ev = String(event);
+      if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT') || ev.includes('REJECTED') || ev.includes('RATE_LIMIT')) {
+        return 'danger';
+      }
+      if (ev.includes('REVOKED') || ev.includes('LOGOUT')) {
+        return 'warning';
+      }
+      if (ev.includes('FIDO') || ev.includes('KEY') || ev.includes('METHOD')) {
+        return 'purple';
+      }
+      if (ev.includes('SUCCESS') || ev.includes('APPROVED')) {
+        return 'success';
+      }
+      return 'info';
+    }
+
     function getEventBadgeClass(event) {
-      if (event.includes('SUCCESS') || event.includes('APPROVED')) return 'badge-success';
-      if (event.includes('BLOCKED') || event.includes('FAILED') || event.includes('LOCKOUT') || event.includes('REJECTED') || event.includes('RATE_LIMIT')) return 'badge-danger';
-      if (event.includes('REVOKED') || event.includes('LOGOUT')) return 'badge-warning';
-      if (event.includes('FIDO') || event.includes('KEY') || event.includes('METHOD')) return 'badge-purple';
-      return 'badge-info';
+      return `badge-${getEventClass(event)}`;
+    }
+
+    function setClassFilter(cls) {
+      if (currentClass === cls) {
+        currentClass = '';
+      } else {
+        currentClass = cls;
+      }
+      const sel = document.getElementById('classSelect');
+      if (sel) sel.value = currentClass;
+      currentOffset = 0;
+      openDrawers.clear();
+      fetchAuditLogs();
     }
 
     async function fetchAuditLogs() {
       const params = new URLSearchParams({
         sort: currentSort,
         event: currentEvent,
+        eventClass: currentClass,
         search: currentSearch,
         from: getFromTimestamp(currentTimeRange),
         limit: pageSize,
@@ -276,7 +313,8 @@
           row.className = 'audit-row' + (isOpen ? ' expanded' : '');
           row.onclick = () => toggleDrawer(logId);
 
-          const badgeCls = getEventBadgeClass(log.event);
+          const cls = getEventClass(log.event);
+          const badgeCls = `badge-${cls}`;
           const d = log.details || {};
           const ip = d.ip || d.clientIp || d.approverIp || '-';
           const device = d.friendlyDevice || d.device || d.targetDevice || d.approverDevice || '';
@@ -296,7 +334,7 @@
               <div class="time-full">${new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
             </td>
             <td>
-              <span class="event-badge ${badgeCls}">
+              <span class="event-badge ${badgeCls}" onclick="event.stopPropagation(); setClassFilter('${cls}')" title="Filter by '${cls}' class">
                 ${escapeHtml(log.event)}
               </span>
             </td>
@@ -387,6 +425,7 @@
         format,
         sort: currentSort,
         event: currentEvent,
+        eventClass: currentClass,
         search: currentSearch,
         from: getFromTimestamp(currentTimeRange),
       });
@@ -478,6 +517,14 @@
       currentOffset = 0;
       openDrawers.clear();
       updateSortIcons();
+      fetchAuditLogs();
+    });
+
+    // Class filter listener
+    document.getElementById('classSelect').addEventListener('change', (e) => {
+      currentClass = e.target.value;
+      currentOffset = 0;
+      openDrawers.clear();
       fetchAuditLogs();
     });
 

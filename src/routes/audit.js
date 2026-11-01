@@ -24,13 +24,16 @@ function requireApprover(req, res, next) {
  * Visual dashboard view for approvers.
  */
 router.get('/audit', requireApprover, (req, res) => {
+  const { eventClass, class: cls } = req.query;
+  const selectedClass = eventClass || cls || '';
   const stats = getAuditStats();
-  const initialData = getAuditLogs({ limit: 50, offset: 0 });
+  const initialData = getAuditLogs({ limit: 50, offset: 0, eventClass: selectedClass });
 
   return res.render('auditDashboard', {
     title: 'Audit Log',
     stats,
     initialData,
+    initialClass: selectedClass,
     eventTypes: initialData.eventTypes || getUniqueEvents(),
   });
 });
@@ -40,11 +43,12 @@ router.get('/audit', requireApprover, (req, res) => {
  * JSON query endpoint for interactive filtering, search, pagination, and live polling.
  */
 router.get('/audit/api', requireApprover, (req, res) => {
-  const { category, event, search, from, to, limit, offset, sort } = req.query;
+  const { category, event, search, from, to, limit, offset, sort, eventClass, class: cls } = req.query;
 
   const result = getAuditLogs({
     category,
     event,
+    eventClass: eventClass || cls,
     search,
     from,
     to,
@@ -67,12 +71,13 @@ router.get('/audit/api', requireApprover, (req, res) => {
  * Download audit records as JSON or CSV.
  */
 router.get('/audit/export', requireApprover, (req, res) => {
-  const { format = 'json', category, event, search, from, to, sort } = req.query;
+  const { format = 'json', category, event, search, from, to, sort, eventClass, class: cls } = req.query;
 
   // Retrieve up to 5000 matching records for export
   const { logs } = getAuditLogs({
     category,
     event,
+    eventClass: eventClass || cls,
     search,
     from,
     to,
