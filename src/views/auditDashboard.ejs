@@ -22,22 +22,22 @@
 
     <!-- 24-Hour Metric Stat Cards -->
     <div class="stats-grid">
-      <div class="stat-card stat-card-logins" onclick="setClassFilter('success')" style="cursor: pointer;" title="Filter by Success (Green)">
+      <div class="stat-card stat-card-logins">
         <span class="stat-label">Logins (24h)</span>
         <span class="stat-value" id="statLogins"><%= stats.logins24h %></span>
         <span class="stat-subtext">Successful user &amp; approver logins</span>
       </div>
-      <div class="stat-card stat-card-alerts" onclick="setClassFilter('danger')" style="cursor: pointer;" title="Filter by Danger (Red)">
+      <div class="stat-card stat-card-alerts">
         <span class="stat-label">Security Alerts (24h)</span>
         <span class="stat-value" id="statAlerts"><%= stats.securityAlerts24h %></span>
         <span class="stat-subtext">CSRF &amp; cross-domain blocks</span>
       </div>
-      <div class="stat-card stat-card-lockouts" onclick="setClassFilter('danger')" style="cursor: pointer;" title="Filter by Danger (Red)">
+      <div class="stat-card stat-card-lockouts">
         <span class="stat-label">Lockouts &amp; Fails (24h)</span>
         <span class="stat-value" id="statLockouts"><%= stats.lockouts24h %></span>
         <span class="stat-subtext">Anti-brute-force rate limits</span>
       </div>
-      <div class="stat-card stat-card-events" onclick="setClassFilter('')" style="cursor: pointer;" title="Show all event classes">
+      <div class="stat-card stat-card-events">
         <span class="stat-label">Tracked Events</span>
         <span class="stat-value" id="statTotal"><%= stats.totalEvents %></span>
         <span class="stat-subtext">Unique IPs: <strong id="statIps" style="color: #cbd5e1;"><%= stats.uniqueIps24h %></strong> (24h)</span>
