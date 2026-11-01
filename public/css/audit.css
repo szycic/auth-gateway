@@ -231,7 +231,7 @@ body {
 }
 
 .select-time {
-  width: 125px;
+  width: 140px;
   flex-shrink: 0;
 }
 
@@ -272,7 +272,7 @@ body {
 }
 
 .multiselect-wrapper.wrapper-time {
-  width: 125px;
+  width: 140px;
   flex-shrink: 0;
 }
 
@@ -293,6 +293,7 @@ body {
 
 .multiselect-trigger {
   width: 100%;
+  padding: 0 0.65rem;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
