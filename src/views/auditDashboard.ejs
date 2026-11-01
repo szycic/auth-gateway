@@ -12,10 +12,6 @@
     <div class="top-bar">
       <div class="top-bar-title">
         <h1>Security Audit Log</h1>
-        <div class="live-indicator" id="liveIndicator">
-          <span class="live-dot"></span>
-          <span>Live</span>
-        </div>
       </div>
 
       <div class="nav-links">
@@ -346,16 +342,13 @@
     function toggleAutoRefresh() {
       autoRefreshEnabled = !autoRefreshEnabled;
       const btn = document.getElementById('btnAutoRefresh');
-      const ind = document.getElementById('liveIndicator');
       if (autoRefreshEnabled) {
         btn.textContent = 'Auto: On';
         btn.style.color = '#38bdf8';
-        ind.style.display = 'inline-flex';
         startPolling();
       } else {
         btn.textContent = 'Auto: Off';
         btn.style.color = '#94a3b8';
-        ind.style.display = 'none';
         if (autoRefreshTimer) clearInterval(autoRefreshTimer);
       }
     }

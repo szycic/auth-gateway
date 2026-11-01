@@ -673,7 +673,7 @@ Authenticated approvers have access to an administrative security audit log dash
 - **Full-Text Live Search**: Search across actor IP addresses, client devices, service targets, and metadata.
 - **Time Window Selection**: Filter by `Last 1 Hour`, `Last 24 Hours`, `Last 7 Days`, `Last 30 Days`, or All Time.
 - **Live 24-Hour Metrics**: Real-time telemetry cards summarizing successful logins, blocked security alerts, brute-force lockouts, and unique client IPs.
-- **Auto-Refresh**: Live 5-second polling with a one-click toggle and pulsing live status indicator.
+- **Auto-Refresh**: Background 5-second polling with an intuitive one-click toggle.
 - **Expandable Event Inspector**: Click any row to expand a raw JSON view showing all event parameters, headers, and metadata.
 - **Audit Export**: Export filtered or full audit records to `.json` or `.csv` files for offline compliance or SIEM ingestion (`GET /auth/audit/export?format=csv`).
 - **Persistent Storage**: Audit logs append to `data/audit.jsonl` with automatic file rotation (25MB cap) and an in-memory ring buffer (up to 5,000 recent events) for instant search queries.
