@@ -40,11 +40,7 @@ router.use('/auth/assets/css', express.static(path.join(config.ROOT_DIR, 'public
   maxAge: '7d',
 }));
 
-// Serve operator custom scripts/assets (from persistent DATA_DIR/custom or public/custom)
-const customDataDir = path.join(config.DATA_DIR, 'custom');
-if (fs.existsSync(customDataDir)) {
-  router.use('/auth/assets/custom', express.static(customDataDir, { maxAge: '1d' }));
-}
+// Serve operator custom scripts/assets from public/custom
 router.use('/auth/assets/custom', express.static(path.join(config.ROOT_DIR, 'public/custom'), {
   maxAge: '1d',
 }));

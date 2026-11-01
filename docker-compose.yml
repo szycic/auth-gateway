@@ -10,6 +10,7 @@ services:
     volumes:
       - gateway-data:/usr/src/app/data
       - ./config.json:/usr/src/app/config.json:ro
+      - ./public/custom:/usr/src/app/public/custom:ro
     environment:
       - PORT=3000
       - DATA_DIR=/usr/src/app/data

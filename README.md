@@ -668,7 +668,7 @@ Add an entry to the `"services"` array in your `config.json`:
 - `allowedRedirects`: Allowed redirect URL patterns after successful authentication.
 - `disableService`: _(Optional)_ If `true`, hides the service from the dashboard and blocks redirects/access.
 - `disableAuth`: _(Optional)_ If `true`, bypasses authentication verification for this service.
-- `injectScripts`: _(Optional)_ Array of custom script URLs or paths to inject into HTML pages for this service. Relative paths are resolved against `baseUrl`. Custom script files can be placed in `public/custom/` or `data/custom/`.
+- `injectScripts`: _(Optional)_ Array of custom script URLs or paths to inject into HTML pages for this service. Relative paths are resolved against `baseUrl`. Custom script files can be placed in `public/custom/`.
 
 ### Step 3: Add Service Block to Caddy
 
