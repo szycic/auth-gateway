@@ -245,16 +245,17 @@ function checkUnauthRateLimit(ip) {
  */
 function recordAuthRequired(clientIp, targetService, redirectTarget, req) {
   if (!clientIp) return;
-  const serviceId = targetService ? targetService.id : null;
+  const effectiveService = targetService || config.getAuthService();
+  const serviceId = effectiveService ? effectiveService.id : null;
   const key = `${clientIp}:${serviceId || 'unknown'}`;
   const now = Date.now();
   const entry = authRequiredDebounceMap.get(key);
 
   if (!entry || now - entry.lastTime > 60000) {
     const logRecord = auditLog('SERVICE_AUTH_REQUIRED', {
-      service: targetService ? targetService.name : 'Unknown Service',
+      service: effectiveService ? effectiveService.name : 'Unknown Service',
       serviceId,
-      url: redirectTarget || (targetService ? targetService.url : ''),
+      url: redirectTarget || (effectiveService ? effectiveService.url : ''),
       ip: clientIp,
       device: parseUserAgent((req && req.headers && req.headers['user-agent']) || '') || 'Desktop Browser',
     });
@@ -278,6 +279,90 @@ function recordAuthRequired(clientIp, targetService, redirectTarget, req) {
       if (now - e.lastTime > 120000) authRequiredDebounceMap.delete(k);
     }
   }
+}
+
+// Debounce map for SERVICE_ACCESS: sessionId:serviceId -> timestamp
+const accessDebounceMap = new Map();
+
+/**
+ * Log SERVICE_ACCESS event for document requests with 15-second debounce per session per service.
+ */
+function logServiceAccess(req, session, targetService, isApprover = false) {
+  if (!req) return;
+  // If watchdog query param is present or request is on auth domain directly, it's not a service page navigation
+  if (req.query && req.query.service) return;
+
+  let authHost = '';
+  try {
+    authHost = new URL(config.BASE_URL).hostname.toLowerCase();
+  } catch {}
+
+  const forwardedHost = ((req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0]).toLowerCase().trim();
+  if (!forwardedHost) return;
+
+  const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
+  if (originalMethod !== 'GET') return;
+
+  const secFetchDest = req.headers['sec-fetch-dest'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const accept = req.headers['accept'] || '';
+  const forwardedUri = req.headers['x-forwarded-uri'] || req.originalUrl || req.url || '';
+
+  // Filter out static subresources
+  if (/\.(css|js|png|jpe?g|gif|svg|ico|woff2?|ttf|eot|otf|map|webmanifest|json|txt|xml)($|\?)/i.test(forwardedUri)) {
+    return;
+  }
+
+  // Filter out internal/streaming APIs and WebSockets
+  if (
+    forwardedUri.startsWith('/api/') ||
+    forwardedUri.startsWith('/ws') ||
+    forwardedUri.startsWith('/socket.io/') ||
+    forwardedUri.startsWith('/hubs/') ||
+    forwardedUri.startsWith('/System/')
+  ) {
+    return;
+  }
+
+  // Must be a top-level page navigation (document request)
+  const isDocument = (secFetchDest === 'document') ||
+                     (secFetchMode === 'navigate') ||
+                     (!secFetchDest && accept.includes('text/html'));
+  if (!isDocument) return;
+
+  const service = targetService || (forwardedHost === authHost ? config.getAuthService() : null);
+  const serviceId = service ? service.id : forwardedHost;
+  const sessionId = (session && session.id) || (session && session.sessionId) || authService.getClientIp(req);
+  const debounceKey = `${sessionId}:${serviceId}`;
+  const now = Date.now();
+  const lastTime = accessDebounceMap.get(debounceKey) || 0;
+
+  // Debounce window of 15 seconds per session per service to avoid duplicate logs on redirects/page loads
+  if (now - lastTime < 15000) return;
+  accessDebounceMap.set(debounceKey, now);
+
+  // Prune map if large
+  if (accessDebounceMap.size > 5000) {
+    for (const [k, t] of accessDebounceMap) {
+      if (now - t > 60000) accessDebounceMap.delete(k);
+    }
+  }
+
+  const serviceName = service ? service.name : forwardedHost;
+  const proto = req.headers['x-forwarded-proto'] || (req.protocol === 'http' || req.protocol === 'https' ? req.protocol : 'https');
+  const fullUrl = `${proto}://${forwardedHost}${forwardedUri}`;
+
+  auditLog('SERVICE_ACCESS', {
+    service: serviceName,
+    serviceId: service ? service.id : null,
+    site: forwardedHost,
+    url: fullUrl,
+    ip: authService.getClientIp(req),
+    device: (session && session.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || '') || (isApprover ? 'Approver Device' : 'Desktop Browser'),
+    sessionId: (session && session.id) || undefined,
+    trusted: session ? session.isTrusted : false,
+    ...(isApprover ? { isApprover: true } : {}),
+  });
 }
 
 /**
@@ -322,5 +407,6 @@ module.exports = {
   checkUnauthRateLimit,
   recordAuthRequired,
   shouldLogAuthRequired,
+  logServiceAccess,
   UNAUTH_RATE_LIMIT_PER_MINUTE,
 };

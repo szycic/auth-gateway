@@ -309,6 +309,9 @@ router.get('/approver/login', (req, res) => {
     return res.redirect(config.normalizeRedirect(returnTo, '/auth/sessions'));
   }
 
+  const clientIp = authService.getClientIp(req);
+  securityService.recordAuthRequired(clientIp, config.getAuthService(), `${config.BASE_URL}/auth/approver/login`, req);
+
   const activeMethod = webauthnService.getActiveAuthMethod();
   const currentHash = authService.getApproverPasswordHash();
 

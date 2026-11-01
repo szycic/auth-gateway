@@ -3,6 +3,7 @@ const config = require('../config');
 const versionHelper = require('../utils/versionHelper');
 const sessionService = require('../services/sessionService');
 const authService = require('../services/authService');
+const securityService = require('../services/securityService');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const { auditLog } = require('../utils/auditLogger');
 
@@ -69,15 +70,19 @@ router.get('/launch/:serviceId', (req, res) => {
 router.get(['/', '/portal'], (req, res) => {
   let token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   let session = sessionService.activeSessions.get(token);
+  const isApprover = sessionService.isApprover(req);
 
   if (!session || !sessionService.isValidSession(token)) {
-    if (sessionService.isApprover(req)) {
+    if (isApprover) {
       session = sessionService.mintApproverSession(req, res);
       token = session.token;
     } else {
+      securityService.recordAuthRequired(authService.getClientIp(req), config.getAuthService(), `${config.BASE_URL}/portal`, req);
       return res.redirect('/login');
     }
   }
+
+  securityService.logServiceAccess(req, session, config.getAuthService(), isApprover);
 
   return res.render('portalDashboard', {
     session,

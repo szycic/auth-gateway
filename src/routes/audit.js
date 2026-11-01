@@ -1,5 +1,8 @@
 const express = require('express');
+const config = require('../config');
+const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const securityService = require('../services/securityService');
 const {
   getAuditLogs,
   getAuditStats,
@@ -14,6 +17,7 @@ router.use(verifySameOrigin);
 // Authentication Guard: strictly requires Approver credentials
 function requireApprover(req, res, next) {
   if (!sessionService.isApprover(req)) {
+    securityService.recordAuthRequired(authService.getClientIp(req), config.getAuthService(), `${config.BASE_URL}/auth/audit`, req);
     return res.redirect('/auth/approver/login?returnTo=/auth/audit');
   }
   next();
@@ -24,6 +28,10 @@ function requireApprover(req, res, next) {
  * Visual dashboard view for approvers.
  */
 router.get('/audit', requireApprover, (req, res) => {
+  const approverToken = req.cookies[config.APPROVER_COOKIE_NAME];
+  const approverSession = approverToken ? sessionService.approverSessions.get(approverToken) : null;
+  securityService.logServiceAccess(req, approverSession, config.getAuthService(), true);
+
   const { eventClass, class: cls } = req.query;
   const selectedClass = eventClass || cls || '';
   const stats = getAuditStats();

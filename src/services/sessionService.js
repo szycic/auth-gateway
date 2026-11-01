@@ -286,6 +286,7 @@ function isSessionAllowedForService(session, service) {
   }
   if (!service) return false;
   const serviceId = typeof service === 'string' ? service.toLowerCase() : (service.id || '').toLowerCase();
+  if (serviceId === 'auth' || serviceId === 'auth-gateway') return true;
   return session.allowedServices.map(s => s.toLowerCase()).includes(serviceId);
 }
 

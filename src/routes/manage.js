@@ -4,6 +4,7 @@ const { getCookieOptions } = require('../utils/cookieHelper');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const authService = require('../services/authService');
 const sessionService = require('../services/sessionService');
+const securityService = require('../services/securityService');
 const socketService = require('../services/socketService');
 const { auditLog } = require('../utils/auditLogger');
 const { verifySameOrigin } = require('../utils/csrfHelper');
@@ -14,6 +15,7 @@ router.use(verifySameOrigin);
 // Session management dashboard
 router.get('/sessions', (req, res) => {
   if (!sessionService.isApprover(req)) {
+    securityService.recordAuthRequired(authService.getClientIp(req), config.getAuthService(), `${config.BASE_URL}/auth/sessions`, req);
     return res.redirect('/auth/approver/login?returnTo=/auth/sessions');
   }
 
@@ -31,6 +33,8 @@ router.get('/sessions', (req, res) => {
       }
     }
   }
+
+  securityService.logServiceAccess(req, currentSession, config.getAuthService(), true);
 
   const currentSessionId = currentSession ? currentSession.id : null;
   const currentSessionToken = currentSession ? currentSession.token : currentAuthToken;

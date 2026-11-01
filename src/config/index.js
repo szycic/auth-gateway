@@ -168,9 +168,32 @@ const config = {
   APPROVER_TTL_DAYS: parseInt(process.env.APPROVER_TTL_DAYS || (fileConfig.session && fileConfig.session.approverTtlDays) || DEFAULT_CONFIG.session.approverTtlDays, 10),
   GATEWAY_TOKEN: (process.env.GATEWAY_TOKEN || (fileConfig.app && fileConfig.app.gatewayToken) || '').trim() || null,
 
+  getAuthService() {
+    let authHost = 'auth.szycic.com';
+    try {
+      authHost = new URL(this.BASE_URL).hostname;
+    } catch {}
+    return {
+      id: 'auth',
+      name: (this.app && this.app.name) || 'Szycic Auth',
+      url: this.BASE_URL,
+      site: authHost,
+      subtitle: (this.app && this.app.subtitle) || 'Authentication Gateway & Portal',
+    };
+  },
+
   getService(idOrUrl, onlyActive = false) {
     if (!idOrUrl || typeof idOrUrl !== 'string') return null;
     const term = idOrUrl.trim().toLowerCase();
+
+    let authHost = '';
+    try {
+      authHost = new URL(this.BASE_URL).hostname.toLowerCase();
+    } catch {}
+
+    if (term === 'auth' || term === 'auth-gateway' || (authHost && (term === authHost || term.includes(`://${authHost}`)))) {
+      return this.getAuthService();
+    }
 
     const matches = s => {
       if (onlyActive && s.disableService) return false;

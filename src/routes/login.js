@@ -142,12 +142,11 @@ router.get('/login', (req, res) => {
     if (!fromUrl) fromUrl = rawFrom || (matchedService ? matchedService.url : '/');
   }
 
-  // Log unauthenticated access attempt to a protected service (redirected to auth gateway)
-  if ((matchedService || redirectTarget) && !req.query.error && !req.query.notice) {
-    const targetService = matchedService || config.getService(redirectTarget);
-    if (!scannerCheck.isScanner) {
-      securityService.recordAuthRequired(clientIp, targetService, redirectTarget, req);
-    }
+  // Log unauthenticated access attempt to a protected service or auth gateway itself
+  if (!req.query.error && !req.query.notice && !scannerCheck.isScanner) {
+    const targetService = matchedService || (redirectTarget ? config.getService(redirectTarget) : null) || config.getAuthService();
+    const targetUrl = redirectTarget || (targetService && targetService.url ? targetService.url : `${config.BASE_URL}/login`);
+    securityService.recordAuthRequired(clientIp, targetService, targetUrl, req);
   }
 
   return res.render('desktopLogin', {
