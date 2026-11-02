@@ -735,6 +735,10 @@ body {
   gap: 0.2rem;
 }
 
+.col-actor-mobile {
+  display: none;
+}
+
 .ip-text {
   font-family: 'JetBrains Mono', monospace, ui-monospace;
   font-size: 0.78rem;
@@ -998,6 +1002,24 @@ body {
   .audit-table th:nth-child(3),
   .audit-table td:nth-child(3) {
     display: none;
+  }
+  .audit-row td {
+    vertical-align: top;
+  }
+  .col-actor-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.4rem;
+  }
+  .col-actor-mobile .device-pill {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .col-actor-mobile .device-uuid {
+    max-width: 140px;
   }
 }
 

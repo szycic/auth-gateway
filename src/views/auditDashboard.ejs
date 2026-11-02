@@ -825,6 +825,11 @@
               <span class="event-badge ${badgeCls}" data-event="${escapeHtml(log.event)}" onclick="event.stopPropagation(); setEventFilter(this.dataset.event)" title="Filter by '${escapeHtml(log.event)}'">
                 ${escapeHtml(log.event)}
               </span>
+              <div class="col-actor-mobile">
+                <span class="ip-text">${escapeHtml(ip)}</span>
+                ${device ? `<span class="device-pill">${escapeHtml(device)}</span>` : ''}
+                ${uuid ? `<span class="device-uuid" title="UUID: ${escapeHtml(uuid)} (Click to copy)" onclick="event.stopPropagation(); copyUuid(this, '${escapeHtml(uuid)}')">${escapeHtml(uuid)}</span>` : ''}
+              </div>
             </td>
             <td>
               <div class="col-actor">
