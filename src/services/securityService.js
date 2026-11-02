@@ -159,6 +159,8 @@ function jailIp(ip, reason, durationMs = JAIL_DURATION_DEFAULT_MS) {
     hitCount: existing ? (existing.hitCount || 0) : 0,
     firstBannedAt: existing ? existing.firstBannedAt : now,
     escalationLevel,
+    escalated15: existing ? existing.escalated15 : false,
+    escalated50: existing ? existing.escalated50 : false,
   });
 
   console.warn(`[AUTH_SCANNER_BLOCKED] ip=${ip} reason="${reason}" duration=${Math.round(finalDuration / 60000)}m strike=${count} (${escalationLevel})`);
@@ -216,13 +218,15 @@ function recordJailedHit(clientIp) {
     jailEntry.hitCount = (jailEntry.hitCount || 0) + 1;
 
     // Adaptive escalation based on concurrent burst hits during jail
-    if (jailEntry.hitCount >= 50 && jailEntry.bannedUntil < now + JAIL_DURATION_MAX_MS) {
-      jailEntry.bannedUntil = now + JAIL_DURATION_MAX_MS; // Escalate to 24 hours
+    if (jailEntry.hitCount >= 50 && !jailEntry.escalated50) {
+      jailEntry.escalated50 = true;
+      jailEntry.bannedUntil = Math.max(jailEntry.bannedUntil, now + JAIL_DURATION_MAX_MS); // Escalate to 24 hours
       jailEntry.escalationLevel = '24h (adaptive: 50+ burst hits)';
       escalatedLabel = jailEntry.escalationLevel;
       console.warn(`[AUTH_JAIL_ESCALATED] ip=${clientIp} escalated to 24h due to ${jailEntry.hitCount} burst hits`);
-    } else if (jailEntry.hitCount >= 15 && jailEntry.bannedUntil < now + JAIL_DURATION_AGGRESSIVE_MS) {
-      jailEntry.bannedUntil = now + JAIL_DURATION_AGGRESSIVE_MS; // Escalate to 6 hours
+    } else if (jailEntry.hitCount >= 15 && !jailEntry.escalated15 && !jailEntry.escalated50) {
+      jailEntry.escalated15 = true;
+      jailEntry.bannedUntil = Math.max(jailEntry.bannedUntil, now + JAIL_DURATION_AGGRESSIVE_MS); // Escalate to 6 hours
       jailEntry.escalationLevel = '6h (adaptive: 15+ burst hits)';
       escalatedLabel = jailEntry.escalationLevel;
       console.warn(`[AUTH_JAIL_ESCALATED] ip=${clientIp} escalated to 6h due to ${jailEntry.hitCount} burst hits`);

@@ -88,6 +88,7 @@ router.all('/verify', (req, res) => {
   try {
     baseAuthHost = new URL(config.BASE_URL).hostname.toLowerCase();
   } catch {}
+  const authHost = baseAuthHost;
 
   const forwardedHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].toLowerCase().trim();
   const targetHost = (targetService && targetService.url)
@@ -150,10 +151,6 @@ router.all('/verify', (req, res) => {
     const session = sessionService.activeSessions.get(token);
 
     // Check service access restrictions (fail-closed if restricted session)
-    let authHost = '';
-    try {
-      authHost = new URL(config.BASE_URL).hostname.toLowerCase();
-    } catch {}
     const reqHost = ((req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0]).toLowerCase().trim();
 
     if (targetService) {
