@@ -626,6 +626,14 @@ body {
   color: #ffffff;
 }
 
+.th-label-mobile {
+  display: none;
+}
+
+.th-label-desktop {
+  display: inline;
+}
+
 .sort-icon {
   display: inline-block;
   margin-left: 0.25rem;
@@ -1002,6 +1010,12 @@ body {
   .audit-table th:nth-child(3),
   .audit-table td:nth-child(3) {
     display: none;
+  }
+  .th-label-desktop {
+    display: none;
+  }
+  .th-label-mobile {
+    display: inline;
   }
   .audit-row td {
     vertical-align: top;
