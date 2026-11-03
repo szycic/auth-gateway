@@ -18,7 +18,7 @@ function isAllowedOrigin(origin) {
 
     const cookieDomain = (config.session.cookieDomain || '').replace(/^\./, '').toLowerCase();
     const isLocal = host === 'localhost' || host === '127.0.0.1';
-    const allowLocal = process.env.NODE_ENV !== 'prod';
+    const allowLocal = process.env.NODE_ENV !== 'production';
 
     if (
       origin === config.BASE_URL ||

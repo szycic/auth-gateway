@@ -4,14 +4,14 @@ FROM node:20-alpine AS builder
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm ci --only=prod
+RUN npm ci --omit=dev
 
-# Prod runtime stage
+# Production runtime stage
 FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
-ENV NODE_ENV=prod \
+ENV NODE_ENV=production \
     PORT=3000 \
     DATA_DIR=/usr/src/app/data
 
