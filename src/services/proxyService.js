@@ -3,7 +3,7 @@ const config = require('../config');
 const versionHelper = require('../utils/versionHelper');
 const sessionService = require('./sessionService');
 const authService = require('./authService');
-const { isAllowedOrigin } = require('../utils/originHelper');
+const { isAllowedOrigin, isExtensionOrigin } = require('../utils/originHelper');
 
 /**
  * Resolve target upstream URL for a given Host header.
@@ -99,9 +99,18 @@ function relaxCspHeader(val, authBaseUrl) {
  * @param {import('express').Response} res
  */
 function proxyToTargetApp(req, res) {
+  const origin = req.headers.origin;
+  const isExtension = isExtensionOrigin(origin);
+
   if (req.method === 'OPTIONS') {
-    const origin = req.headers.origin;
     if (origin && isAllowedOrigin(origin)) {
+      if (isExtension) {
+        const reqHeaders = (req.headers['access-control-request-headers'] || '').toLowerCase();
+        const hasTokenHeader = reqHeaders.includes('x-gateway-token') || reqHeaders.includes('x-auth-token');
+        if (!hasTokenHeader) {
+          return res.status(403).send('Forbidden: Extension CORS preflight requires X-Gateway-Token');
+        }
+      }
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
@@ -127,6 +136,12 @@ function proxyToTargetApp(req, res) {
   const isPublicRequest = req.headers['x-auth-status'] === 'public';
   const isAuthRequired = matchedService ? !matchedService.disableAuth : true;
   const isGatewayTokenAuth = authService.isGatewayTokenValid(req);
+
+  // Browser extensions MUST authenticate via Gateway Token; they cannot hijack ambient user session cookies
+  if (isExtension && !isGatewayTokenAuth) {
+    return res.status(401).send('Unauthorized: Extensions must provide a valid X-Gateway-Token');
+  }
+
   const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
   const session = sessionService.activeSessions.get(token);
   const isSessionValid = sessionService.isApprover(req) || (matchedService && sessionService.isSessionAllowedForService(session, matchedService));
@@ -248,7 +263,8 @@ function proxyToTargetApp(req, res) {
             headers['content-security-policy-report-only'] = relaxCspHeader(headers['content-security-policy-report-only'], config.BASE_URL);
           }
           const origin = req.headers.origin;
-          if (origin && isAllowedOrigin(origin)) {
+          const allowCorsResponse = origin && isAllowedOrigin(origin) && (!isExtension || isGatewayTokenAuth);
+          if (allowCorsResponse) {
             headers['access-control-allow-origin'] = origin;
             headers['access-control-allow-credentials'] = 'true';
           }
@@ -258,7 +274,8 @@ function proxyToTargetApp(req, res) {
       } else {
         const headers = { ...proxyRes.headers };
         const origin = req.headers.origin;
-        if (origin && isAllowedOrigin(origin)) {
+        const allowCorsResponse = origin && isAllowedOrigin(origin) && (!isExtension || isGatewayTokenAuth);
+        if (allowCorsResponse) {
           headers['access-control-allow-origin'] = origin;
           headers['access-control-allow-credentials'] = 'true';
         }

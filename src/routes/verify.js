@@ -1,6 +1,6 @@
 const express = require('express');
 const config = require('../config');
-const { isAllowedOrigin } = require('../utils/originHelper');
+const { isAllowedOrigin, isExtensionOrigin } = require('../utils/originHelper');
 const sessionService = require('../services/sessionService');
 const authService = require('../services/authService');
 const securityService = require('../services/securityService');
@@ -14,6 +14,13 @@ router.options('/verify', (req, res) => {
   const origin = req.headers.origin;
   if (origin) {
     if (isAllowedOrigin(origin)) {
+      if (isExtensionOrigin(origin)) {
+        const reqHeaders = (req.headers['access-control-request-headers'] || '').toLowerCase();
+        const hasTokenHeader = reqHeaders.includes('x-gateway-token') || reqHeaders.includes('x-auth-token');
+        if (!hasTokenHeader) {
+          return res.status(403).send('Forbidden: Extension CORS preflight requires X-Gateway-Token');
+        }
+      }
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
@@ -39,10 +46,37 @@ router.all('/verify', (req, res) => {
     }).send(`Forbidden: IP temporarily banned (${jailStatus.remainingSeconds}s remaining)`);
   }
 
+  const targetService = sessionService.getTargetServiceForRequest(req);
+  if (targetService && targetService.disableService) {
+    return res.status(503).set({
+      'X-Auth-Status': 'service_disabled',
+      'X-Auth-Reason': 'service_disabled',
+    }).send('Service Disabled');
+  }
+
+  // Scanner Probe Detection:
+  const forwardedHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].toLowerCase().trim();
+  const forwardedUri = req.headers['x-forwarded-uri'] || req.url || '';
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const fullUrl = `${proto}://${forwardedHost}${forwardedUri}`;
+
+  const scannerCheck = securityService.isScannerRequest(req, fullUrl);
+  if (scannerCheck.isScanner) {
+    return securityService.blockScannerProbe(req, res, fullUrl, scannerCheck.reason);
+  }
+
   const origin = req.headers.origin;
+  const isExtension = isExtensionOrigin(origin);
 
   if (origin) {
     if (isAllowedOrigin(origin)) {
+      if (isExtension) {
+        const reqHeaders = (req.headers['access-control-request-headers'] || '').toLowerCase();
+        const hasTokenHeader = reqHeaders.includes('x-gateway-token') || reqHeaders.includes('x-auth-token');
+        if (!hasTokenHeader) {
+          return res.status(403).send('Forbidden: Extension CORS preflight requires X-Gateway-Token');
+        }
+      }
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
@@ -55,22 +89,16 @@ router.all('/verify', (req, res) => {
   }
 
   const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
+  const acrm = req.headers['access-control-request-method'];
+  const isCorsPreflight = originalMethod === 'OPTIONS' && Boolean(origin && acrm);
 
-  // If this is a CORS preflight request (OPTIONS) for an allowed origin, approve it immediately
-  if (originalMethod === 'OPTIONS') {
+  // If this is a genuine CORS preflight request (OPTIONS + Origin + Access-Control-Request-Method), approve it
+  if (isCorsPreflight) {
     return res.status(200).set({
       'X-Auth-Status': 'public',
       'X-Auth-Role': 'preflight',
       'X-Auth-User': 'anonymous',
     }).send('OK: CORS Preflight');
-  }
-
-  const targetService = sessionService.getTargetServiceForRequest(req);
-  if (targetService && targetService.disableService) {
-    return res.status(503).set({
-      'X-Auth-Status': 'service_disabled',
-      'X-Auth-Reason': 'service_disabled',
-    }).send('Service Disabled');
   }
 
   // Public service bypass: If authentication is disabled for this service, allow all traffic
@@ -91,6 +119,14 @@ router.all('/verify', (req, res) => {
     }).send('OK: Authenticated via Gateway Token');
   }
 
+  // Browser extensions MUST authenticate via Gateway Token; they cannot hijack ambient user session cookies
+  if (isExtension) {
+    return res.status(401).set({
+      'X-Auth-Status': 'unauthorized',
+      'X-Auth-Reason': 'extension_gateway_token_required',
+    }).send('Unauthorized: Extensions must provide a valid X-Gateway-Token');
+  }
+
   // Cross-Subdomain XSS & Request Isolation:
   // Prevent malicious scripts executing on one subdomain (e.g. stash.szycic.com) from
   // making cross-subdomain fetch/XHR API requests or state-mutating requests (POST, PUT, DELETE)
@@ -101,7 +137,6 @@ router.all('/verify', (req, res) => {
   } catch {}
   const authHost = baseAuthHost;
 
-  const forwardedHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].toLowerCase().trim();
   const targetHost = (targetService && targetService.url)
     ? new URL(targetService.url).hostname.toLowerCase()
     : forwardedHost;
@@ -112,10 +147,6 @@ router.all('/verify', (req, res) => {
   if (targetHost && targetHost !== baseAuthHost) {
     if (origin) {
       try {
-        const isExtension = origin.startsWith('chrome-extension://') ||
-          origin.startsWith('moz-extension://') ||
-          origin.startsWith('safari-web-extension://');
-
         const originHost = new URL(origin).hostname.toLowerCase();
         if (!isExtension && originHost !== targetHost && originHost !== baseAuthHost) {
           if (
@@ -204,16 +235,6 @@ router.all('/verify', (req, res) => {
       'X-Auth-Role': 'trusted_device',
       'X-Auth-User': 'approver',
     }).send('OK');
-  }
-
-  // Scanner Probe Detection for Unauthenticated Requests:
-  const forwardedUri = req.headers['x-forwarded-uri'] || req.url || '';
-  const proto = req.headers['x-forwarded-proto'] || 'https';
-  const fullUrl = `${proto}://${forwardedHost}${forwardedUri}`;
-
-  const scannerCheck = securityService.isScannerRequest(req, fullUrl);
-  if (scannerCheck.isScanner) {
-    return securityService.blockScannerProbe(req, res, fullUrl, scannerCheck.reason);
   }
 
   // Rate Limiter for Unauthenticated Traffic:

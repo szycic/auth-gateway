@@ -1,6 +1,20 @@
 const config = require('../config');
 
 /**
+ * Check if the origin belongs to a browser extension.
+ * @param {string} origin
+ * @returns {boolean}
+ */
+function isExtensionOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  return (
+    origin.startsWith('chrome-extension://') ||
+    origin.startsWith('moz-extension://') ||
+    origin.startsWith('safari-web-extension://')
+  );
+}
+
+/**
  * Validate CORS origins against BASE_URL and configured cookieDomain.
  * @param {string} origin
  * @returns {boolean}
@@ -8,11 +22,7 @@ const config = require('../config');
 function isAllowedOrigin(origin) {
   if (!origin) return true;
   try {
-    if (
-      origin.startsWith('chrome-extension://') ||
-      origin.startsWith('moz-extension://') ||
-      origin.startsWith('safari-web-extension://')
-    ) {
+    if (isExtensionOrigin(origin)) {
       return true;
     }
 
@@ -56,5 +66,6 @@ function isAuthDomain(req) {
 
 module.exports = {
   isAllowedOrigin,
+  isExtensionOrigin,
   isAuthDomain,
 };
