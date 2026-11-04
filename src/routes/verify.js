@@ -16,7 +16,7 @@ router.options('/verify', (req, res) => {
     if (isAllowedOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
       const reqHeaders = req.headers['access-control-request-headers'];
       res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
       res.setHeader('Access-Control-Max-Age', '86400');
@@ -52,6 +52,17 @@ router.all('/verify', (req, res) => {
     } else {
       return res.status(403).send('Forbidden: CORS origin not allowed');
     }
+  }
+
+  const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
+
+  // If this is a CORS preflight request (OPTIONS) for an allowed origin, approve it immediately
+  if (originalMethod === 'OPTIONS') {
+    return res.status(200).set({
+      'X-Auth-Status': 'public',
+      'X-Auth-Role': 'preflight',
+      'X-Auth-User': 'anonymous',
+    }).send('OK: CORS Preflight');
   }
 
   const targetService = sessionService.getTargetServiceForRequest(req);
@@ -95,15 +106,18 @@ router.all('/verify', (req, res) => {
     ? new URL(targetService.url).hostname.toLowerCase()
     : forwardedHost;
 
-  const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
   const secFetchMode = req.headers['sec-fetch-mode'];
   const secFetchSite = req.headers['sec-fetch-site'];
 
   if (targetHost && targetHost !== baseAuthHost) {
     if (origin) {
       try {
+        const isExtension = origin.startsWith('chrome-extension://') ||
+          origin.startsWith('moz-extension://') ||
+          origin.startsWith('safari-web-extension://');
+
         const originHost = new URL(origin).hostname.toLowerCase();
-        if (originHost !== targetHost && originHost !== baseAuthHost) {
+        if (!isExtension && originHost !== targetHost && originHost !== baseAuthHost) {
           if (
             ['POST', 'PUT', 'PATCH', 'DELETE'].includes(originalMethod) ||
             secFetchMode === 'cors' ||

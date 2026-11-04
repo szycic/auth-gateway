@@ -8,6 +8,14 @@ const config = require('../config');
 function isAllowedOrigin(origin) {
   if (!origin) return true;
   try {
+    if (
+      origin.startsWith('chrome-extension://') ||
+      origin.startsWith('moz-extension://') ||
+      origin.startsWith('safari-web-extension://')
+    ) {
+      return true;
+    }
+
     const u = new URL(origin);
 
     const host = u.hostname.toLowerCase();

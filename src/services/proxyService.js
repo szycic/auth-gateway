@@ -101,20 +101,14 @@ function relaxCspHeader(val, authBaseUrl) {
 function proxyToTargetApp(req, res) {
   if (req.method === 'OPTIONS') {
     const origin = req.headers.origin;
-    const targetHost = req.headers.host ? req.headers.host.split(':')[0].toLowerCase() : '';
-    if (origin) {
-      try {
-        const originHost = new URL(origin).hostname.toLowerCase();
-        if (originHost === targetHost) {
-          res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
-          const reqHeaders = req.headers['access-control-request-headers'];
-          res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
-          res.setHeader('Access-Control-Max-Age', '86400');
-          return res.status(204).end();
-        }
-      } catch (_) {}
+    if (origin && isAllowedOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
+      const reqHeaders = req.headers['access-control-request-headers'];
+      res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
+      res.setHeader('Access-Control-Max-Age', '86400');
+      return res.status(204).end();
     }
     return res.status(403).send('Forbidden: Cross-subdomain CORS not permitted');
   }
@@ -253,11 +247,21 @@ function proxyToTargetApp(req, res) {
           if (headers['content-security-policy-report-only']) {
             headers['content-security-policy-report-only'] = relaxCspHeader(headers['content-security-policy-report-only'], config.BASE_URL);
           }
+          const origin = req.headers.origin;
+          if (origin && isAllowedOrigin(origin)) {
+            headers['access-control-allow-origin'] = origin;
+            headers['access-control-allow-credentials'] = 'true';
+          }
           res.writeHead(proxyRes.statusCode, headers);
           res.end(body);
         });
       } else {
         const headers = { ...proxyRes.headers };
+        const origin = req.headers.origin;
+        if (origin && isAllowedOrigin(origin)) {
+          headers['access-control-allow-origin'] = origin;
+          headers['access-control-allow-credentials'] = 'true';
+        }
         res.writeHead(proxyRes.statusCode, headers);
         proxyRes.pipe(res);
       }
