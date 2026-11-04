@@ -182,7 +182,8 @@ router.all('/verify', (req, res) => {
   if (sessionService.isApprover(req)) {
     const approverToken = req.cookies[config.APPROVER_COOKIE_NAME];
     const approverSession = approverToken ? sessionService.approverSessions.get(approverToken) : null;
-    securityService.logServiceAccess(req, approverSession, targetService, true);
+    const effectiveSession = approverSession ? sessionService.getLinkedActiveSession(approverSession) : null;
+    securityService.logServiceAccess(req, effectiveSession || approverSession, targetService, true);
 
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',

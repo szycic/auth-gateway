@@ -92,6 +92,10 @@ function loadPersistedSessions() {
             a.activeSessionToken = s.token;
             sessionsModified = true;
           }
+          if (s.friendlyDevice && a.friendlyDevice !== s.friendlyDevice) {
+            a.friendlyDevice = s.friendlyDevice;
+            sessionsModified = true;
+          }
         } else if (!s.approverToken) {
           const isApproverDevice = s.type === 'approver' || s.isApprover;
           if (isApproverDevice) {
@@ -117,6 +121,9 @@ function loadPersistedSessions() {
               }
               bestMatch.sessionId = s.id;
               bestMatch.activeSessionToken = s.token;
+              if (s.friendlyDevice && bestMatch.friendlyDevice !== s.friendlyDevice) {
+                bestMatch.friendlyDevice = s.friendlyDevice;
+              }
               sessionsModified = true;
             }
           }
@@ -128,12 +135,21 @@ function loadPersistedSessions() {
         let hasActiveSession = false;
         if (a.activeSessionToken && activeSessions.has(a.activeSessionToken)) {
           hasActiveSession = true;
+          const s = activeSessions.get(a.activeSessionToken);
+          if (s && s.friendlyDevice && a.friendlyDevice !== s.friendlyDevice) {
+            a.friendlyDevice = s.friendlyDevice;
+            sessionsModified = true;
+          }
         } else {
           for (const s of activeSessions.values()) {
             if (s.approverToken === a.token || (a.sessionId && s.id === a.sessionId)) {
               hasActiveSession = true;
               a.activeSessionToken = s.token;
               a.sessionId = s.id;
+              if (s.friendlyDevice && a.friendlyDevice !== s.friendlyDevice) {
+                a.friendlyDevice = s.friendlyDevice;
+                sessionsModified = true;
+              }
               break;
             }
           }
@@ -369,6 +385,7 @@ function mintApproverSession(req, res, approverTokenExplicit) {
     const a = approverSessions.get(approverToken);
     a.sessionId = sessionId;
     a.activeSessionToken = sessionToken;
+    a.friendlyDevice = friendlyDevice;
   }
 
   activeSessions.set(sessionToken, sessionObj);
@@ -382,6 +399,30 @@ function mintApproverSession(req, res, approverTokenExplicit) {
 
 let persistDebounceTimer = null;
 
+/**
+ * Resolves the underlying active session for a session or approver session object.
+ */
+function getLinkedActiveSession(sessionOrApprover) {
+  if (!sessionOrApprover) return null;
+  if (sessionOrApprover.friendlyDevice && sessionOrApprover.id && activeSessions.has(sessionOrApprover.token)) {
+    return sessionOrApprover;
+  }
+  if (sessionOrApprover.activeSessionToken && activeSessions.has(sessionOrApprover.activeSessionToken)) {
+    return activeSessions.get(sessionOrApprover.activeSessionToken);
+  }
+  if (sessionOrApprover.sessionId) {
+    for (const s of activeSessions.values()) {
+      if (s.id === sessionOrApprover.sessionId) return s;
+    }
+  }
+  if (sessionOrApprover.token) {
+    for (const s of activeSessions.values()) {
+      if (s.approverToken === sessionOrApprover.token) return s;
+    }
+  }
+  return sessionOrApprover;
+}
+
 function touchSession(session, serviceName, fullUrl, ip) {
   if (!session) return;
   const now = Date.now();
@@ -394,6 +435,24 @@ function touchSession(session, serviceName, fullUrl, ip) {
     const a = approverSessions.get(session.approverToken);
     a.lastActiveAt = now;
     if (serviceName) a.lastActiveService = serviceName;
+    if (fullUrl) a.lastActiveUrl = fullUrl;
+    if (ip) a.lastActiveIp = ip;
+  } else if (session.activeSessionToken && activeSessions.has(session.activeSessionToken)) {
+    const act = activeSessions.get(session.activeSessionToken);
+    act.lastActiveAt = now;
+    if (serviceName) act.lastActiveService = serviceName;
+    if (fullUrl) act.lastActiveUrl = fullUrl;
+    if (ip) act.lastActiveIp = ip;
+  } else if (session.sessionId) {
+    for (const act of activeSessions.values()) {
+      if (act.id === session.sessionId) {
+        act.lastActiveAt = now;
+        if (serviceName) act.lastActiveService = serviceName;
+        if (fullUrl) act.lastActiveUrl = fullUrl;
+        if (ip) act.lastActiveIp = ip;
+        break;
+      }
+    }
   }
 
   // Debounced persistence to avoid constant disk writes during rapid page loads
@@ -454,6 +513,7 @@ module.exports = {
   isSessionAllowedForService,
   getTargetServiceForRequest,
   mintApproverSession,
+  getLinkedActiveSession,
   touchSession,
   parseUserAgent,
 };

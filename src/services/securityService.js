@@ -392,10 +392,14 @@ function logServiceAccess(req, session, targetService, isApprover = false) {
                      (!secFetchDest && accept.includes('text/html'));
   if (!isDocument) return;
 
+  const sessionService = require('./sessionService');
+  const activeSession = sessionService.getLinkedActiveSession ? sessionService.getLinkedActiveSession(session) : session;
+  const effectiveSession = activeSession || session;
+
   const service = targetService || (forwardedHost === authHost ? config.getAuthService() : null);
   const serviceId = service ? service.id : forwardedHost;
-  const sessionId = (session && session.id) || (session && session.sessionId) || authService.getClientIp(req);
-  const debounceKey = `${sessionId}:${serviceId}`;
+  const auditSessionId = (effectiveSession && effectiveSession.id) || (session && (session.id || session.sessionId)) || undefined;
+  const debounceKey = `${auditSessionId || authService.getClientIp(req)}:${serviceId}`;
   const now = Date.now();
   const lastTime = accessDebounceMap.get(debounceKey) || 0;
 
@@ -414,21 +418,27 @@ function logServiceAccess(req, session, targetService, isApprover = false) {
   const proto = req.headers['x-forwarded-proto'] || (req.protocol === 'http' || req.protocol === 'https' ? req.protocol : 'https');
   const fullUrl = `${proto}://${forwardedHost}${forwardedUri}`;
 
+  const device = (effectiveSession && effectiveSession.friendlyDevice)
+    || (session && session.friendlyDevice)
+    || parseUserAgent(req.headers['user-agent'] || '')
+    || (isApprover ? 'Approver Device' : 'Desktop Browser');
+
+  const isTrusted = effectiveSession ? Boolean(effectiveSession.isTrusted) : (session ? Boolean(session.isTrusted) : false);
+
   auditLog('SERVICE_ACCESS', {
     service: serviceName,
     serviceId: service ? service.id : null,
     site: forwardedHost,
     url: fullUrl,
     ip: authService.getClientIp(req),
-    device: (session && session.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || '') || (isApprover ? 'Approver Device' : 'Desktop Browser'),
-    sessionId: (session && session.id) || undefined,
-    trusted: session ? session.isTrusted : false,
+    device,
+    sessionId: auditSessionId,
+    trusted: isTrusted,
     ...(isApprover ? { isApprover: true } : {}),
   });
 
   if (session) {
     try {
-      const sessionService = require('./sessionService');
       sessionService.touchSession(session, serviceName, fullUrl, authService.getClientIp(req));
     } catch (_) {}
   }

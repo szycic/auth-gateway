@@ -270,6 +270,7 @@ router.post('/approver/webauthn/login-verify', async (req, res) => {
       if (finalDeviceName) activeSess.friendlyDevice = finalDeviceName;
       appObj.sessionId = activeSess.id;
       appObj.activeSessionToken = activeSess.token;
+      appObj.friendlyDevice = activeSess.friendlyDevice;
     }
     sessionService.savePersistedSessions();
 
@@ -427,6 +428,7 @@ router.post('/approver/login', (req, res) => {
   if (activeSess) {
     appObj.sessionId = activeSess.id;
     appObj.activeSessionToken = activeSess.token;
+    appObj.friendlyDevice = activeSess.friendlyDevice;
   }
   sessionService.savePersistedSessions();
 
@@ -573,6 +575,7 @@ router.post('/approver/self-authorize', (req, res) => {
       url: redirectTarget,
       ip: authService.getClientIp(req),
       device: (approverSession && approverSession.friendlyDevice) || 'Approver Device',
+      sessionId: (approverSession && approverSession.id) || undefined,
       isApprover: true,
     });
   }

@@ -239,6 +239,9 @@ router.post('/sessions/rename', (req, res) => {
       const oldName = session.friendlyDevice;
       const newName = trimmed || parseUserAgent(session.userAgent) || 'Desktop Browser';
       session.friendlyDevice = newName;
+      if (session.approverToken && sessionService.approverSessions.has(session.approverToken)) {
+        sessionService.approverSessions.get(session.approverToken).friendlyDevice = newName;
+      }
       updatedDevice = newName;
       auditLog('DEVICE_RENAMED', {
         sessionId: session.id,
@@ -544,6 +547,9 @@ router.post('/device/rename', (req, res) => {
   if (trimmed) {
     const oldName = session.friendlyDevice;
     session.friendlyDevice = trimmed;
+    if (session.approverToken && sessionService.approverSessions.has(session.approverToken)) {
+      sessionService.approverSessions.get(session.approverToken).friendlyDevice = trimmed;
+    }
     auditLog('DEVICE_RENAMED', {
       sessionId: session.id,
       device: trimmed,

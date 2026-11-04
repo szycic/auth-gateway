@@ -53,14 +53,15 @@ router.get('/launch/:serviceId', (req, res) => {
     });
   }
 
+  const effectiveSession = sessionService.getLinkedActiveSession ? sessionService.getLinkedActiveSession(session) : session;
   auditLog('SERVICE_REDIRECT', {
     service: service.name,
     serviceId: service.id,
     url: service.url,
     ip: authService.getClientIp(req),
-    device: (session && session.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || '') || (isApprover ? 'Approver Device' : 'Desktop Browser'),
-    sessionId: session ? session.id : undefined,
-    trusted: session ? session.isTrusted : false,
+    device: (effectiveSession && effectiveSession.friendlyDevice) || (session && session.friendlyDevice) || parseUserAgent(req.headers['user-agent'] || '') || (isApprover ? 'Approver Device' : 'Desktop Browser'),
+    sessionId: (effectiveSession && effectiveSession.id) || (session && (session.id || session.sessionId)) || undefined,
+    trusted: effectiveSession ? Boolean(effectiveSession.isTrusted) : (session ? Boolean(session.isTrusted) : false),
     source: 'portal',
   });
 

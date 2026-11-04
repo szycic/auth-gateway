@@ -105,6 +105,7 @@ router.get('/login', (req, res) => {
         url: redirectTarget,
         ip: authService.getClientIp(req),
         device: (approverSession && approverSession.friendlyDevice) || 'Approver Device',
+        sessionId: (approverSession && approverSession.id) || undefined,
         isApprover: true,
       });
       return res.redirect(redirectTarget);
@@ -239,6 +240,7 @@ router.post('/login', (req, res) => {
   if (activeSess) {
     appObj.sessionId = activeSess.id;
     appObj.activeSessionToken = activeSess.token;
+    appObj.friendlyDevice = activeSess.friendlyDevice;
   }
   sessionService.savePersistedSessions();
 
