@@ -147,9 +147,9 @@
     <div class="audit-table-card">
       <div class="table-header-meta">
         <div class="meta-status">
-          <span>Showing <strong id="countVisible" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events<span id="filteredMatchNote" style="display: none; color: #94a3b8; font-size: 0.775rem; white-space: nowrap;"> (<strong id="countFilteredMatch" style="color: #cbd5e1;">0</strong> <span id="filteredMatchLabel">matching filters</span>)</span></span>
-          <span class="meta-dot">•</span>
-          <span id="lastUpdatedText" style="color: #64748b;">Updated just now</span>
+          <span id="countSummarySpan">Showing <strong id="countVisible" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events<span id="filteredMatchNote" style="display: none; color: #94a3b8; font-size: 0.775rem; white-space: nowrap;"> (<strong id="countFilteredMatch" style="color: #cbd5e1;">0</strong> <span id="filteredMatchLabel">matching filters</span>)</span></span>
+          <span id="updateDot" class="meta-dot">•</span>
+          <span id="lastUpdatedText" style="color: #64748b; white-space: nowrap;">Updated just now</span>
           <span id="clearDot" class="meta-dot" style="display: none;">•</span>
           <button type="button" id="btnClearFilters" class="btn-clear-pill" onclick="clearAllFilters()" style="display: none;" title="Reset all search &amp; filter criteria">
             <svg style="width: 11px; height: 11px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -764,6 +764,7 @@
         }
       }
       document.getElementById('lastUpdatedText').textContent = 'Updated ' + new Date().toLocaleTimeString();
+      scheduleMetaDotCheck();
 
       const sizeSelect = document.getElementById('pageSizeSelect');
       if (sizeSelect && sizeSelect.value !== String(pageSize)) {
@@ -997,6 +998,36 @@
       }
     }
 
+    let checkMetaScheduled = false;
+    function scheduleMetaDotCheck() {
+      if (checkMetaScheduled) return;
+      checkMetaScheduled = true;
+      requestAnimationFrame(() => {
+        checkMetaScheduled = false;
+        updateMetaDotVisibility();
+      });
+    }
+
+    function updateMetaDotVisibility() {
+      const countSpan = document.getElementById('countSummarySpan');
+      const updateText = document.getElementById('lastUpdatedText');
+      const updateDot = document.getElementById('updateDot');
+      if (!countSpan || !updateText || !updateDot) return;
+
+      // Temporarily set inline to check true geometry under flex-wrap
+      updateDot.style.display = 'inline';
+      const isWrapped = updateText.offsetTop > countSpan.offsetTop;
+      updateDot.style.display = isWrapped ? 'none' : 'inline';
+
+      const clearBtn = document.getElementById('btnClearFilters');
+      const clearDot = document.getElementById('clearDot');
+      if (clearBtn && clearDot && clearBtn.style.display !== 'none') {
+        clearDot.style.display = 'inline';
+        const isClearWrapped = clearBtn.offsetTop > updateText.offsetTop;
+        clearDot.style.display = isClearWrapped ? 'none' : 'inline';
+      }
+    }
+
     function updateClearFilterState() {
       const isFiltered = Boolean(
         (currentSearch && currentSearch.trim() !== '') ||
@@ -1009,6 +1040,7 @@
       const dot = document.getElementById('clearDot');
       if (btn) btn.style.display = isFiltered ? 'inline-flex' : 'none';
       if (dot) dot.style.display = isFiltered ? 'inline' : 'none';
+      scheduleMetaDotCheck();
     }
 
     function clearAllFilters() {
@@ -1127,6 +1159,13 @@
     renderEventMultiselect(latestEventTypes);
     fetchAuditLogs();
     startPolling();
+    window.addEventListener('resize', scheduleMetaDotCheck);
+    if (window.ResizeObserver) {
+      const metaStatusEl = document.querySelector('.meta-status');
+      if (metaStatusEl) {
+        new ResizeObserver(scheduleMetaDotCheck).observe(metaStatusEl);
+      }
+    }
   </script>
   <%- include('partials/pwa-sw') %>
 </body>

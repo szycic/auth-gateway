@@ -603,6 +603,10 @@ body {
   white-space: nowrap;
 }
 
+#lastUpdatedText {
+  white-space: nowrap;
+}
+
 .meta-dot {
   color: #475569;
   font-size: 0.8rem;
