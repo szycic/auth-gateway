@@ -1,7 +1,7 @@
 const { Server } = require('socket.io');
 const cookie = require('cookie');
 const config = require('../config');
-const { isAllowedOrigin } = require('../utils/originHelper');
+const { isAllowedOrigin, isExtensionOrigin } = require('../utils/originHelper');
 const sessionService = require('./sessionService');
 
 let ioInstance = null;
@@ -10,6 +10,9 @@ function initSocketIO(server) {
   const io = new Server(server, {
     cors: {
       origin: (origin, callback) => {
+        if (isExtensionOrigin(origin)) {
+          return callback(new Error('CORS origin not allowed: Extension WebSockets forbidden'));
+        }
         if (isAllowedOrigin(origin)) {
           return callback(null, true);
         }
