@@ -35,7 +35,7 @@
       <div class="stat-card stat-card-logins">
         <span class="stat-label">Logins (24h)</span>
         <span class="stat-value" id="statLogins"><%= stats.logins24h %></span>
-        <span class="stat-subtext">Successful user &amp; approver logins</span>
+        <span class="stat-subtext">Successful logins</span>
       </div>
       <div class="stat-card stat-card-events">
         <span class="stat-label">Tracked Events (24h)</span>
@@ -147,7 +147,7 @@
     <div class="audit-table-card">
       <div class="table-header-meta">
         <div class="meta-status">
-          <span>Showing <strong id="countVisible" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events<span id="filteredMatchNote" style="display: none; color: #94a3b8; font-size: 0.775rem;"> (<strong id="countFilteredMatch" style="color: #cbd5e1;">0</strong> matching filters)</span></span>
+          <span>Showing <strong id="countVisible" style="color: #ffffff;">0</strong> of <strong id="countTotal" style="color: #ffffff;">0</strong> events<span id="filteredMatchNote" style="display: none; color: #94a3b8; font-size: 0.775rem; white-space: nowrap;"> (<strong id="countFilteredMatch" style="color: #cbd5e1;">0</strong> <span id="filteredMatchLabel">matching filters</span>)</span></span>
           <span class="meta-dot">•</span>
           <span id="lastUpdatedText" style="color: #64748b;">Updated just now</span>
           <span id="clearDot" class="meta-dot" style="display: none;">•</span>
@@ -757,6 +757,8 @@
         if (filteredCount < totalAvailable) {
           filteredMatchNote.style.display = 'inline';
           if (countFilteredMatch) countFilteredMatch.textContent = filteredCount;
+          const labelEl = document.getElementById('filteredMatchLabel');
+          if (labelEl) labelEl.textContent = filteredCount === 1 ? 'matching filter' : 'matching filters';
         } else {
           filteredMatchNote.style.display = 'none';
         }
