@@ -67,33 +67,45 @@ router.all('/verify', (req, res) => {
 
   const origin = req.headers.origin;
   const isExtension = isExtensionOrigin(origin);
+  const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
+  const acrm = req.headers['access-control-request-method'];
+  const isCorsPreflight = originalMethod === 'OPTIONS' && Boolean(origin && acrm);
 
   if (origin) {
     if (isAllowedOrigin(origin)) {
-      if (isExtension) {
-        const reqHeaders = (req.headers['access-control-request-headers'] || '').toLowerCase();
-        const hasTokenHeader = reqHeaders.includes('x-gateway-token') || reqHeaders.includes('x-auth-token');
-        if (!hasTokenHeader) {
-          return res.status(403).send('Forbidden: Extension CORS preflight requires X-Gateway-Token');
+      if (isCorsPreflight) {
+        if (isExtension) {
+          const reqHeaders = (req.headers['access-control-request-headers'] || '').toLowerCase();
+          const hasTokenHeader = reqHeaders.includes('x-gateway-token') || reqHeaders.includes('x-auth-token');
+          if (!hasTokenHeader) {
+            return res.status(403).send('Forbidden: Extension CORS preflight requires X-Gateway-Token');
+          }
         }
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
+        const reqHeaders = req.headers['access-control-request-headers'];
+        res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
+        res.setHeader('Access-Control-Max-Age', '86400');
+        return res.status(200).set({
+          'X-Auth-Status': 'public',
+          'X-Auth-Role': 'preflight',
+          'X-Auth-User': 'anonymous',
+        }).send('OK: CORS Preflight');
       }
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
-      const reqHeaders = req.headers['access-control-request-headers'];
-      res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Requested-With, X-Gateway-Token, X-Auth-Token');
-      res.setHeader('Access-Control-Max-Age', '86400');
+
+      // Non-preflight requests: set CORS headers for non-extension origins immediately
+      if (!isExtension) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
     } else {
       return res.status(403).send('Forbidden: CORS origin not allowed');
     }
   }
 
-  const originalMethod = (req.headers['x-forwarded-method'] || req.method || 'GET').toUpperCase();
-  const acrm = req.headers['access-control-request-method'];
-  const isCorsPreflight = originalMethod === 'OPTIONS' && Boolean(origin && acrm);
-
-  // If this is a genuine CORS preflight request (OPTIONS + Origin + Access-Control-Request-Method), approve it
-  if (isCorsPreflight) {
+  // If this is a standalone OPTIONS request without origin/acrm, approve it
+  if (originalMethod === 'OPTIONS') {
     return res.status(200).set({
       'X-Auth-Status': 'public',
       'X-Auth-Role': 'preflight',
@@ -112,6 +124,10 @@ router.all('/verify', (req, res) => {
 
   // Gateway Secret Token check (via custom headers: X-Gateway-Token, X-Auth-Token, or Bearer token)
   if (authService.isGatewayTokenValid(req)) {
+    if (isExtension && origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
     return res.status(200).set({
       'X-Auth-Status': 'authenticated',
       'X-Auth-Role': 'api_token',
