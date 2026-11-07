@@ -564,4 +564,89 @@ router.post('/device/rename', (req, res) => {
   return res.redirect('/?notice=' + encodeURIComponent(`Device renamed to "${session.friendlyDevice}".`));
 });
 
+// ==============================================================================
+// IP Jail Management Endpoints (Strictly Approver Only)
+// ==============================================================================
+
+router.get('/jail/data', (req, res) => {
+  if (!sessionService.isApprover(req)) {
+    return res.status(401).json({ error: 'Unauthorized: Approver session required' });
+  }
+  return res.json({
+    success: true,
+    jailed: securityService.getJailedIpsList(),
+  });
+});
+
+router.post('/jail/unjail', (req, res) => {
+  if (!sessionService.isApprover(req)) {
+    return res.status(401).json({ error: 'Unauthorized: Approver session required' });
+  }
+  const ip = (req.body && req.body.ip ? String(req.body.ip).trim() : '');
+  if (!ip) {
+    return res.status(400).json({ error: 'IP address is required' });
+  }
+
+  const approverIp = authService.getClientIp(req);
+  securityService.unjailIp(ip, approverIp);
+
+  return res.json({
+    success: true,
+    message: `IP ${ip} has been unjailed.`,
+    jailed: securityService.getJailedIpsList(),
+  });
+});
+
+router.post('/jail/extend', (req, res) => {
+  if (!sessionService.isApprover(req)) {
+    return res.status(401).json({ error: 'Unauthorized: Approver session required' });
+  }
+  const ip = (req.body && req.body.ip ? String(req.body.ip).trim() : '');
+  const durationMinutes = parseInt(req.body && req.body.durationMinutes, 10) || 30;
+  const reason = (req.body && req.body.reason ? String(req.body.reason).trim() : '');
+
+  if (!ip) {
+    return res.status(400).json({ error: 'IP address is required' });
+  }
+
+  const approverIp = authService.getClientIp(req);
+  try {
+    const entry = securityService.extendJail(ip, durationMinutes, reason, approverIp);
+    return res.json({
+      success: true,
+      message: `Jail duration for ${ip} extended by ${durationMinutes}m.`,
+      entry,
+      jailed: securityService.getJailedIpsList(),
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/jail/ban', (req, res) => {
+  if (!sessionService.isApprover(req)) {
+    return res.status(401).json({ error: 'Unauthorized: Approver session required' });
+  }
+  const ip = (req.body && req.body.ip ? String(req.body.ip).trim() : '');
+  const durationMinutes = parseInt(req.body && req.body.durationMinutes, 10) || 30;
+  const reason = (req.body && req.body.reason ? String(req.body.reason).trim() : 'Manual administrative ban');
+
+  if (!ip) {
+    return res.status(400).json({ error: 'IP address is required' });
+  }
+
+  const approverIp = authService.getClientIp(req);
+  try {
+    const entry = securityService.manuallyJailIp(ip, durationMinutes, reason, approverIp);
+    return res.json({
+      success: true,
+      message: `IP ${ip} manually jailed for ${durationMinutes}m.`,
+      entry,
+      jailed: securityService.getJailedIpsList(),
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;

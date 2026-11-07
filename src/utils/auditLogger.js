@@ -221,6 +221,9 @@ const EVENT_CATEGORIES = {
     'LOCKOUT_TRIGGERED',
     'RATE_LIMIT_TRIGGERED',
     'SCANNER_PROBE_BLOCKED',
+    'IP_UNJAILED',
+    'IP_JAIL_EXTENDED',
+    'IP_MANUALLY_JAILED',
   ],
   approval: [
     'SESSION_APPROVED',
@@ -243,7 +246,10 @@ const EVENT_CATEGORIES = {
  */
 function getEventClass(event = '') {
   const ev = String(event);
-  if (ev.includes('SCANNER_') || ev.includes('RATE_LIMIT')) {
+  if (ev.includes('UNJAILED')) {
+    return 'success';
+  }
+  if (ev.includes('SCANNER_') || ev.includes('RATE_LIMIT') || ev.includes('JAIL')) {
     return 'warning';
   }
   if (ev.includes('BLOCKED') || ev.includes('FAILED') || ev.includes('LOCKOUT')) {

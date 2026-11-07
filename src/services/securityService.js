@@ -1,9 +1,13 @@
+const fs = require('fs');
+const path = require('path');
 const config = require('../config');
 const { auditLog, updateLogAttempts } = require('../utils/auditLogger');
 const { parseUserAgent } = require('../utils/deviceDetector');
 const authService = require('./authService');
 
-// Jailed IPs map: ip -> { reason, bannedUntil, count, firstBannedAt }
+const JAIL_FILE = path.join(config.DATA_DIR, 'jail.json');
+
+// Jailed IPs map: ip -> { reason, bannedUntil, count, hitCount, firstBannedAt, escalationLevel, isManual }
 const jailedIps = new Map();
 
 // Rate limiting map for unauthenticated requests: ip -> { count, resetAt }
@@ -74,6 +78,109 @@ function isPrivateOrLocalIp(ip) {
 }
 
 /**
+ * Check if an IP address is exempt from being jailed:
+ * - Local/private IP
+ * - IP currently associated with an active authenticated user session or approver session
+ */
+function isIpExemptFromJail(ip) {
+  if (!ip) return true;
+  if (isPrivateOrLocalIp(ip)) return true;
+  try {
+    const sessionService = require('./sessionService');
+    const now = Date.now();
+    if (sessionService && sessionService.activeSessions) {
+      for (const s of sessionService.activeSessions.values()) {
+        if (s.expiresAt > now && (s.ip === ip || s.lastActiveIp === ip)) {
+          return true;
+        }
+      }
+    }
+    if (sessionService && sessionService.approverSessions) {
+      for (const a of sessionService.approverSessions.values()) {
+        if (a.expiresAt > now && (a.ip === ip || a.lastActiveIp === ip)) {
+          return true;
+        }
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+/**
+ * Load persisted jail entries from disk on startup.
+ */
+function loadPersistedJail() {
+  try {
+    if (fs.existsSync(JAIL_FILE)) {
+      const raw = fs.readFileSync(JAIL_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      const now = Date.now();
+      if (Array.isArray(data.jailed)) {
+        for (const item of data.jailed) {
+          if (item && item.ip && item.bannedUntil > now) {
+            jailedIps.set(item.ip, {
+              reason: item.reason || 'Malicious probe',
+              bannedUntil: item.bannedUntil,
+              count: item.count || 1,
+              hitCount: item.hitCount || 0,
+              firstBannedAt: item.firstBannedAt || now,
+              escalationLevel: item.escalationLevel || '30m',
+              isManual: Boolean(item.isManual),
+              escalated15: Boolean(item.escalated15),
+              escalated50: Boolean(item.escalated50),
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[auth-gateway] Error loading persisted jail:', err.message);
+  }
+}
+
+/**
+ * Persist active jail entries to disk atomically.
+ */
+function savePersistedJail() {
+  try {
+    if (!fs.existsSync(config.DATA_DIR)) {
+      fs.mkdirSync(config.DATA_DIR, { recursive: true });
+    }
+    const now = Date.now();
+    const list = [];
+    for (const [ip, entry] of jailedIps.entries()) {
+      if (entry.bannedUntil > now) {
+        list.push({
+          ip,
+          reason: entry.reason,
+          bannedUntil: entry.bannedUntil,
+          count: entry.count,
+          hitCount: entry.hitCount,
+          firstBannedAt: entry.firstBannedAt,
+          escalationLevel: entry.escalationLevel,
+          isManual: Boolean(entry.isManual),
+          escalated15: Boolean(entry.escalated15),
+          escalated50: Boolean(entry.escalated50),
+        });
+      }
+    }
+    const data = {
+      jailed: list,
+      lastSaved: new Date().toISOString(),
+    };
+    const content = JSON.stringify(data, null, 2);
+    const tmp = `${JAIL_FILE}.tmp`;
+    fs.writeFileSync(tmp, content, 'utf8');
+    fs.renameSync(tmp, JAIL_FILE);
+  } catch (err) {
+    console.error('[auth-gateway] Error saving persisted jail:', err.message);
+  }
+}
+
+// Initial jail load
+loadPersistedJail();
+
+/**
  * Extract pathname from relative URI or absolute URL.
  */
 function extractPathname(urlOrUri) {
@@ -119,6 +226,7 @@ function isIpJailed(ip) {
   const now = Date.now();
   if (now > entry.bannedUntil) {
     jailedIps.delete(ip);
+    savePersistedJail();
     return { jailed: false };
   }
 
@@ -128,6 +236,11 @@ function isIpJailed(ip) {
     remainingSeconds,
     reason: entry.reason,
     bannedUntil: entry.bannedUntil,
+    count: entry.count,
+    hitCount: entry.hitCount || 0,
+    firstBannedAt: entry.firstBannedAt,
+    escalationLevel: entry.escalationLevel,
+    isManual: Boolean(entry.isManual),
   };
 }
 
@@ -136,7 +249,10 @@ function isIpJailed(ip) {
  */
 function jailIp(ip, reason, durationMs = JAIL_DURATION_DEFAULT_MS) {
   if (!ip) return;
-  if (isPrivateOrLocalIp(ip)) return;
+  if (isIpExemptFromJail(ip)) {
+    console.warn(`[AUTH_JAIL_EXEMPT] Refused to jail ip=${ip} reason="${reason}" (authenticated session or private network)`);
+    return;
+  }
 
   const now = Date.now();
   const existing = jailedIps.get(ip);
@@ -163,6 +279,7 @@ function jailIp(ip, reason, durationMs = JAIL_DURATION_DEFAULT_MS) {
     escalated50: existing ? existing.escalated50 : false,
   });
 
+  savePersistedJail();
   console.warn(`[AUTH_SCANNER_BLOCKED] ip=${ip} reason="${reason}" duration=${Math.round(finalDuration / 60000)}m strike=${count} (${escalationLevel})`);
 }
 
@@ -231,6 +348,9 @@ function recordJailedHit(clientIp) {
       escalatedLabel = jailEntry.escalationLevel;
       console.warn(`[AUTH_JAIL_ESCALATED] ip=${clientIp} escalated to 6h due to ${jailEntry.hitCount} burst hits`);
     }
+    if (escalatedLabel) {
+      savePersistedJail();
+    }
   }
 
   const scannerEntry = auditDebounceMap.get(`scanner:${clientIp}`);
@@ -252,6 +372,152 @@ function recordJailedHit(clientIp) {
     }
     updateLogAttempts(rateEntry.logRecord, rateEntry.count);
   }
+}
+
+/**
+ * Retrieve the current list of jailed IPs. Prunes expired entries automatically.
+ */
+function getJailedIpsList() {
+  const now = Date.now();
+  const list = [];
+  let pruned = false;
+
+  for (const [ip, entry] of jailedIps.entries()) {
+    if (now > entry.bannedUntil) {
+      jailedIps.delete(ip);
+      pruned = true;
+      continue;
+    }
+    const remainingSeconds = Math.max(1, Math.ceil((entry.bannedUntil - now) / 1000));
+    list.push({
+      ip,
+      reason: entry.reason || 'Malicious probe',
+      bannedUntil: entry.bannedUntil,
+      remainingSeconds,
+      count: entry.count || 1,
+      hitCount: entry.hitCount || 0,
+      firstBannedAt: entry.firstBannedAt || now,
+      escalationLevel: entry.escalationLevel || '30m',
+      isManual: Boolean(entry.isManual),
+    });
+  }
+
+  if (pruned) {
+    savePersistedJail();
+  }
+
+  list.sort((a, b) => b.bannedUntil - a.bannedUntil);
+  return list;
+}
+
+/**
+ * Manually unjail an IP address.
+ */
+function unjailIp(ip, unjailedBy) {
+  if (!ip) return false;
+  const cleanIp = String(ip).trim();
+  const existed = jailedIps.has(cleanIp);
+  const entry = jailedIps.get(cleanIp);
+
+  jailedIps.delete(cleanIp);
+  auditDebounceMap.delete(`scanner:${cleanIp}`);
+  auditDebounceMap.delete(`ratelimit:${cleanIp}`);
+  unauthRequests.delete(cleanIp);
+  savePersistedJail();
+
+  if (existed) {
+    auditLog('IP_UNJAILED', {
+      ip: cleanIp,
+      unjailedByIp: unjailedBy || 'Approver',
+      previousReason: entry ? entry.reason : undefined,
+    });
+  }
+  return true;
+}
+
+/**
+ * Extend an existing jail or add ban time for an IP.
+ */
+function extendJail(ip, durationMinutes, reason, extendedBy) {
+  if (!ip) throw new Error('IP is required');
+  const cleanIp = String(ip).trim();
+  const durationMs = Math.max(1, parseInt(durationMinutes, 10) || 30) * 60 * 1000;
+  const now = Date.now();
+  const existing = jailedIps.get(cleanIp);
+  const currentEnd = (existing && existing.bannedUntil > now) ? existing.bannedUntil : now;
+  const newBannedUntil = currentEnd + durationMs;
+  const updatedReason = reason ? String(reason).trim() : (existing ? existing.reason : 'Manually extended ban');
+  const minutes = Math.round(durationMs / 60000);
+  const levelLabel = `+${minutes}m (extended)`;
+
+  const entry = {
+    reason: updatedReason,
+    bannedUntil: newBannedUntil,
+    count: (existing ? existing.count : 0) + 1,
+    hitCount: existing ? (existing.hitCount || 0) : 0,
+    firstBannedAt: existing ? existing.firstBannedAt : now,
+    escalationLevel: levelLabel,
+    isManual: true,
+  };
+  jailedIps.set(cleanIp, entry);
+  savePersistedJail();
+
+  auditLog('IP_JAIL_EXTENDED', {
+    ip: cleanIp,
+    extendedByIp: extendedBy || 'Approver',
+    durationMinutes: minutes,
+    bannedUntil: new Date(newBannedUntil).toISOString(),
+    reason: updatedReason,
+  });
+
+  return {
+    ip: cleanIp,
+    ...entry,
+    remainingSeconds: Math.ceil((newBannedUntil - now) / 1000),
+  };
+}
+
+/**
+ * Manually jail an IP address for administrative reasons.
+ */
+function manuallyJailIp(ip, durationMinutes, reason, jailedBy) {
+  if (!ip) throw new Error('IP is required');
+  const cleanIp = String(ip).trim();
+  if (isIpExemptFromJail(cleanIp)) {
+    throw new Error('This IP belongs to an authenticated session or private network and cannot be jailed');
+  }
+  const durationMs = Math.max(1, parseInt(durationMinutes, 10) || 30) * 60 * 1000;
+  const now = Date.now();
+  const bannedUntil = now + durationMs;
+  const finalReason = reason ? String(reason).trim() : 'Manual administrative ban';
+  const minutes = Math.round(durationMs / 60000);
+  const escalationLevel = `${minutes}m (manual)`;
+
+  const entry = {
+    reason: finalReason,
+    bannedUntil,
+    count: 1,
+    hitCount: 0,
+    firstBannedAt: now,
+    escalationLevel,
+    isManual: true,
+  };
+  jailedIps.set(cleanIp, entry);
+  savePersistedJail();
+
+  auditLog('IP_MANUALLY_JAILED', {
+    ip: cleanIp,
+    jailedByIp: jailedBy || 'Approver',
+    durationMinutes: minutes,
+    bannedUntil: new Date(bannedUntil).toISOString(),
+    reason: finalReason,
+  });
+
+  return {
+    ip: cleanIp,
+    ...entry,
+    remainingSeconds: Math.ceil((bannedUntil - now) / 1000),
+  };
 }
 
 /**
@@ -464,8 +730,15 @@ function shouldLogAuthRequired(clientIp, serviceId) {
 // Periodic cleanup of expired memory records
 setInterval(() => {
   const now = Date.now();
+  let prunedJail = false;
   for (const [ip, entry] of jailedIps.entries()) {
-    if (now > entry.bannedUntil) jailedIps.delete(ip);
+    if (now > entry.bannedUntil) {
+      jailedIps.delete(ip);
+      prunedJail = true;
+    }
+  }
+  if (prunedJail) {
+    savePersistedJail();
   }
   for (const [ip, entry] of unauthRequests.entries()) {
     if (now > entry.resetAt) unauthRequests.delete(ip);
@@ -479,6 +752,7 @@ module.exports = {
   extractPathname,
   isScannerRequest,
   isIpJailed,
+  isIpExemptFromJail,
   jailIp,
   blockScannerProbe,
   recordJailedHit,
@@ -487,5 +761,11 @@ module.exports = {
   recordAuthRequired,
   shouldLogAuthRequired,
   logServiceAccess,
+  getJailedIpsList,
+  unjailIp,
+  extendJail,
+  manuallyJailIp,
+  loadPersistedJail,
+  savePersistedJail,
   UNAUTH_RATE_LIMIT_PER_MINUTE,
 };

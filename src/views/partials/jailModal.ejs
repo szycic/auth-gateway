@@ -1,0 +1,829 @@
+<style>
+  .btn-header-jail {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.3);
+    position: relative;
+  }
+  .btn-header-jail:hover {
+    color: #fde68a;
+    border-color: rgba(251, 191, 36, 0.6);
+    background: rgba(251, 191, 36, 0.08);
+  }
+  .badge-jail {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    border-radius: 9999px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    margin-left: 6px;
+    line-height: 1;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  }
+
+  .jail-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    z-index: 100000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    box-sizing: border-box;
+  }
+  .jail-modal-overlay.active {
+    display: flex;
+  }
+
+  .jail-modal-card {
+    width: 100%;
+    max-width: 680px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    background: rgba(15, 23, 42, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+    animation: jailModalFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes jailModalFadeIn {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .jail-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(30, 41, 59, 0.4);
+  }
+
+  .jail-modal-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .jail-modal-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .jail-header-pill {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.55rem;
+    border-radius: 9999px;
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+    letter-spacing: 0.02em;
+  }
+  .jail-header-pill.clean {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.35);
+    color: #6ee7b7;
+  }
+
+  .btn-jail-close {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0.4rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+  .btn-jail-close:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .jail-modal-body {
+    padding: 1.25rem 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  /* Toast Notification */
+  .jail-toast {
+    padding: 0.65rem 1rem;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    animation: jailToastIn 0.2s ease;
+  }
+  @keyframes jailToastIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .jail-toast-success {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #6ee7b7;
+  }
+  .jail-toast-error {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+  }
+
+  /* Active Bans Section */
+  .jail-section-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    margin-bottom: 0.65rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .jail-items-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .jail-item-card {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 1rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    transition: border-color 0.15s ease;
+  }
+  .jail-item-card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .jail-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .jail-ip-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .jail-ip-text {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.02em;
+  }
+
+  .jail-tag {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fcd34d;
+  }
+  .jail-tag-manual {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.35);
+    color: #d8b4fe;
+  }
+
+  .jail-countdown {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.1);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    white-space: nowrap;
+  }
+
+  .jail-item-mid {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    line-height: 1.4;
+    word-break: break-all;
+  }
+
+  .jail-item-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .jail-meta-chip {
+    background: rgba(255, 255, 255, 0.04);
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .jail-item-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .jail-actions-left {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .btn-unjail-action {
+    background: #10b981;
+    color: #ffffff;
+    border: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.4rem 0.85rem;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  }
+  .btn-unjail-action:hover {
+    background: #059669;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.45);
+  }
+
+  .jail-extend-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .jail-extend-label {
+    font-size: 0.72rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+  .btn-extend-pill {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-extend-pill:hover {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fde68a;
+  }
+
+  /* Empty State */
+  .jail-empty {
+    text-align: center;
+    padding: 2.25rem 1rem;
+    background: rgba(30, 41, 59, 0.3);
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    color: #94a3b8;
+  }
+  .jail-empty svg {
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 0.75rem auto;
+    color: #10b981;
+    opacity: 0.85;
+  }
+  .jail-empty h4 {
+    color: #f8fafc;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem 0;
+  }
+  .jail-empty p {
+    font-size: 0.8rem;
+    color: #64748b;
+    margin: 0;
+  }
+
+  /* Manual Ban Form Card */
+  .jail-manual-card {
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 1.15rem;
+  }
+
+  .jail-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 140px auto;
+    gap: 0.65rem;
+    align-items: center;
+  }
+  @media (max-width: 600px) {
+    .jail-form-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .jail-input {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.75rem;
+    box-sizing: border-box;
+    width: 100%;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s ease;
+  }
+  .jail-input:focus {
+    border-color: #38bdf8;
+  }
+  .jail-input::placeholder {
+    color: #475569;
+  }
+
+  .jail-select {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.75rem;
+    box-sizing: border-box;
+    width: 100%;
+    outline: none;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .jail-select:focus {
+    border-color: #38bdf8;
+  }
+
+  .btn-jail-ban-submit {
+    background: #ef4444;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.55rem 1.15rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  }
+  .btn-jail-ban-submit:hover {
+    background: #dc2626;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.45);
+  }
+
+  .btn-unjail-quick {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #34d399;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 0.45rem;
+    transition: all 0.15s ease;
+    vertical-align: middle;
+  }
+  .btn-unjail-quick:hover {
+    background: rgba(16, 185, 129, 0.3);
+    border-color: #34d399;
+    color: #ffffff;
+  }
+</style>
+
+<!-- IP Jail Management Modal -->
+<div class="jail-modal-overlay" id="jailModalOverlay" onclick="if(event.target===this)closeJailModal()">
+  <div class="jail-modal-card" role="dialog" aria-modal="true" aria-labelledby="jailModalTitle">
+    <div class="jail-modal-header">
+      <div class="jail-modal-title-group">
+        <h3 class="jail-modal-title" id="jailModalTitle">
+          <svg style="width: 20px; height: 20px; color: #fbbf24;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          IP Jail Management
+        </h3>
+        <span class="jail-header-pill" id="jailHeaderPill">0 active</span>
+      </div>
+      <button type="button" class="btn-jail-close" onclick="closeJailModal()" aria-label="Close modal">
+        <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="jail-modal-body">
+      <!-- Live Toast Container -->
+      <div id="jailToastContainer" style="display: none;"></div>
+
+      <!-- Section: Currently Jailed IPs -->
+      <div>
+        <div class="jail-section-title">
+          <span>Active IP Bans</span>
+          <span id="jailLastUpdatedText" style="font-weight: 500; font-size: 0.72rem; color: #64748b;">Auto-refreshing</span>
+        </div>
+
+        <div id="jailEmptyState" class="jail-empty" style="display: none;">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h4>No IPs currently jailed</h4>
+          <p>All client IP addresses are clear. Scanner probes and unauthenticated burst hits are automatically tracked.</p>
+        </div>
+
+        <div id="jailItemsContainer" class="jail-items-container">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Section: Manually Jail an IP -->
+      <div class="jail-manual-card">
+        <div class="jail-section-title" style="margin-bottom: 0.65rem;">
+          <span>Manual IP Ban</span>
+        </div>
+        <form id="jailManualForm" onsubmit="handleManualJailSubmit(event)">
+          <div class="jail-form-grid">
+            <input type="text" id="manualJailIp" class="jail-input" placeholder="IP Address (e.g. 198.51.100.24)" required />
+            <select id="manualJailDuration" class="jail-select" title="Ban Duration">
+              <option value="30" selected>30 minutes</option>
+              <option value="120">2 hours</option>
+              <option value="360">6 hours</option>
+              <option value="1440">24 hours</option>
+              <option value="10080">7 days</option>
+            </select>
+            <button type="submit" class="btn-jail-ban-submit" id="btnManualJailSubmit">Jail IP</button>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            <input type="text" id="manualJailReason" class="jail-input" placeholder="Reason (optional, e.g. Aggressive crawler, unauthorized probing)" />
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let jailCountdownTimer = null;
+  let currentJailedList = [];
+  window.jailedIpsSet = new Set();
+
+  function openJailModal() {
+    const overlay = document.getElementById('jailModalOverlay');
+    if (!overlay) return;
+    overlay.classList.add('active');
+    fetchJailData();
+    startJailCountdown();
+  }
+
+  function closeJailModal() {
+    const overlay = document.getElementById('jailModalOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    stopJailCountdown();
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const overlay = document.getElementById('jailModalOverlay');
+      if (overlay && overlay.classList.contains('active')) {
+        closeJailModal();
+      }
+    }
+  });
+
+  function showJailToast(msg, type = 'success') {
+    const c = document.getElementById('jailToastContainer');
+    if (!c) return;
+    c.style.display = 'block';
+    c.className = `jail-toast jail-toast-${type}`;
+    c.textContent = msg;
+    setTimeout(() => {
+      c.style.display = 'none';
+    }, 4000);
+  }
+
+  async function fetchJailData() {
+    try {
+      const res = await fetch('/auth/jail/data', {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      currentJailedList = data.jailed || [];
+      renderJailList(currentJailedList);
+      updateJailBadges(currentJailedList.length);
+    } catch (err) {
+      console.error('Failed to fetch jail data:', err);
+    }
+  }
+
+  function updateJailBadges(count) {
+    window.jailedIpsSet = new Set(currentJailedList.map(item => item.ip));
+
+    const topBadge = document.getElementById('jailCountBadge');
+    if (topBadge) {
+      if (count > 0) {
+        topBadge.textContent = count;
+        topBadge.style.display = 'inline-flex';
+      } else {
+        topBadge.style.display = 'none';
+      }
+    }
+
+    const modalPill = document.getElementById('jailHeaderPill');
+    if (modalPill) {
+      if (count > 0) {
+        modalPill.className = 'jail-header-pill';
+        modalPill.textContent = `${count} active ban${count === 1 ? '' : 's'}`;
+      } else {
+        modalPill.className = 'jail-header-pill clean';
+        modalPill.textContent = 'Clear';
+      }
+    }
+
+    const updatedText = document.getElementById('jailLastUpdatedText');
+    if (updatedText) {
+      updatedText.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    }
+  }
+
+  function formatJailCountdown(bannedUntil) {
+    const now = Date.now();
+    const remainingMs = bannedUntil - now;
+    if (remainingMs <= 0) return 'Expired';
+
+    const totalSeconds = Math.floor(remainingMs / 1000);
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+
+    const parts = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (h > 0 || d > 0) parts.push(`${h}h`);
+    parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ') + ' remaining';
+  }
+
+  function renderJailList(list) {
+    const container = document.getElementById('jailItemsContainer');
+    const emptyState = document.getElementById('jailEmptyState');
+    if (!container || !emptyState) return;
+
+    if (!list || list.length === 0) {
+      emptyState.style.display = 'block';
+      container.innerHTML = '';
+      return;
+    }
+
+    emptyState.style.display = 'none';
+    container.innerHTML = '';
+
+    list.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'jail-item-card';
+      card.id = `jail-card-${item.ip.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+      const tagClass = item.isManual ? 'jail-tag jail-tag-manual' : 'jail-tag';
+      const tagText = item.escalationLevel || '30m';
+
+      const hitsBadge = (item.hitCount && item.hitCount > 0) ? `<span class="jail-meta-chip"><strong>${item.hitCount}</strong> attempts during jail</span>` : '';
+      const strikesBadge = (item.count && item.count > 1) ? `<span class="jail-meta-chip">Strike <strong>${item.count}</strong></span>` : '';
+      const firstBanned = item.firstBannedAt ? `<span class="jail-meta-chip">First: ${new Date(item.firstBannedAt).toLocaleTimeString()}</span>` : '';
+
+      card.innerHTML = `
+        <div class="jail-item-top">
+          <div class="jail-ip-wrap">
+            <span class="jail-ip-text">${escapeJailHtml(item.ip)}</span>
+            <span class="${tagClass}">${escapeJailHtml(tagText)}</span>
+          </div>
+          <span class="jail-countdown" data-banned-until="${item.bannedUntil}">
+            ${formatJailCountdown(item.bannedUntil)}
+          </span>
+        </div>
+
+        <div class="jail-item-mid">
+          <strong>Reason:</strong> ${escapeJailHtml(item.reason || 'Malicious scanner probe')}
+        </div>
+
+        <div class="jail-item-meta">
+          ${strikesBadge}
+          ${hitsBadge}
+          ${firstBanned}
+        </div>
+
+        <div class="jail-item-bottom">
+          <div class="jail-actions-left">
+            <button type="button" class="btn-unjail-action" onclick="unjailIp('${escapeJailHtml(item.ip)}')">
+              <svg style="width: 14px; height: 14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Unjail
+            </button>
+          </div>
+          <div class="jail-extend-wrap">
+            <span class="jail-extend-label">Extend:</span>
+            <button type="button" class="btn-extend-pill" onclick="extendJail('${escapeJailHtml(item.ip)}', 30)">+30m</button>
+            <button type="button" class="btn-extend-pill" onclick="extendJail('${escapeJailHtml(item.ip)}', 120)">+2h</button>
+            <button type="button" class="btn-extend-pill" onclick="extendJail('${escapeJailHtml(item.ip)}', 1440)">+24h</button>
+          </div>
+        </div>
+      `;
+
+      container.appendChild(card);
+    });
+  }
+
+  function startJailCountdown() {
+    stopJailCountdown();
+    jailCountdownTimer = setInterval(() => {
+      const els = document.querySelectorAll('.jail-countdown[data-banned-until]');
+      let hasExpired = false;
+      els.forEach(el => {
+        const bannedUntil = parseInt(el.getAttribute('data-banned-until'), 10);
+        if (bannedUntil) {
+          const txt = formatJailCountdown(bannedUntil);
+          el.textContent = txt;
+          if (txt === 'Expired') hasExpired = true;
+        }
+      });
+      if (hasExpired) {
+        fetchJailData();
+      }
+    }, 1000);
+  }
+
+  function stopJailCountdown() {
+    if (jailCountdownTimer) {
+      clearInterval(jailCountdownTimer);
+      jailCountdownTimer = null;
+    }
+  }
+
+  async function unjailIp(ip) {
+    if (!ip) return;
+    try {
+      const res = await fetch('/auth/jail/unjail', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ ip }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showJailToast(data.error || 'Failed to unjail IP', 'error');
+        return;
+      }
+      showJailToast(`IP ${ip} unjailed successfully`, 'success');
+      currentJailedList = data.jailed || [];
+      renderJailList(currentJailedList);
+      updateJailBadges(currentJailedList.length);
+
+      // If on audit dashboard, trigger refresh
+      if (typeof fetchAuditLogs === 'function') {
+        fetchAuditLogs();
+      }
+    } catch (err) {
+      showJailToast('Network error while unjailing IP', 'error');
+    }
+  }
+  window.unjailIp = unjailIp;
+
+  async function extendJail(ip, durationMinutes) {
+    if (!ip) return;
+    try {
+      const res = await fetch('/auth/jail/extend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ ip, durationMinutes }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showJailToast(data.error || 'Failed to extend jail', 'error');
+        return;
+      }
+      showJailToast(`Jail for ${ip} extended by ${durationMinutes}m`, 'success');
+      currentJailedList = data.jailed || [];
+      renderJailList(currentJailedList);
+      updateJailBadges(currentJailedList.length);
+    } catch (err) {
+      showJailToast('Network error while extending jail', 'error');
+    }
+  }
+
+  async function handleManualJailSubmit(e) {
+    e.preventDefault();
+    const ipInput = document.getElementById('manualJailIp');
+    const durSelect = document.getElementById('manualJailDuration');
+    const reasonInput = document.getElementById('manualJailReason');
+    const submitBtn = document.getElementById('btnManualJailSubmit');
+
+    const ip = ipInput ? ipInput.value.trim() : '';
+    const durationMinutes = durSelect ? parseInt(durSelect.value, 10) : 30;
+    const reason = reasonInput ? reasonInput.value.trim() : '';
+
+    if (!ip) return;
+
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const res = await fetch('/auth/jail/ban', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ ip, durationMinutes, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showJailToast(data.error || 'Failed to jail IP', 'error');
+        return;
+      }
+      showJailToast(`IP ${ip} jailed for ${durationMinutes}m`, 'success');
+      if (ipInput) ipInput.value = '';
+      if (reasonInput) reasonInput.value = '';
+      currentJailedList = data.jailed || [];
+      renderJailList(currentJailedList);
+      updateJailBadges(currentJailedList.length);
+    } catch (err) {
+      showJailToast('Network error while jailing IP', 'error');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  function escapeJailHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // Initial badge check on load
+  document.addEventListener('DOMContentLoaded', () => {
+    fetchJailData();
+    setInterval(fetchJailData, 30000);
+  });
+</script>

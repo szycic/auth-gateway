@@ -36,14 +36,28 @@ router.options('/verify', (req, res) => {
 
 router.all('/verify', (req, res) => {
   const clientIp = authService.getClientIp(req);
+  const isApprover = sessionService.isApprover(req);
+  const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
+  const hasValidSession = Boolean(token && sessionService.isValidSession(token));
+  const hasGatewayToken = authService.isGatewayTokenValid(req);
+
+  // Authenticated sessions, approvers, and valid gateway tokens are exempt from jail blocks
+  const isAuthenticated = isApprover || hasValidSession || hasGatewayToken;
+
+  // Jail Enforcement (strictly unauthenticated requests; authenticated users, devices, and approvers are never locked out):
   const jailStatus = securityService.isIpJailed(clientIp);
-  if (jailStatus.jailed) {
+  if (jailStatus.jailed && !isAuthenticated) {
     securityService.recordJailedHit(clientIp);
     return res.status(403).set({
       'X-Auth-Status': 'blocked',
       'X-Auth-Reason': 'ip_jailed',
       'Retry-After': String(jailStatus.remainingSeconds),
     }).send(`Forbidden: IP temporarily banned (${jailStatus.remainingSeconds}s remaining)`);
+  }
+
+  // If this IP was previously jailed but now carries an active authenticated session or approver, clear jail
+  if (jailStatus.jailed && isAuthenticated) {
+    securityService.unjailIp(clientIp, 'Auto-unjailed: Authenticated activity detected');
   }
 
   const targetService = sessionService.getTargetServiceForRequest(req);
@@ -54,16 +68,10 @@ router.all('/verify', (req, res) => {
     }).send('Service Disabled');
   }
 
-  // Scanner Probe Detection:
   const forwardedHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].toLowerCase().trim();
   const forwardedUri = req.headers['x-forwarded-uri'] || req.url || '';
   const proto = req.headers['x-forwarded-proto'] || 'https';
   const fullUrl = `${proto}://${forwardedHost}${forwardedUri}`;
-
-  const scannerCheck = securityService.isScannerRequest(req, fullUrl);
-  if (scannerCheck.isScanner) {
-    return securityService.blockScannerProbe(req, res, fullUrl, scannerCheck.reason);
-  }
 
   const origin = req.headers.origin;
   const isExtension = isExtensionOrigin(origin);
@@ -111,15 +119,6 @@ router.all('/verify', (req, res) => {
       'X-Auth-Role': 'preflight',
       'X-Auth-User': 'anonymous',
     }).send('OK: CORS Preflight');
-  }
-
-  // Public service bypass: If authentication is disabled for this service, allow all traffic
-  if (targetService && targetService.disableAuth) {
-    return res.status(200).set({
-      'X-Auth-Status': 'public',
-      'X-Auth-Role': 'public',
-      'X-Auth-User': 'anonymous',
-    }).send('OK: Service is public');
   }
 
   // Gateway Secret Token check (via custom headers: X-Gateway-Token, X-Auth-Token, or Bearer token)
@@ -207,8 +206,7 @@ router.all('/verify', (req, res) => {
     }
   }
 
-  const token = req.cookies[config.AUTH_COOKIE_NAME] || req.cookies['share_auth_token'];
-  if (sessionService.isValidSession(token)) {
+  if (hasValidSession) {
     const session = sessionService.activeSessions.get(token);
 
     // Check service access restrictions (fail-closed if restricted session)
@@ -251,6 +249,26 @@ router.all('/verify', (req, res) => {
       'X-Auth-Role': 'trusted_device',
       'X-Auth-User': 'approver',
     }).send('OK');
+  }
+
+  // =========================================================================
+  // UNAUTHENTICATED TRAFFIC ONLY BEYOND THIS POINT:
+  // Legitimate authenticated devices never reach here.
+  // =========================================================================
+
+  // Scanner Probe Detection (strictly unauthenticated requests):
+  const scannerCheck = securityService.isScannerRequest(req, fullUrl);
+  if (scannerCheck.isScanner) {
+    return securityService.blockScannerProbe(req, res, fullUrl, scannerCheck.reason);
+  }
+
+  // Public service bypass: If authentication is disabled for this service, allow clean unauthenticated traffic
+  if (targetService && targetService.disableAuth) {
+    return res.status(200).set({
+      'X-Auth-Status': 'public',
+      'X-Auth-Role': 'public',
+      'X-Auth-User': 'anonymous',
+    }).send('OK: Service is public');
   }
 
   // Rate Limiter for Unauthenticated Traffic:
