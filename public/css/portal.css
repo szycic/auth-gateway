@@ -214,15 +214,23 @@
 }
 
 .actions-row.actions-row-approver {
-  justify-content: stretch;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
   width: 100%;
 }
 
 .actions-approver-group {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;
   width: 100%;
+}
+
+.actions-row.actions-row-approver .btn-logout {
+  width: 100%;
+  text-align: center;
+  justify-content: center;
 }
 
 .btn-action {
@@ -292,24 +300,32 @@
 @media (max-width: 480px) {
   .actions-row.actions-row-approver {
     padding-top: 1rem;
+    gap: 0.5rem;
   }
   .actions-approver-group {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 0.35rem;
   }
-  .actions-approver-group .btn-action,
-  .actions-row .btn-action {
+  .actions-approver-group .btn-action {
     width: 100%;
     padding: 0.45rem 0.15rem;
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     text-align: center;
     justify-content: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
+    box-sizing: border-box;
+  }
+  .actions-row.actions-row-approver .btn-logout {
+    width: 100%;
+    padding: 0.45rem 0.15rem;
+    font-size: 0.75rem;
+    text-align: center;
+    justify-content: center;
     box-sizing: border-box;
   }
 }
