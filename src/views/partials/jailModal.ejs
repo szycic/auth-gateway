@@ -22,31 +22,6 @@
     border-color: rgba(251, 191, 36, 0.6);
     background: rgba(251, 191, 36, 0.08);
   }
-  .badge-jail {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: #ef4444;
-    color: #ffffff;
-    font-size: 0.68rem;
-    font-weight: 700;
-    border-radius: 9999px;
-    min-width: 17px;
-    height: 17px;
-    padding: 0 4px;
-    margin-left: 5px;
-    line-height: 1;
-    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
-  }
-  @media (max-width: 600px) {
-    .badge-jail {
-      min-width: 14px;
-      height: 14px;
-      font-size: 0.6rem;
-      padding: 0 2px;
-      margin-left: 2px;
-    }
-  }
 
   .jail-modal-overlay {
     position: fixed;
@@ -593,16 +568,6 @@
 
   function updateJailBadges(count) {
     window.jailedIpsSet = new Set(currentJailedList.map(item => item.ip));
-
-    const topBadge = document.getElementById('jailCountBadge');
-    if (topBadge) {
-      if (count > 0) {
-        topBadge.textContent = count;
-        topBadge.style.display = 'inline-flex';
-      } else {
-        topBadge.style.display = 'none';
-      }
-    }
 
     const modalPill = document.getElementById('jailHeaderPill');
     if (modalPill) {
