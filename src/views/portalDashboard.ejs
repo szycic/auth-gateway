@@ -110,11 +110,18 @@
         <div class="actions-approver-group">
           <a href="/auth/sessions" class="btn-action btn-sessions">Sessions</a>
           <a href="/auth/audit" class="btn-action btn-audit">Audit Log</a>
+          <button type="button" class="btn-action btn-jail" id="openJailModalBtn" onclick="openJailModal()" title="View and manage jailed IP addresses">
+            IP Jail <span id="jailCountBadge" class="badge-jail" style="display: none;">0</span>
+          </button>
+          <form method="POST" action="/auth/logout" style="display: contents;">
+            <button type="submit" class="btn-action btn-logout" style="background: transparent; font-family: inherit; font-size: inherit; cursor: pointer;">Sign Out</button>
+          </form>
         </div>
+      <% } else { %>
+        <form method="POST" action="/auth/logout" style="display: contents;">
+          <button type="submit" class="btn-action btn-logout" style="background: transparent; font-family: inherit; font-size: inherit; cursor: pointer;">Sign Out</button>
+        </form>
       <% } %>
-      <form method="POST" action="/auth/logout" style="display: contents;">
-        <button type="submit" class="btn-action btn-logout" style="background: transparent; font-family: inherit; font-size: inherit; cursor: pointer;">Sign Out</button>
-      </form>
     </div>
 
     <div style="text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: #64748b; line-height: 1.5;">
@@ -227,6 +234,9 @@
       }
     });
   </script>
+  <% if (isApproverUser) { %>
+    <%- include('partials/jailModal') %>
+  <% } %>
   <%- include('partials/pwa-sw') %>
 </body>
 </html>

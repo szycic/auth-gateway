@@ -9,6 +9,19 @@
     border-color: rgba(251, 191, 36, 0.6);
     background: rgba(251, 191, 36, 0.08);
   }
+  .btn-jail {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.3);
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+  }
+  .btn-jail:hover {
+    color: #fde68a;
+    border-color: rgba(251, 191, 36, 0.6);
+    background: rgba(251, 191, 36, 0.08);
+  }
   .badge-jail {
     display: inline-flex;
     align-items: center;
@@ -21,9 +34,18 @@
     min-width: 17px;
     height: 17px;
     padding: 0 4px;
-    margin-left: 6px;
+    margin-left: 5px;
     line-height: 1;
     box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  }
+  @media (max-width: 600px) {
+    .badge-jail {
+      min-width: 14px;
+      height: 14px;
+      font-size: 0.6rem;
+      padding: 0 2px;
+      margin-left: 2px;
+    }
   }
 
   .jail-modal-overlay {

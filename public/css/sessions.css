@@ -1046,7 +1046,7 @@ body {
   cursor: default;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   .top-bar {
     flex-direction: column;
     align-items: stretch;
@@ -1060,14 +1060,19 @@ body {
   .top-bar-actions {
     width: 100%;
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 0.5rem;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.35rem;
   }
 
   .btn-header {
     width: 100%;
-    padding: 0.45rem 0.2rem;
-    font-size: 0.75rem;
+    padding: 0.45rem 0.15rem;
+    font-size: 0.72rem;
     text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    box-sizing: border-box;
   }
 }
